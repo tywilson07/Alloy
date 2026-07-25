@@ -1503,7 +1503,7 @@ function enterApp() {
 // ═══════════════════════════════════════════════════
 // NAVIGATION
 // ═══════════════════════════════════════════════════
-function nav(view, btn) {
+function _liftNav(view, btn) {
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('.nav-item,.bnav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('view-'+view).classList.add('active');
@@ -8960,7 +8960,7 @@ function alloySwitchMode(mode) {
     document.querySelectorAll('.lift-bnav').forEach(b => b.classList.remove('active'));
     const firstLiftBtn = document.querySelector('.lift-bnav');
     if (firstLiftBtn) firstLiftBtn.classList.add('active');
-    nav('calendar');
+    _liftNav('calendar');
     setTimeout(() => setCalView('week'), 100);
   }
 
@@ -8969,7 +8969,6 @@ function alloySwitchMode(mode) {
 }
 
 // ── Extend nav() to handle CF views ──
-const _alloyOrigNav = nav;
 function nav(view, btn) {
   const cfViews = ['cf-dashboard','cf-track','cf-library','cf-athletes','cf-assign'];
   if (cfViews.includes(view)) {
@@ -8988,7 +8987,8 @@ function nav(view, btn) {
     if (view === 'cf-assign')    cfRenderAssignWOD();
     return;
   }
-  _alloyOrigNav(view, btn);
+  // Lift-side views + shared views (settings, help, builder, etc.)
+  _liftNav(view, btn);
 }
 
 // ── Data loading ──
