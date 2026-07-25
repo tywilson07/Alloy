@@ -1490,11 +1490,11 @@ function enterApp() {
     const toggle = document.getElementById('cal-mode-toggle');
     if (toggle) toggle.style.display = '';
   }
-  // Default to CF mode — restore saved preference
-  const savedAlloMode = (() => { try { return localStorage.getItem('alloy_mode'); } catch(e) { return null; } })();
-  // Use setTimeout to ensure all DOM updates from enterApp are complete
+  // Always open in CF mode (Alloy's default identity)
+  // Clear any stale lift-mode preference from earlier sessions
+  try { localStorage.removeItem('alloy_mode'); } catch(e) {}
   setTimeout(() => {
-    alloySwitchMode(savedAlloMode || 'cf');
+    alloySwitchMode('cf');
   }, 50);
   loadExLibrary(); // pre-warm the exercise library cache
   checkFirstLogin(); // show onboarding tour for first-time athletes
@@ -8554,7 +8554,7 @@ let _tourStep = 0;
 
 function startTour() {
   // Navigate to calendar first
-  nav('calendar');
+  if (!_cfMode) nav('calendar');
   setTimeout(() => {
     _tourStep = 0;
     document.getElementById('tour-overlay').style.display = '';
@@ -8722,15 +8722,9 @@ async function endTour() {
 }
 
 async function checkFirstLogin() {
-  if (!currentUser) return;
-  // Only show tour for non-admin users who haven't seen it
-  if (currentUser.role === 'admin') return;
-  try {
-    const user = await db('users', 'GET', null, `?id=eq.${currentUser.id}&select=tour_completed`);
-    if (user?.[0]?.tour_completed) return;
-    // First login — start tour after a brief delay
-    setTimeout(startTour, 800);
-  } catch(e) { /* tour_completed column doesn't exist — skip */ }
+  // Tour disabled in Alloy — it navigates to calendar and breaks CF mode default
+  // Will be replaced with an Alloy-specific onboarding flow
+  return;
 }
 
 // ═══════════════════════════════════════════════════
