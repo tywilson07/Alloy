@@ -1473,8 +1473,10 @@ function enterApp() {
   }
   // Default to CF mode — restore saved preference
   const savedAlloMode = (() => { try { return localStorage.getItem('alloy_mode'); } catch(e) { return null; } })();
-  alloySwitchMode(savedAlloMode || 'cf');
-  if (!savedAlloMode || savedAlloMode === 'cf') { setTimeout(()=>{ setCalView('week'); },100); }
+  // Use setTimeout to ensure all DOM updates from enterApp are complete
+  setTimeout(() => {
+    alloySwitchMode(savedAlloMode || 'cf');
+  }, 50);
   loadExLibrary(); // pre-warm the exercise library cache
   checkFirstLogin(); // show onboarding tour for first-time athletes
 }
@@ -8900,16 +8902,16 @@ function alloySwitchMode(mode) {
   document.body.classList.toggle('cf-mode', _cfMode);
 
   // Update toggle buttons
-  document.getElementById('mode-btn-lift')?.classList.toggle('lift-on', !_cfMode);
-  document.getElementById('mode-btn-lift')?.classList.toggle('cf-on', false);
-  document.getElementById('mode-btn-cf')?.classList.toggle('cf-on', _cfMode);
-  document.getElementById('mode-btn-cf')?.classList.toggle('lift-on', false);
+  const liftBtn = document.getElementById('mode-btn-lift');
+  const cfBtn = document.getElementById('mode-btn-cf');
+  if (liftBtn) { liftBtn.classList.toggle('lift-on', !_cfMode); liftBtn.classList.remove('cf-on'); }
+  if (cfBtn)   { cfBtn.classList.toggle('cf-on', _cfMode);      cfBtn.classList.remove('lift-on'); }
 
   // Toggle sidebar navs
   const liftNav = document.getElementById('lift-sidebar-nav');
   const cfNav = document.getElementById('cf-sidebar-nav');
-  if (liftNav) liftNav.style.display = _cfMode ? 'none' : '';
-  if (cfNav) cfNav.style.display = _cfMode ? '' : 'none';
+  if (liftNav) liftNav.style.display = _cfMode ? 'none' : 'flex';
+  if (cfNav)   cfNav.style.display   = _cfMode ? 'flex' : 'none';
 
   // Toggle bottom nav buttons
   document.querySelectorAll('.lift-bnav').forEach(b => b.style.display = _cfMode ? 'none' : '');
@@ -8931,15 +8933,22 @@ function alloySwitchMode(mode) {
 
   // Navigate
   if (_cfMode) {
-    cfLoadData().then(() => {
-      nav('cf-dashboard');
-      cfRenderDashboard();
-    });
+    // Show CF dashboard immediately, load data async
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    const cfDash = document.getElementById('view-cf-dashboard');
+    if (cfDash) cfDash.classList.add('active');
+    // Sync nav active states
+    document.querySelectorAll('.bnav-btn, .nav-item').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll("[onclick*="nav('cf-dashboard'"]").forEach(b => b.classList.add('active'));
+    // Load data then render
+    cfLoadData().then(() => cfRenderDashboard());
   } else {
-    // Reset all lift bnav active states
+    // Switch to lift mode
     document.querySelectorAll('.lift-bnav').forEach(b => b.classList.remove('active'));
-    document.querySelector('.lift-bnav')?.classList.add('active');
+    const firstLiftBtn = document.querySelector('.lift-bnav');
+    if (firstLiftBtn) firstLiftBtn.classList.add('active');
     nav('calendar');
+    setTimeout(() => setCalView('week'), 100);
   }
 
   // Persist preference
