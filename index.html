@@ -1419,7 +1419,17 @@ async function doLogin() {
     if (typeof currentUser.display_name === 'undefined') currentUser.display_name = null;
     saveSession(currentUser);
     enterApp();
-  } catch(e) { showLoginError('Connection error — check your internet'); console.error(e); }
+  } catch(e) {
+    const msg = e.message || '';
+    if (msg.includes('401') || msg.includes('403') || msg.includes('Invalid API key')) {
+      showLoginError('API key error — check Supabase credentials');
+    } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+      showLoginError('Connection error — check your internet');
+    } else {
+      showLoginError('Error: ' + (msg || 'Unknown error'));
+    }
+    console.error('Login error:', e);
+  }
 }
 
 async function doRegister() {
@@ -1436,7 +1446,15 @@ async function doRegister() {
     currentUser = rows[0];
     saveSession(currentUser);
     enterApp();
-  } catch(e) { showLoginError('Registration failed — try again'); console.error(e); }
+  } catch(e) {
+    const msg = e.message || '';
+    if (msg.includes('401') || msg.includes('403') || msg.includes('Invalid API key')) {
+      showLoginError('API key error — check Supabase credentials');
+    } else {
+      showLoginError('Registration failed: ' + (msg || 'try again'));
+    }
+    console.error('Register error:', e);
+  }
 }
 
 function doLogout() {
@@ -1450,6 +1468,7 @@ function showLoginError(msg) {
   const el = document.getElementById('login-error');
   el.textContent = msg;
   el.style.display = 'block';
+  console.error('[Alloy login error]', msg);
 }
 
 function enterApp() {
