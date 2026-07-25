@@ -8958,7 +8958,7 @@ function alloySwitchMode(mode) {
     if (cfDash) cfDash.classList.add('active');
     // Sync nav active states
     document.querySelectorAll('.bnav-btn, .nav-item').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll("[onclick*="nav('cf-dashboard'"]").forEach(b => b.classList.add('active'));
+    document.querySelectorAll(".cf-bnav[onclick*='cf-dashboard']").forEach(b => b.classList.add('active'));
     // Load data then render
     cfLoadData().then(() => cfRenderDashboard());
   } else {
