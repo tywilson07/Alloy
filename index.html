@@ -697,18 +697,25 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
 }
 
 /* ── CF MODE CALENDAR COLOR OVERRIDES ── */
-body.cf-mode .cal-cell.today { background: var(--cf-green-dim); }
-body.cf-mode .cal-cell.selected { outline: 2px solid var(--cf-green); outline-offset: -2px; background: var(--cf-green-dim); }
-body.cf-mode .cal-cell.today .cal-day-num { color: var(--cf-green); font-weight: 900; }
-body.cf-mode .week-strip-day.today .week-strip-num { background: var(--cf-green); color: #0d0d0d; }
-body.cf-mode .week-strip-day.selected { border-color: var(--cf-green); background: var(--cf-green-dim); }
+body.cf-mode .cal-cell.today { background: var(--cf-green-dim) !important; }
+body.cf-mode .cal-cell.today .cal-day-num { 
+  background: var(--cf-green) !important; 
+  color: #0d0d0d !important; 
+  border-radius: 50%;
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 900 !important;
+}
+body.cf-mode .cal-cell.selected { outline: 2px solid var(--cf-green) !important; outline-offset: -2px; background: var(--cf-green-dim) !important; }
+body.cf-mode .week-strip-day.today .week-strip-num { background: var(--cf-green) !important; color: #0d0d0d !important; }
+body.cf-mode .week-strip-day.selected { border-color: var(--cf-green) !important; background: var(--cf-green-dim) !important; }
 body.cf-mode .week-strip-dot.logged { background: var(--cf-green) !important; }
-body.cf-mode .day-panel-header { border-bottom-color: var(--cf-green-dim); }
+body.cf-mode .day-panel-header { border-bottom-color: var(--cf-green-dim) !important; }
 body.cf-mode #cf-view-month-btn.active,
-body.cf-mode #cf-view-week-btn.active { background: var(--cf-green); color: #0d0d0d; }
-body.cf-mode .cal-mode-btn.active { background: var(--cf-green); color: #0d0d0d; }
-body.cf-mode .week-day-col.today .week-day-num { color: var(--cf-green); }
-body.cf-mode .week-day-col.selected { border-color: var(--cf-green); background: var(--cf-green-dim); }
+body.cf-mode #cf-view-week-btn.active { background: var(--cf-green) !important; color: #0d0d0d !important; }
+body.cf-mode .cal-mode-btn.active { background: var(--cf-green) !important; color: #0d0d0d !important; }
+body.cf-mode .week-day-col.today .week-day-num { color: var(--cf-green) !important; }
+body.cf-mode .week-day-col.selected { border-color: var(--cf-green) !important; background: var(--cf-green-dim) !important; }
 
 /* ── FULLSCREEN TV TIMER ── */
 #cf-fullscreen-timer{display:none;position:fixed;inset:0;background:#0d0d0d;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer}
@@ -1562,7 +1569,7 @@ body.cf-mode .week-day-col.selected { border-color: var(--cf-green); background:
 // ═══════════════════════════════════════════════════
 const SUPA_URL = 'https://mjlmktglhpwrfxconicy.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qbG1rdGdsaHB3cmZ4Y29uaWN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5NjAyMzksImV4cCI6MjEwMDUzNjIzOX0.81LRaeiZ0Zl0YdiARTcPuJp1hrmsLR-_eZSDGDjmeHw';
-const AI_WORKER_URL = 'https://notch-ai.tywilson07.workers.dev/api/ai';
+const AI_WORKER_URL = 'https://alloy-ai.tywilson07.workers.dev';
 
 // Call the Alloy AI Worker
 async function callAI(type, payload) {
@@ -9125,6 +9132,7 @@ let _cfBuilderState = {
   focus: null
 };
 
+
 function cfRenderWODBuilder() {
   const body = document.getElementById('cf-builder-body');
   if (!body) return;
@@ -9253,32 +9261,8 @@ async function cfBuilderSetDifficulty(difficulty, btn) {
   result.scrollIntoView({behavior:'smooth',block:'nearest'});
 
   try {
-    const prompt = `You are an expert CrossFit and functional fitness coach. Generate a complete WOD with the following specs:
-
-Format: ${_cfBuilderState.format === 'Surprise Me' ? 'Choose the best format for these parameters' : _cfBuilderState.format}
-${_cfBuilderState.format === 'For Quality' ? 'IMPORTANT: This is a For Quality workout — no time cap, focus on perfect movement and controlled loading. Include specific rep schemes like 5x5 or 3-3-3-3.' : ''}
-${_cfBuilderState.format === 'Heavy' ? 'IMPORTANT: This is a Heavy day — no time cap, focus on maximal loading. Use ascending rep schemes like 9-9-6-6-3-3 or 5-5-3-3-1-1. Include a specific movement to go heavy on.' : ''}
-Time Domain: ${_cfBuilderState.duration} minutes
-Equipment: ${_cfBuilderState.equipment.join(', ')}
-Athlete Level: ${_cfBuilderState.difficulty}
-
-Respond ONLY with a valid JSON object — no markdown, no explanation, no backticks. Use this exact structure:
-{
-  "name": "WOD name (one punchy word or short phrase, all caps)",
-  "format": "For Time | AMRAP | EMOM | Chipper | Partner",
-  "cap": "X min cap (if For Time or Chipper) or null",
-  "description": "Short description e.g. '3 Rounds for Time' or '20 min AMRAP'",
-  "movements": [
-    {"reps": "10", "name": "Movement Name", "detail": "weight/distance/height"},
-    {"reps": "200m", "name": "Run", "detail": ""},
-    {"reps": "", "name": "Buy-In: 400m Run", "detail": "Together"}
-  ],
-  "scaling": "Scaling notes — how to make it easier",
-  "notes": "Coach notes — pacing strategy, intent, what makes this WOD special",
-  "rx_weights": "RX weights summary e.g. Barbell: 95/65 lb, KB: 53/35 lb"
-}`;
-
-    const raw = await callAI('wod', { prompt });
+    // Prompt built server-side in Alloy AI Worker
+      const raw = await callAI('wod_generate', _cfBuilderState);
     let wod;
     try {
       const clean = raw.replace(/^```json\s*/,'').replace(/\s*```$/,'').trim();
@@ -9291,12 +9275,28 @@ Respond ONLY with a valid JSON object — no markdown, no explanation, no backti
 
     cfRenderWODBuilderResult(wod);
   } catch(e) {
-    result.innerHTML = `
-      <div style="background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-lg);padding:16px;margin-top:8px">
-        <div style="color:var(--red);font-weight:700;margin-bottom:6px">Couldn't generate WOD</div>
-        <div style="font-size:12px;color:var(--text-muted)">${e.message}</div>
-        <button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="cfRenderWODBuilder()">Try Again</button>
-      </div>`;
+    // AI generation failed - show helpful options
+    const allWODs = [...CF_BENCHMARKS, ..._cfWODs];
+    const suggested = allWODs.filter(w => {
+      const fmt = (w.format||'').toLowerCase();
+      return fmt.includes(_cfBuilderState.format?.toLowerCase()||'') || 
+             _cfBuilderState.format === 'Surprise Me';
+    }).slice(0,3);
+    
+    const suggHtml = suggested.map(w => `
+      <div class="wod-picker-item" onclick="cfRenderWODBuilderResult(${JSON.stringify(w).replace(/"/g,'&quot;')})" style="margin-bottom:6px">
+        <div style="font-size:13px;font-weight:900;text-transform:uppercase">${w.name}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${w.format||''}</div>
+      </div>`).join('');
+
+    result.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-top:8px">' +
+      '<div style="color:var(--red);font-weight:700;margin-bottom:4px">AI generation unavailable</div>' +
+      '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">The AI worker needs updating to support WOD generation. Here are some matching WODs from your library:</div>' +
+      (suggHtml || '<p style="font-size:12px;color:var(--text-muted)">No matching WODs found in library.</p>') +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+      '<button class="btn btn-ghost btn-sm" onclick="cfRenderWODBuilder()">Try Again</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="nav('cf-library')">Browse Library</button>' +
+      '</div></div>';
     console.error('CF WOD builder error:', e);
   }
 }
