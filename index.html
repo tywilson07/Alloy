@@ -10607,7 +10607,8 @@ function cfOpenWODPicker(ds) {
     </div>`;
 
   document.getElementById('modal-footer').innerHTML = `
-    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>`;
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="cfPickBuildNew('${ds}')">+ Build New WOD</button>`;
 
   // WOD picker styles injected via CSS in stylesheet
 
@@ -10654,10 +10655,35 @@ function cfFilterWODPicker(query, ds) {
 
 function cfPickWOD(ds, wod) {
   closeModal();
-  // Store date and WOD name
   window._cfLogDate = ds;
   // Load the WOD into the track page with timer pre-configured
+  // Also pre-fill the movement builder
   cfLoadWODToTrack(wod);
+  // Pre-fill movements in the builder
+  setTimeout(() => {
+    if (wod.movements && wod.movements.length) {
+      _wlbMovements = wod.movements.map(m => ({
+        name: m.name || '',
+        reps: m.reps || '',
+        unit: 'reps',
+        weight: m.detail || '',
+        notes: ''
+      }));
+      wlbRenderMovements();
+      const emptyMsg = document.getElementById('wlb-movements-empty');
+      if (emptyMsg) emptyMsg.style.display = 'none';
+    }
+  }, 200);
+}
+
+function cfPickBuildNew(ds) {
+  closeModal();
+  window._cfLogDate = ds;
+  // Go to Track WOD with fresh builder
+  nav('cf-track');
+  setTimeout(() => {
+    wlbInit();
+  }, 100);
 }
 
 function cfPickCustomWOD(ds, name) {
@@ -10665,6 +10691,7 @@ function cfPickCustomWOD(ds, name) {
   window._cfLogDate = ds;
   nav('cf-track');
   setTimeout(() => {
+    wlbInit();
     const el = document.getElementById('cf-score-wod');
     if (el) { el.value = name; el.focus(); }
   }, 150);
