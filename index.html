@@ -678,6 +678,32 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
 .cf-score-value { font-size:16px; font-weight:900; font-family:var(--mono); color:var(--cf-green); }
 .cf-score-meta { font-size:11.5px; color:var(--text-muted); }
 .cf-score-wod { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.2px; }
+
+/* ── FULLSCREEN TV TIMER ── */
+#cf-fullscreen-timer{display:none;position:fixed;inset:0;background:#0d0d0d;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer}
+#cf-fullscreen-timer.active{display:flex}
+.fs-wod-name{font-family:'Barlow Condensed',-apple-system,sans-serif;font-size:clamp(24px,5vw,72px);font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#fff;opacity:.5;margin-bottom:clamp(6px,2vw,20px)}
+.fs-format-label{font-size:clamp(12px,2.5vw,28px);font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:#39d353;margin-bottom:clamp(4px,1.5vw,12px);opacity:.8}
+.fs-time{font-family:'Barlow Condensed','JetBrains Mono',monospace;font-size:clamp(100px,26vw,360px);font-weight:900;letter-spacing:-.02em;line-height:.85;color:#39d353;font-variant-numeric:tabular-nums;transition:color .3s}
+.fs-time.warning{color:#FFB800}
+.fs-time.done{color:#fff}
+.fs-time.rest{color:#444}
+.fs-phase{font-size:clamp(16px,3.5vw,48px);font-weight:900;letter-spacing:.18em;text-transform:uppercase;margin-top:clamp(6px,2vw,20px);color:#39d353;min-height:clamp(20px,4vw,56px)}
+.fs-phase.rest-phase{color:#444}
+.fs-rounds{font-size:clamp(14px,2.5vw,32px);font-weight:700;color:#333;margin-top:clamp(4px,1vw,10px);letter-spacing:.08em}
+.fs-controls{position:fixed;bottom:clamp(14px,3vw,40px);left:50%;transform:translateX(-50%);display:flex;gap:clamp(8px,2vw,20px);opacity:0;transition:opacity .3s}
+#cf-fullscreen-timer:hover .fs-controls,.show-controls .fs-controls{opacity:1}
+.fs-btn{padding:clamp(8px,1.5vw,14px) clamp(18px,3vw,40px);border-radius:999px;border:2px solid #333;background:rgba(255,255,255,.06);color:#fff;font-size:clamp(11px,1.8vw,18px);font-weight:800;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;transition:all .15s;backdrop-filter:blur(8px)}
+.fs-btn:hover{background:rgba(255,255,255,.14);border-color:#39d353}
+.fs-btn.primary{background:#39d353;border-color:#39d353;color:#0d0d0d}
+.fs-btn.primary:hover{background:#5fff78}
+.fs-exit-btn{position:fixed;top:clamp(10px,2vw,24px);right:clamp(10px,2vw,24px);width:clamp(32px,5vw,52px);height:clamp(32px,5vw,52px);border-radius:50%;background:rgba(255,255,255,.08);border:1px solid #333;color:#555;font-size:clamp(12px,2vw,20px);cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .3s,color .2s}
+#cf-fullscreen-timer:hover .fs-exit-btn{opacity:1}
+.fs-exit-btn:hover{color:#fff;background:rgba(255,255,255,.15)}
+.fs-progress-bar{position:fixed;bottom:0;left:0;height:clamp(3px,.5vw,6px);background:#39d353;transition:width 1s linear;border-radius:0 999px 999px 0}
+.cf-fullscreen-btn{position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:1}
+.cf-fullscreen-btn:hover{color:var(--cf-green);border-color:var(--cf-green)}
+
 </style>
   <script>
     if ("serviceWorker" in navigator) {
@@ -759,6 +785,7 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
       <button class="nav-item active" onclick="nav('cf-dashboard',this)"><span class="icon">🏠</span>WODs</button>
       <button class="nav-item" onclick="nav('cf-track',this)"><span class="icon">⏱</span>Track WOD</button>
       <button class="nav-item" onclick="nav('cf-library',this)"><span class="icon">📋</span>WOD Library</button>
+      <button class="nav-item" onclick="nav('cf-builder',this)"><span class="icon">⚡</span>WOD Builder</button>
       <div id="cf-coach-nav" style="display:none">
         <div class="sidebar-section">WOD Coaching</div>
         <button class="nav-item" onclick="nav('cf-athletes',this)"><span class="icon">👥</span>WOD Athletes</button>
@@ -1048,6 +1075,16 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
       </div>
     </div>
 
+    <!-- CF: AI WOD BUILDER -->
+    <div class="view" id="view-cf-builder">
+      <div class="view-header">
+        <div class="view-title">⚡ WOD Builder</div>
+      </div>
+      <div class="view-body pad-bottom" id="cf-builder-body">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+
     <!-- CF: TRACK / TIMER -->
     <div class="view" id="view-cf-track">
       <div class="view-header">
@@ -1065,16 +1102,120 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
           <button class="wod-format-chip" onclick="cfSelectFormat('Chipper',this)">Chipper</button>
           <button class="wod-format-chip" onclick="cfSelectFormat('Tabata',this)">Tabata</button>
           <button class="wod-format-chip" onclick="cfSelectFormat('Partner',this)">Partner</button>
+          <button class="wod-format-chip" onclick="cfSelectFormat('For Quality',this)">For Quality</button>
+          <button class="wod-format-chip" onclick="cfSelectFormat('Heavy',this)">Heavy</button>
         </div>
 
         <!-- Timer -->
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px">
+        <!-- No-timer message for For Quality / Heavy -->
+        <div id="cf-no-timer-msg" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;margin-bottom:12px;text-align:center">
+          <div style="font-size:28px;margin-bottom:8px">🏋️</div>
+          <div style="font-size:14px;font-weight:800;color:var(--text-primary);margin-bottom:4px">No time constraint</div>
+          <div style="font-size:12px;color:var(--text-muted)">Focus on load or quality — log your result below when done.</div>
+        </div>
+
+        <div id="cf-timer-block" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px;position:relative">
+          <button class="cf-fullscreen-btn" onclick="cfEnterFullscreen()" title="Fullscreen timer">⛶</button>
+
+          <!-- ── TIMER SETUP PANEL (shown before start) ── -->
+          <div id="cf-timer-setup">
+
+            <!-- AMRAP setup -->
+            <div id="cf-setup-amrap" style="display:none;margin-bottom:12px">
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px">AMRAP Duration</div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:12px">
+                <button class="cf-round-btn" onclick="cfAdjustSetup('amrap',-1)">−</button>
+                <div style="text-align:center">
+                  <div id="cf-setup-amrap-val" style="font-size:36px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">18</div>
+                  <div style="font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px">minutes</div>
+                </div>
+                <button class="cf-round-btn" onclick="cfAdjustSetup('amrap',1)">+</button>
+              </div>
+            </div>
+
+            <!-- EMOM setup -->
+            <div id="cf-setup-emom" style="display:none;margin-bottom:12px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div>
+                  <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;text-align:center">Total (min)</div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+                    <button class="cf-round-btn" style="width:34px;height:34px;font-size:16px" onclick="cfAdjustSetup('emom-total',-1)">−</button>
+                    <div id="cf-setup-emom-total" style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:40px;text-align:center">20</div>
+                    <button class="cf-round-btn" style="width:34px;height:34px;font-size:16px" onclick="cfAdjustSetup('emom-total',1)">+</button>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;text-align:center">Interval (min)</div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+                    <button class="cf-round-btn" style="width:34px;height:34px;font-size:16px" onclick="cfAdjustSetup('emom-interval',-1)">−</button>
+                    <div id="cf-setup-emom-interval" style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:40px;text-align:center">1</div>
+                    <button class="cf-round-btn" style="width:34px;height:34px;font-size:16px" onclick="cfAdjustSetup('emom-interval',1)">+</button>
+                  </div>
+                </div>
+              </div>
+              <div id="cf-emom-summary" style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px">20 rounds · every 1 min</div>
+            </div>
+
+            <!-- Tabata setup -->
+            <div id="cf-setup-tabata" style="display:none;margin-bottom:12px">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+                <div>
+                  <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--cf-green);margin-bottom:6px;text-align:center">Work (sec)</div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+                    <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-work',-5)">−</button>
+                    <div id="cf-setup-tabata-work" style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:36px;text-align:center">20</div>
+                    <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-work',5)">+</button>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;text-align:center">Rest (sec)</div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+                    <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-rest',-5)">−</button>
+                    <div id="cf-setup-tabata-rest" style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text-muted);min-width:36px;text-align:center">10</div>
+                    <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-rest',5)">+</button>
+                  </div>
+                </div>
+                <div>
+                  <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;text-align:center">Rounds</div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+                    <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-rounds',-1)">−</button>
+                    <div id="cf-setup-tabata-rounds" style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text-primary);min-width:36px;text-align:center">8</div>
+                    <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-rounds',1)">+</button>
+                  </div>
+                </div>
+              </div>
+              <div id="cf-tabata-summary" style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px">8 rounds · 20s work / 10s rest · 4:00 total</div>
+            </div>
+
+            <!-- For Time setup (optional time cap) -->
+            <div id="cf-setup-fortime" style="display:none;margin-bottom:12px">
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;text-align:center">Time Cap (optional)</div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:12px">
+                <button class="cf-round-btn" onclick="cfAdjustSetup('cap',-1)">−</button>
+                <div style="text-align:center">
+                  <div id="cf-setup-cap-val" style="font-size:36px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">20</div>
+                  <div style="font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px">min cap</div>
+                </div>
+                <button class="cf-round-btn" onclick="cfAdjustSetup('cap',1)">+</button>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:8px;justify-content:center">
+                <button class="btn btn-ghost btn-sm" id="cf-cap-toggle" onclick="cfToggleCap()">No Cap</button>
+              </div>
+            </div>
+
+          </div><!-- end cf-timer-setup -->
+
+          <!-- ── ACTIVE TIMER DISPLAY ── -->
           <div class="cf-timer-display">
             <div class="cf-timer-label" id="cf-timer-label">For Time</div>
             <div class="cf-timer-time" id="cf-timer-display">0:00</div>
+            <!-- Tabata phase indicator -->
+            <div id="cf-tabata-phase" style="display:none;font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-top:4px;color:var(--cf-green)">WORK</div>
+            <!-- EMOM interval indicator -->
+            <div id="cf-emom-indicator" style="display:none;font-size:11px;font-weight:700;color:var(--text-muted);margin-top:4px">Round <span id="cf-emom-round-num">1</span> of <span id="cf-emom-total-rounds">20</span></div>
           </div>
 
-          <!-- Round counter (AMRAP/EMOM/Tabata) -->
+          <!-- Round counter (AMRAP/EMOM) -->
           <div class="cf-round-counter" id="cf-round-counter" style="display:none">
             <button class="cf-round-btn" onclick="cfAdjustRounds(-1)">−</button>
             <div>
@@ -1098,7 +1239,7 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
             <button class="btn btn-primary" id="cf-timer-start-btn" onclick="cfToggleTimer()" style="grid-column:1/-1">Start</button>
             <button class="btn btn-white" onclick="cfResetTimer()">Reset</button>
-            <button class="btn btn-ghost" onclick="cfLapTimer()">Lap / Split</button>
+            <button class="btn btn-ghost" onclick="cfLapTimer()" id="cf-lap-btn">Lap / Split</button>
           </div>
 
           <!-- Laps -->
@@ -1106,7 +1247,7 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
             <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px">Splits</div>
             <div id="cf-lap-list" style="font-family:var(--mono);font-size:12.5px;color:var(--text-secondary)"></div>
           </div>
-        </div>
+        </div><!-- end cf-timer-block -->
 
         <!-- Score logger -->
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px">
@@ -1154,6 +1295,8 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
           <button class="wod-format-chip" onclick="cfSetLibFilter('AMRAP',this)">AMRAP</button>
           <button class="wod-format-chip" onclick="cfSetLibFilter('EMOM',this)">EMOM</button>
           <button class="wod-format-chip" onclick="cfSetLibFilter('Partner',this)">Partner</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('For Quality',this)">For Quality</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('Heavy',this)">Heavy</button>
           <button class="wod-format-chip" onclick="cfSetLibFilter('Benchmark',this)">Benchmarks</button>
         </div>
         <div id="cf-library-body"><div class="loading">Loading WOD library...</div></div>
@@ -8877,6 +9020,418 @@ if(saved){
 }
 
 // ═══════════════════════════════════════════════════
+// ALLOY — CF AI WOD BUILDER
+// ═══════════════════════════════════════════════════
+
+let _cfBuilderState = {
+  format: null,
+  duration: null,
+  equipment: [],
+  difficulty: null,
+  focus: null
+};
+
+function cfRenderWODBuilder() {
+  const body = document.getElementById('cf-builder-body');
+  if (!body) return;
+  _cfBuilderState = { format:null, duration:null, equipment:[], difficulty:null, focus:null };
+  body.innerHTML = `
+    <div style="margin-bottom:16px">
+      <div style="font-size:15px;font-weight:900;color:var(--text-primary);margin-bottom:4px">AI WOD Builder</div>
+      <div style="font-size:12.5px;color:var(--text-muted)">Answer a few questions and we'll generate a complete WOD with scaling options.</div>
+    </div>
+
+    <!-- Step 1: Format -->
+    <div class="builder-step" id="cf-builder-format-step">
+      <div class="builder-step-title">Step 1 — What format?</div>
+      <div class="builder-option-grid">
+        <button class="builder-option" onclick="cfBuilderSetFormat('For Time',this)"><span class="builder-option-icon">⏱</span><span class="builder-option-label">For Time</span></button>
+        <button class="builder-option" onclick="cfBuilderSetFormat('AMRAP',this)"><span class="builder-option-icon">🔁</span><span class="builder-option-label">AMRAP</span></button>
+        <button class="builder-option" onclick="cfBuilderSetFormat('EMOM',this)"><span class="builder-option-icon">🕐</span><span class="builder-option-label">EMOM</span></button>
+        <button class="builder-option" onclick="cfBuilderSetFormat('Chipper',this)"><span class="builder-option-icon">🪓</span><span class="builder-option-label">Chipper</span></button>
+        <button class="builder-option" onclick="cfBuilderSetFormat('Partner',this)"><span class="builder-option-icon">👥</span><span class="builder-option-label">Partner</span></button>
+        <button class="builder-option" onclick="cfBuilderSetFormat('For Quality',this)"><span class="builder-option-icon">🎯</span><span class="builder-option-label">For Quality</span></button>
+        <button class="builder-option" onclick="cfBuilderSetFormat('Heavy',this)"><span class="builder-option-icon">🏋️</span><span class="builder-option-label">Heavy</span></button>
+        <button class="builder-option" onclick="cfBuilderSetFormat('Surprise Me',this)"><span class="builder-option-icon">🎲</span><span class="builder-option-label">Surprise Me</span></button>
+      </div>
+    </div>
+
+    <!-- Step 2: Duration -->
+    <div class="builder-step" id="cf-builder-duration-step" style="display:none">
+      <div class="builder-step-title">Step 2 — Time domain?</div>
+      <div class="builder-option-grid">
+        <button class="builder-option" onclick="cfBuilderSetDuration('5-10',this)"><span class="builder-option-icon">⚡</span><span class="builder-option-label">Short<br><small>5-10 min</small></span></button>
+        <button class="builder-option" onclick="cfBuilderSetDuration('12-20',this)"><span class="builder-option-icon">🔥</span><span class="builder-option-label">Medium<br><small>12-20 min</small></span></button>
+        <button class="builder-option" onclick="cfBuilderSetDuration('20-35',this)"><span class="builder-option-icon">💪</span><span class="builder-option-label">Long<br><small>20-35 min</small></span></button>
+        <button class="builder-option" onclick="cfBuilderSetDuration('35+',this)"><span class="builder-option-icon">🏔</span><span class="builder-option-label">Grind<br><small>35+ min</small></span></button>
+      </div>
+    </div>
+
+    <!-- Step 3: Equipment -->
+    <div class="builder-step" id="cf-builder-equipment-step" style="display:none">
+      <div class="builder-step-title">Step 3 — Equipment available?</div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:10px">Select all that apply</div>
+      <div class="builder-option-grid">
+        <button class="builder-option" data-eq="Full CrossFit Gym" style="grid-column:span 2" onclick="cfBuilderToggleEquip('Full CrossFit Gym',this)"><span class="builder-option-icon">🏋️</span><span class="builder-option-label">Full CrossFit Gym</span></button>
+        <button class="builder-option" data-eq="Barbell" onclick="cfBuilderToggleEquip('Barbell',this)"><span class="builder-option-icon">🏋️</span><span class="builder-option-label">Barbell</span></button>
+        <button class="builder-option" data-eq="Dumbbells" onclick="cfBuilderToggleEquip('Dumbbells',this)"><span class="builder-option-icon">💪</span><span class="builder-option-label">Dumbbells</span></button>
+        <button class="builder-option" data-eq="Kettlebells" onclick="cfBuilderToggleEquip('Kettlebells',this)"><span class="builder-option-icon">🫙</span><span class="builder-option-label">Kettlebells</span></button>
+        <button class="builder-option" data-eq="Pull-Up Bar" onclick="cfBuilderToggleEquip('Pull-Up Bar',this)"><span class="builder-option-icon">🔝</span><span class="builder-option-label">Pull-Up Bar</span></button>
+        <button class="builder-option" data-eq="Air Bike / Rower" onclick="cfBuilderToggleEquip('Air Bike / Rower',this)"><span class="builder-option-icon">🚴</span><span class="builder-option-label">Bike / Rower</span></button>
+        <button class="builder-option" data-eq="Jump Rope" onclick="cfBuilderToggleEquip('Jump Rope',this)"><span class="builder-option-icon">⭕</span><span class="builder-option-label">Jump Rope</span></button>
+        <button class="builder-option" data-eq="Bodyweight Only" style="grid-column:span 2" onclick="cfBuilderToggleEquip('Bodyweight Only',this)"><span class="builder-option-icon">🤸</span><span class="builder-option-label">Bodyweight Only</span></button>
+      </div>
+      <button class="btn btn-primary btn-full" style="margin-top:16px" onclick="cfBuilderShowDifficulty()">Next →</button>
+    </div>
+
+    <!-- Step 4: Difficulty -->
+    <div class="builder-step" id="cf-builder-difficulty-step" style="display:none">
+      <div class="builder-step-title">Step 4 — Athlete level?</div>
+      <div class="builder-option-grid">
+        <button class="builder-option" onclick="cfBuilderSetDifficulty('Beginner',this)"><span class="builder-option-icon">🌱</span><span class="builder-option-label">Beginner</span></button>
+        <button class="builder-option" onclick="cfBuilderSetDifficulty('Intermediate',this)"><span class="builder-option-icon">🔥</span><span class="builder-option-label">Intermediate</span></button>
+        <button class="builder-option" onclick="cfBuilderSetDifficulty('Advanced',this)"><span class="builder-option-icon">⚡</span><span class="builder-option-label">Advanced</span></button>
+        <button class="builder-option" onclick="cfBuilderSetDifficulty('RX',this)"><span class="builder-option-icon">🏆</span><span class="builder-option-label">RX</span></button>
+      </div>
+    </div>
+
+    <!-- Result -->
+    <div id="cf-builder-result" style="display:none"></div>
+  `;
+}
+
+function cfBuilderSetFormat(format, btn) {
+  _cfBuilderState.format = format;
+  document.querySelectorAll('#cf-builder-format-step .builder-option').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+  setTimeout(() => {
+    document.getElementById('cf-builder-duration-step').style.display = '';
+    document.getElementById('cf-builder-duration-step').scrollIntoView({behavior:'smooth',block:'nearest'});
+  }, 150);
+}
+
+function cfBuilderSetDuration(duration, btn) {
+  _cfBuilderState.duration = duration;
+  document.querySelectorAll('#cf-builder-duration-step .builder-option').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+  setTimeout(() => {
+    document.getElementById('cf-builder-equipment-step').style.display = '';
+    document.getElementById('cf-builder-equipment-step').scrollIntoView({behavior:'smooth',block:'nearest'});
+  }, 150);
+}
+
+function cfBuilderToggleEquip(eq, btn) {
+  if (eq === 'Full CrossFit Gym' || eq === 'Bodyweight Only') {
+    // Exclusive selections
+    _cfBuilderState.equipment = [eq];
+    document.querySelectorAll('#cf-builder-equipment-step .builder-option').forEach(b=>b.classList.remove('selected'));
+    btn.classList.add('selected');
+  } else {
+    // Remove exclusives if selecting specific equipment
+    _cfBuilderState.equipment = _cfBuilderState.equipment.filter(e=>e!=='Full CrossFit Gym'&&e!=='Bodyweight Only');
+    document.querySelector('[data-eq="Full CrossFit Gym"]')?.classList.remove('selected');
+    document.querySelector('[data-eq="Bodyweight Only"]')?.classList.remove('selected');
+    const idx = _cfBuilderState.equipment.indexOf(eq);
+    if (idx > -1) { _cfBuilderState.equipment.splice(idx,1); btn.classList.remove('selected'); }
+    else { _cfBuilderState.equipment.push(eq); btn.classList.add('selected'); }
+  }
+}
+
+function cfBuilderShowDifficulty() {
+  if (!_cfBuilderState.equipment.length) { toast('Select at least one equipment option'); return; }
+  document.getElementById('cf-builder-difficulty-step').style.display = '';
+  document.getElementById('cf-builder-difficulty-step').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+async function cfBuilderSetDifficulty(difficulty, btn) {
+  _cfBuilderState.difficulty = difficulty;
+  document.querySelectorAll('#cf-builder-difficulty-step .builder-option').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+
+  // Generate WOD
+  const result = document.getElementById('cf-builder-result');
+  result.style.display = '';
+  result.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;margin-top:8px;text-align:center">
+      <div style="font-size:13px;font-weight:700;color:var(--cf-green);margin-bottom:8px;letter-spacing:.5px">⚡ Building your WOD...</div>
+      <div class="loader" style="border-color:var(--cf-green-dim);border-top-color:var(--cf-green)"></div>
+    </div>`;
+  result.scrollIntoView({behavior:'smooth',block:'nearest'});
+
+  try {
+    const prompt = `You are an expert CrossFit and functional fitness coach. Generate a complete WOD with the following specs:
+
+Format: ${_cfBuilderState.format === 'Surprise Me' ? 'Choose the best format for these parameters' : _cfBuilderState.format}
+${_cfBuilderState.format === 'For Quality' ? 'IMPORTANT: This is a For Quality workout — no time cap, focus on perfect movement and controlled loading. Include specific rep schemes like 5x5 or 3-3-3-3.' : ''}
+${_cfBuilderState.format === 'Heavy' ? 'IMPORTANT: This is a Heavy day — no time cap, focus on maximal loading. Use ascending rep schemes like 9-9-6-6-3-3 or 5-5-3-3-1-1. Include a specific movement to go heavy on.' : ''}
+Time Domain: ${_cfBuilderState.duration} minutes
+Equipment: ${_cfBuilderState.equipment.join(', ')}
+Athlete Level: ${_cfBuilderState.difficulty}
+
+Respond ONLY with a valid JSON object — no markdown, no explanation, no backticks. Use this exact structure:
+{
+  "name": "WOD name (one punchy word or short phrase, all caps)",
+  "format": "For Time | AMRAP | EMOM | Chipper | Partner",
+  "cap": "X min cap (if For Time or Chipper) or null",
+  "description": "Short description e.g. '3 Rounds for Time' or '20 min AMRAP'",
+  "movements": [
+    {"reps": "10", "name": "Movement Name", "detail": "weight/distance/height"},
+    {"reps": "200m", "name": "Run", "detail": ""},
+    {"reps": "", "name": "Buy-In: 400m Run", "detail": "Together"}
+  ],
+  "scaling": "Scaling notes — how to make it easier",
+  "notes": "Coach notes — pacing strategy, intent, what makes this WOD special",
+  "rx_weights": "RX weights summary e.g. Barbell: 95/65 lb, KB: 53/35 lb"
+}`;
+
+    const raw = await callAI('wod', { prompt });
+    let wod;
+    try {
+      const clean = raw.replace(/^```json\s*/,'').replace(/\s*```$/,'').trim();
+      wod = JSON.parse(clean);
+    } catch(e) {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) wod = JSON.parse(jsonMatch[0]);
+      else throw new Error('Could not parse WOD JSON');
+    }
+
+    cfRenderWODBuilderResult(wod);
+  } catch(e) {
+    result.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-lg);padding:16px;margin-top:8px">
+        <div style="color:var(--red);font-weight:700;margin-bottom:6px">Couldn't generate WOD</div>
+        <div style="font-size:12px;color:var(--text-muted)">${e.message}</div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="cfRenderWODBuilder()">Try Again</button>
+      </div>`;
+    console.error('CF WOD builder error:', e);
+  }
+}
+
+function cfRenderWODBuilderResult(wod) {
+  const result = document.getElementById('cf-builder-result');
+  if (!result) return;
+
+  const movHtml = (wod.movements||[]).map(m=>`
+    <div class="wod-movement-row">
+      <div>
+        <div class="wod-movement-name">${m.name}</div>
+        ${m.detail?`<div class="wod-movement-detail">${m.detail}</div>`:''}
+      </div>
+      ${m.reps?`<div class="wod-movement-reps">${m.reps}</div>`:''}
+    </div>`).join('');
+
+  result.innerHTML = `
+    <div class="wod-card" style="margin-top:16px;border-color:var(--cf-green)">
+      <div class="wod-card-header">
+        <div>
+          <div class="wod-card-name">${wod.name||'WOD'}</div>
+          <div class="wod-card-format">${wod.format||''}${wod.cap?' · '+wod.cap:''}</div>
+        </div>
+        <span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30">AI Generated</span>
+      </div>
+      <div class="wod-card-body">
+        ${wod.description?`<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;font-weight:600">${wod.description}</div>`:''}
+        ${movHtml}
+        ${wod.rx_weights?`<div style="margin-top:10px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius-sm);font-size:12px;color:var(--text-secondary)"><strong>RX:</strong> ${wod.rx_weights}</div>`:''}
+        ${wod.scaling?`<div style="margin-top:8px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius-sm);font-size:12px;color:var(--text-secondary)"><strong>Scaling:</strong> ${wod.scaling}</div>`:''}
+        ${wod.notes?`<div style="margin-top:8px;padding:8px 10px;background:var(--cf-green-dim);border-radius:var(--radius-sm);font-size:12px;color:var(--cf-green);border:1px solid var(--cf-green)30"><strong>Coach:</strong> ${wod.notes}</div>`:''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
+          <button class="btn btn-primary" onclick="cfSaveBuiltWOD(${JSON.stringify(wod).replace(/"/g,'&quot;')})">Save to Library</button>
+          <button class="btn btn-ghost" onclick="cfBuilderLoadToTrack(${JSON.stringify(wod).replace(/"/g,'&quot;')})">Track Now</button>
+        </div>
+        <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="cfRenderWODBuilder()">Build Another</button>
+      </div>
+    </div>`;
+}
+
+async function cfSaveBuiltWOD(wod) {
+  const payload = {
+    user_id: currentUser.id,
+    name: wod.name || 'AI WOD',
+    format: wod.format || 'For Time',
+    cap: wod.cap || '',
+    description: wod.description || '',
+    movements: wod.movements || [],
+    scaling: wod.scaling || '',
+    notes: wod.notes || '',
+    tag: 'AI Generated',
+    created_at: new Date().toISOString()
+  };
+  try {
+    const saved = await db('cf_wods','POST',payload);
+    if (saved?.[0]) _cfWODs.unshift(saved[0]);
+    else _cfWODs.unshift({...payload, id:Date.now().toString()});
+    toast(`"${payload.name}" saved to WOD Library ✓`);
+  } catch(e) {
+    _cfWODs.unshift({...payload, id:Date.now().toString(), _local:true});
+    toast(`"${payload.name}" saved locally ✓`);
+  }
+}
+
+function cfBuilderLoadToTrack(wod) {
+  cfLoadWODToTrack(wod);
+}
+
+// ═══════════════════════════════════════════════════
+// ALLOY — FULLSCREEN TV TIMER
+// ═══════════════════════════════════════════════════
+
+let _cfFsActive = false;
+let _cfFsTotalSeconds = 0; // for progress bar
+
+function cfEnterFullscreen() {
+  const fs = document.getElementById('cf-fullscreen-timer');
+  if (!fs) return;
+
+  // Sync state from main timer
+  _cfFsActive = true;
+  fs.classList.add('active');
+
+  // Try native fullscreen API (works great for TV casting)
+  if (fs.requestFullscreen) fs.requestFullscreen().catch(()=>{});
+  else if (fs.webkitRequestFullscreen) fs.webkitRequestFullscreen();
+
+  // Set WOD name and format
+  const wodName = document.getElementById('cf-score-wod')?.value || '';
+  const fsWodName = document.getElementById('fs-wod-name');
+  const fsFormat = document.getElementById('fs-format-label');
+  if (fsWodName) fsWodName.textContent = wodName;
+  if (fsFormat) fsFormat.textContent = _cfCurrentFormat;
+
+  // Calculate total seconds for progress bar
+  if (_cfCurrentFormat === 'AMRAP') {
+    _cfFsTotalSeconds = _cfSetup.amrapMin * 60;
+  } else if (['For Time','Chipper','Partner'].includes(_cfCurrentFormat) && _cfSetup.capEnabled) {
+    _cfFsTotalSeconds = _cfSetup.capMin * 60;
+  } else if (_cfCurrentFormat === 'Tabata') {
+    _cfFsTotalSeconds = _cfSetup.tabataRounds * (_cfSetup.tabataWork + _cfSetup.tabataRest);
+  } else if (_cfCurrentFormat === 'EMOM') {
+    _cfFsTotalSeconds = _cfSetup.emomTotal * 60;
+  } else {
+    _cfFsTotalSeconds = 0; // count up — no progress bar
+  }
+
+  // Sync start button state
+  const fsBtn = document.getElementById('fs-start-btn');
+  if (fsBtn) fsBtn.textContent = _cfTimerRunning ? 'Pause' : 'Start';
+
+  cfFsSyncDisplay();
+
+  // Keep fullscreen display in sync with main timer
+  _cfFsSyncInterval = setInterval(cfFsSyncDisplay, 250);
+}
+
+function cfExitFullscreen() {
+  _cfFsActive = false;
+  clearInterval(_cfFsSyncInterval);
+  const fs = document.getElementById('cf-fullscreen-timer');
+  if (fs) fs.classList.remove('active');
+  if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+  else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+}
+
+// Exit fullscreen if user presses Escape or device exits fullscreen
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && _cfFsActive) cfExitFullscreen();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && _cfFsActive) cfExitFullscreen();
+  if (e.key === ' ' && _cfFsActive) { cfFsToggle(); e.preventDefault(); }
+});
+
+let _cfFsSyncInterval = null;
+
+function cfFsSyncDisplay() {
+  const timeEl    = document.getElementById('fs-time');
+  const phaseEl   = document.getElementById('fs-phase');
+  const roundsEl  = document.getElementById('fs-rounds');
+  const progressEl = document.getElementById('fs-progress-bar');
+  const fsBtn     = document.getElementById('fs-start-btn');
+
+  if (!timeEl) return;
+
+  // Sync time display from main timer
+  const mainDisplay = document.getElementById('cf-timer-display');
+  if (mainDisplay) timeEl.textContent = mainDisplay.textContent;
+
+  // Color logic
+  timeEl.className = 'fs-time';
+  const s = Math.abs(_cfTimerSeconds);
+  if (_cfCurrentFormat === 'Tabata') {
+    if (_cfSetup.tabataPhase === 'rest') {
+      timeEl.classList.add('rest');
+    } else if (s <= 5) {
+      timeEl.classList.add('warning');
+    }
+  } else if (['AMRAP','For Time','Chipper','Partner'].includes(_cfCurrentFormat)) {
+    if (s <= 10 && _cfTimerSeconds > 0) timeEl.classList.add('warning');
+    if (_cfTimerSeconds <= 0 && !_cfTimerRunning) timeEl.classList.add('done');
+  }
+
+  // Phase label
+  if (phaseEl) {
+    if (_cfCurrentFormat === 'Tabata') {
+      phaseEl.textContent = _cfSetup.tabataPhase === 'work'
+        ? `WORK · Round ${_cfSetup.tabataRoundsDone+1} / ${_cfSetup.tabataRounds}`
+        : 'REST';
+      phaseEl.className = 'fs-phase' + (_cfSetup.tabataPhase === 'rest' ? ' rest-phase' : '');
+    } else if (_cfCurrentFormat === 'EMOM') {
+      const totalRounds = Math.floor(_cfSetup.emomTotal / _cfSetup.emomInterval);
+      phaseEl.textContent = `Round ${_cfSetup.emomCurrentRound} of ${totalRounds}`;
+      phaseEl.className = 'fs-phase';
+    } else {
+      phaseEl.textContent = '';
+    }
+  }
+
+  // Rounds display (AMRAP)
+  if (roundsEl) {
+    if (_cfCurrentFormat === 'AMRAP' && (_cfRounds > 0 || _cfReps > 0)) {
+      roundsEl.textContent = `${_cfRounds} rounds + ${_cfReps} reps`;
+    } else {
+      roundsEl.textContent = '';
+    }
+  }
+
+  // Progress bar
+  if (progressEl && _cfFsTotalSeconds > 0) {
+    const elapsed = _cfFsTotalSeconds - Math.abs(_cfTimerSeconds);
+    const pct = Math.max(0, Math.min(100, (elapsed / _cfFsTotalSeconds) * 100));
+    progressEl.style.width = pct + '%';
+    // Color shifts as time runs out
+    if (pct > 85) progressEl.style.background = '#FFB800';
+    else progressEl.style.background = '#39d353';
+  }
+
+  // Sync start button
+  if (fsBtn) fsBtn.textContent = _cfTimerRunning ? 'Pause' : (_cfTimerSeconds === 0 ? 'Start' : 'Resume');
+}
+
+function cfFsToggle() {
+  cfToggleTimer(); // use main timer
+  const fsBtn = document.getElementById('fs-start-btn');
+  if (fsBtn) fsBtn.textContent = _cfTimerRunning ? 'Pause' : 'Resume';
+}
+
+function cfFsReset() {
+  cfResetTimer();
+  cfFsSyncDisplay();
+  const fsBtn = document.getElementById('fs-start-btn');
+  if (fsBtn) fsBtn.textContent = 'Start';
+}
+
+function cfFsHandleTap(e) {
+  // Tap anywhere on fullscreen to show/hide controls briefly
+  const fs = document.getElementById('cf-fullscreen-timer');
+  if (!fs) return;
+  fs.classList.add('show-controls');
+  clearTimeout(window._cfFsControlsTimeout);
+  window._cfFsControlsTimeout = setTimeout(() => {
+    fs.classList.remove('show-controls');
+  }, 3000);
+}
+
+// ═══════════════════════════════════════════════════
 // ALLOY — CF CALENDAR
 // ═══════════════════════════════════════════════════
 
@@ -9207,22 +9762,34 @@ function cfPreFillTrackDate(ds) {
 
 // Override cfRenderDashboard to use calendar
 function cfRenderDashboard() {
-  // Init week start if not set
-  if (!_cfCalWeekStart) {
-    const d = new Date();
-    d.setDate(d.getDate() - d.getDay());
-    _cfCalWeekStart = d.toISOString().slice(0,10);
-  }
-  // Default to week view
+  // Always force week view on entry
+  _cfCalView = 'week';
+
+  // Init week start anchored to today
+  const now = new Date();
+  const sunday = new Date(now);
+  sunday.setDate(now.getDate() - now.getDay());
+  _cfCalWeekStart = sunday.toISOString().slice(0,10);
+  _cfSelectedDate = cfTodayStr();
+
+  // Force correct display states immediately — before any async
   const monthView = document.getElementById('cf-month-view');
   const weekView  = document.getElementById('cf-week-view');
   const weekStrip = document.getElementById('cf-week-strip');
+  const title     = document.getElementById('cf-cal-month-title');
   if (monthView) monthView.style.display = 'none';
-  if (weekView)  weekView.style.display  = '';
+  if (weekView)  weekView.style.display  = 'block';
   if (weekStrip) weekStrip.style.display = 'none';
+
   // Sync toggle buttons
-  document.getElementById('cf-view-month-btn')?.classList.toggle('active', _cfCalView==='month');
-  document.getElementById('cf-view-week-btn')?.classList.toggle('active', _cfCalView==='week');
+  document.getElementById('cf-view-month-btn')?.classList.remove('active');
+  document.getElementById('cf-view-week-btn')?.classList.add('active');
+
+  // Render week grid immediately with empty data (instant paint)
+  cfBuildWeekView();
+  cfRenderDayPanel(_cfSelectedDate);
+
+  // Then load data async and re-render with scores
   cfRenderCalendar();
 }
 
@@ -9357,7 +9924,7 @@ function alloySwitchMode(mode) {
 
 // ── Extend nav() to handle CF views ──
 function nav(view, btn) {
-  const cfViews = ['cf-dashboard','cf-track','cf-library','cf-athletes','cf-assign'];
+  const cfViews = ['cf-dashboard','cf-track','cf-library','cf-athletes','cf-assign','cf-builder'];
   if (cfViews.includes(view)) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     const el = document.getElementById('view-' + view);
@@ -9372,6 +9939,7 @@ function nav(view, btn) {
     if (view === 'cf-athletes')  cfRenderAthletes();
     if (view === 'cf-track')     cfPopulateWODSuggestions();
     if (view === 'cf-assign')    cfRenderAssignWOD();
+    if (view === 'cf-builder')   cfRenderWODBuilder();
     return;
   }
   // Lift-side views + shared views (settings, help, builder, etc.)
@@ -9462,33 +10030,295 @@ function cfRenderRecentScores() {
     </div>`).join('');
 }
 
-// ── Timer ──
+// ── Timer Setup State ──
+let _cfSetup = {
+  amrapMin: 18,
+  emomTotal: 20,
+  emomInterval: 1,
+  tabataWork: 20,
+  tabataRest: 10,
+  tabataRounds: 8,
+  capMin: 20,
+  capEnabled: false,
+  tabataPhase: 'work', // 'work' | 'rest'
+  tabataRoundsDone: 0,
+  tabataSecondsInPhase: 0,
+  emomCurrentRound: 1,
+  emomSecondsInRound: 0,
+};
+
+// Audio beep using Web Audio API
+function cfBeep(frequency=880, duration=0.15, volume=0.6) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = frequency;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(volume, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+  } catch(e) {}
+}
+
+function cfBeepStart()    { cfBeep(880, 0.2, 0.7); }
+function cfBeepInterval() { cfBeep(660, 0.15, 0.6); setTimeout(()=>cfBeep(880,0.15,0.6), 200); }
+function cfBeepDone()     { cfBeep(523,0.3,0.8); setTimeout(()=>cfBeep(659,0.3,0.8),350); setTimeout(()=>cfBeep(784,0.5,0.8),700); }
+function cfBeepWarning()  { cfBeep(440, 0.1, 0.5); }
+function cfBeepRest()     { cfBeep(330, 0.2, 0.4); }
+
+function cfAdjustSetup(type, delta) {
+  switch(type) {
+    case 'amrap':
+      _cfSetup.amrapMin = Math.max(1, Math.min(60, _cfSetup.amrapMin + delta));
+      document.getElementById('cf-setup-amrap-val').textContent = _cfSetup.amrapMin;
+      break;
+    case 'emom-total':
+      _cfSetup.emomTotal = Math.max(1, Math.min(60, _cfSetup.emomTotal + delta));
+      document.getElementById('cf-setup-emom-total').textContent = _cfSetup.emomTotal;
+      cfUpdateEmomSummary();
+      break;
+    case 'emom-interval':
+      _cfSetup.emomInterval = Math.max(1, Math.min(5, _cfSetup.emomInterval + delta));
+      document.getElementById('cf-setup-emom-interval').textContent = _cfSetup.emomInterval;
+      cfUpdateEmomSummary();
+      break;
+    case 'tabata-work':
+      _cfSetup.tabataWork = Math.max(5, Math.min(60, _cfSetup.tabataWork + delta));
+      document.getElementById('cf-setup-tabata-work').textContent = _cfSetup.tabataWork;
+      cfUpdateTabataSummary();
+      break;
+    case 'tabata-rest':
+      _cfSetup.tabataRest = Math.max(5, Math.min(60, _cfSetup.tabataRest + delta));
+      document.getElementById('cf-setup-tabata-rest').textContent = _cfSetup.tabataRest;
+      cfUpdateTabataSummary();
+      break;
+    case 'tabata-rounds':
+      _cfSetup.tabataRounds = Math.max(1, Math.min(20, _cfSetup.tabataRounds + delta));
+      document.getElementById('cf-setup-tabata-rounds').textContent = _cfSetup.tabataRounds;
+      cfUpdateTabataSummary();
+      break;
+    case 'cap':
+      _cfSetup.capMin = Math.max(1, Math.min(60, _cfSetup.capMin + delta));
+      document.getElementById('cf-setup-cap-val').textContent = _cfSetup.capMin;
+      break;
+  }
+}
+
+function cfUpdateEmomSummary() {
+  const totalRounds = Math.floor(_cfSetup.emomTotal / _cfSetup.emomInterval);
+  const el = document.getElementById('cf-emom-summary');
+  if (el) el.textContent = `${totalRounds} rounds · every ${_cfSetup.emomInterval} min`;
+  const totalEl = document.getElementById('cf-emom-total-rounds');
+  if (totalEl) totalEl.textContent = totalRounds;
+}
+
+function cfUpdateTabataSummary() {
+  const totalSecs = _cfSetup.tabataRounds * (_cfSetup.tabataWork + _cfSetup.tabataRest);
+  const m = Math.floor(totalSecs/60), s = totalSecs%60;
+  const el = document.getElementById('cf-tabata-summary');
+  if (el) el.textContent = `${_cfSetup.tabataRounds} rounds · ${_cfSetup.tabataWork}s work / ${_cfSetup.tabataRest}s rest · ${m}:${String(s).padStart(2,'0')} total`;
+}
+
+function cfToggleCap() {
+  _cfSetup.capEnabled = !_cfSetup.capEnabled;
+  const btn = document.getElementById('cf-cap-toggle');
+  const capVal = document.getElementById('cf-setup-cap-val');
+  const capLabel = capVal?.nextElementSibling;
+  if (btn) btn.textContent = _cfSetup.capEnabled ? 'Remove Cap' : 'No Cap';
+  if (capVal) capVal.style.opacity = _cfSetup.capEnabled ? '1' : '0.3';
+  if (capLabel) capLabel.style.opacity = _cfSetup.capEnabled ? '1' : '0.3';
+}
+
+// ── Format selection ──
 function cfSelectFormat(format, btn) {
   _cfCurrentFormat = format;
   document.querySelectorAll('.wod-format-chip').forEach(b=>b.classList.remove('active'));
   if (btn) btn.classList.add('active');
+
+  const noTimer = ['For Quality','Heavy'].includes(format);
+  const timerBlock = document.getElementById('cf-timer-block');
+  const noTimerMsg = document.getElementById('cf-no-timer-msg');
+  if (timerBlock) timerBlock.style.display = noTimer ? 'none' : '';
+  if (noTimerMsg) noTimerMsg.style.display = noTimer ? '' : 'none';
+
+  if (noTimer) {
+    const sv = document.getElementById('cf-score-value');
+    if (sv) sv.placeholder = format === 'Heavy' ? 'e.g. 275 lb x3 or 5RM: 225 lb' : 'e.g. Complete or Sets: 3x10';
+    return;
+  }
+
+  // Hide all setup panels
+  ['amrap','emom','tabata','fortime'].forEach(t => {
+    const el = document.getElementById('cf-setup-'+t);
+    if (el) el.style.display = 'none';
+  });
+
+  // Hide all active-only indicators
+  document.getElementById('cf-tabata-phase').style.display = 'none';
+  document.getElementById('cf-emom-indicator').style.display = 'none';
+
+  // Show setup panel for this format
+  const setupMap = {
+    'AMRAP': 'amrap', 'EMOM': 'emom', 'Tabata': 'tabata',
+    'For Time': 'fortime', 'Chipper': 'fortime', 'Partner': 'fortime'
+  };
+  const panel = setupMap[format];
+  if (panel) {
+    const el = document.getElementById('cf-setup-'+panel);
+    if (el) el.style.display = '';
+  }
+
+  // Show/hide round counter and rep counter
+  const showRounds = ['AMRAP','EMOM'].includes(format);
+  const showReps   = format === 'AMRAP';
+  const lapBtn     = document.getElementById('cf-lap-btn');
+  document.getElementById('cf-round-counter').style.display = showRounds ? 'flex' : 'none';
+  document.getElementById('cf-rep-counter').style.display   = showReps   ? 'block' : 'none';
+  if (lapBtn) lapBtn.style.display = ['For Time','Chipper','Partner'].includes(format) ? '' : 'none';
+
+  // Update timer label
   const labelEl = document.getElementById('cf-timer-label');
   if (labelEl) labelEl.textContent = format;
-  const showRounds = ['AMRAP','EMOM','Tabata'].includes(format);
-  const showReps = format === 'AMRAP';
-  const rcEl = document.getElementById('cf-round-counter');
-  const repEl = document.getElementById('cf-rep-counter');
-  if (rcEl) rcEl.style.display = showRounds ? 'flex' : 'none';
-  if (repEl) repEl.style.display = showReps ? 'block' : 'none';
+
+  // Update score placeholder
+  const sv = document.getElementById('cf-score-value');
+  if (sv) sv.placeholder = format === 'AMRAP' ? 'e.g. 9+4' : 'e.g. 24:38';
+
+  // Update EMOM/Tabata summaries
+  if (format === 'EMOM') cfUpdateEmomSummary();
+  if (format === 'Tabata') cfUpdateTabataSummary();
+
   cfResetTimer();
 }
 
+// ── Timer core ──
 function cfToggleTimer() {
   _cfTimerRunning = !_cfTimerRunning;
   const btn = document.getElementById('cf-timer-start-btn');
   if (_cfTimerRunning) {
     if (btn) btn.textContent = 'Pause';
-    _cfTimerInterval = setInterval(()=>{ _cfTimerSeconds++; cfUpdateTimerDisplay(); }, 1000);
+    cfBeepStart();
+    // Hide setup, lock in settings
+    const setup = document.getElementById('cf-timer-setup');
+    if (setup) setup.style.opacity = '0.4';
+
+    // Init special timer states
+    if (_cfCurrentFormat === 'AMRAP') {
+      _cfTimerSeconds = _cfSetup.amrapMin * 60; // countdown
+    } else if (_cfCurrentFormat === 'EMOM') {
+      _cfTimerSeconds = 0;
+      _cfSetup.emomCurrentRound = 1;
+      _cfSetup.emomSecondsInRound = 0;
+      const totalRounds = Math.floor(_cfSetup.emomTotal / _cfSetup.emomInterval);
+      document.getElementById('cf-emom-indicator').style.display = '';
+      document.getElementById('cf-emom-round-num').textContent = '1';
+      document.getElementById('cf-emom-total-rounds').textContent = totalRounds;
+    } else if (_cfCurrentFormat === 'Tabata') {
+      _cfTimerSeconds = _cfSetup.tabataWork;
+      _cfSetup.tabataPhase = 'work';
+      _cfSetup.tabataRoundsDone = 0;
+      _cfSetup.tabataSecondsInPhase = 0;
+      document.getElementById('cf-tabata-phase').style.display = '';
+      cfUpdateTabataDisplay();
+    } else if ((_cfCurrentFormat === 'For Time' || _cfCurrentFormat === 'Chipper' || _cfCurrentFormat === 'Partner') && _cfSetup.capEnabled) {
+      _cfTimerSeconds = _cfSetup.capMin * 60; // countdown with cap
+    } else {
+      _cfTimerSeconds = 0; // count up
+    }
+
+    _cfTimerInterval = setInterval(cfTimerTick, 1000);
   } else {
     if (btn) btn.textContent = 'Resume';
     clearInterval(_cfTimerInterval);
     cfAutoFillScore();
   }
+}
+
+function cfTimerTick() {
+  if (_cfCurrentFormat === 'AMRAP') {
+    _cfTimerSeconds--;
+    if (_cfTimerSeconds <= 10 && _cfTimerSeconds > 0) cfBeepWarning();
+    if (_cfTimerSeconds <= 0) { cfTimerDone(); return; }
+
+  } else if (_cfCurrentFormat === 'EMOM') {
+    _cfTimerSeconds++;
+    _cfSetup.emomSecondsInRound++;
+    const intervalSecs = _cfSetup.emomInterval * 60;
+    const secsLeft = intervalSecs - _cfSetup.emomSecondsInRound;
+    const totalRounds = Math.floor(_cfSetup.emomTotal / _cfSetup.emomInterval);
+
+    // 3-2-1 countdown beeps before interval
+    if (secsLeft <= 3 && secsLeft > 0) cfBeepWarning();
+
+    if (_cfSetup.emomSecondsInRound >= intervalSecs) {
+      _cfSetup.emomCurrentRound++;
+      _cfSetup.emomSecondsInRound = 0;
+      cfBeepInterval();
+      const roundNumEl = document.getElementById('cf-emom-round-num');
+      if (roundNumEl) roundNumEl.textContent = _cfSetup.emomCurrentRound;
+      if (_cfSetup.emomCurrentRound > totalRounds) { cfTimerDone(); return; }
+    }
+
+  } else if (_cfCurrentFormat === 'Tabata') {
+    _cfTimerSeconds--;
+    _cfSetup.tabataSecondsInPhase++;
+
+    const phaseDuration = _cfSetup.tabataPhase === 'work' ? _cfSetup.tabataWork : _cfSetup.tabataRest;
+
+    // Warning beeps last 3 seconds of each phase
+    if (_cfTimerSeconds <= 3 && _cfTimerSeconds > 0) cfBeepWarning();
+
+    if (_cfTimerSeconds <= 0) {
+      if (_cfSetup.tabataPhase === 'work') {
+        _cfSetup.tabataRoundsDone++;
+        if (_cfSetup.tabataRoundsDone >= _cfSetup.tabataRounds) { cfTimerDone(); return; }
+        _cfSetup.tabataPhase = 'rest';
+        _cfTimerSeconds = _cfSetup.tabataRest;
+        cfBeepRest();
+        cfUpdateTabataDisplay();
+      } else {
+        _cfSetup.tabataPhase = 'work';
+        _cfTimerSeconds = _cfSetup.tabataWork;
+        cfBeepInterval();
+        cfUpdateTabataDisplay();
+      }
+      _cfSetup.tabataSecondsInPhase = 0;
+    }
+
+  } else if ((_cfCurrentFormat === 'For Time' || _cfCurrentFormat === 'Chipper' || _cfCurrentFormat === 'Partner') && _cfSetup.capEnabled) {
+    _cfTimerSeconds--;
+    if (_cfTimerSeconds <= 10 && _cfTimerSeconds > 0) cfBeepWarning();
+    if (_cfTimerSeconds <= 0) { cfTimerDone(); return; }
+  } else {
+    _cfTimerSeconds++;
+  }
+
+  cfUpdateTimerDisplay();
+}
+
+function cfUpdateTabataDisplay() {
+  const phase = document.getElementById('cf-tabata-phase');
+  const display = document.getElementById('cf-timer-display');
+  const label = document.getElementById('cf-timer-label');
+  if (phase) {
+    phase.textContent = _cfSetup.tabataPhase === 'work' ? `WORK · Round ${_cfSetup.tabataRoundsDone+1}/${_cfSetup.tabataRounds}` : 'REST';
+    phase.style.color = _cfSetup.tabataPhase === 'work' ? 'var(--cf-green)' : 'var(--text-muted)';
+  }
+  if (display) display.style.color = _cfSetup.tabataPhase === 'work' ? 'var(--cf-green)' : 'var(--text-muted)';
+}
+
+function cfTimerDone() {
+  clearInterval(_cfTimerInterval);
+  _cfTimerRunning = false;
+  cfBeepDone();
+  const btn = document.getElementById('cf-timer-start-btn');
+  if (btn) { btn.textContent = 'Done ✓'; btn.style.background = 'var(--cf-green)'; }
+  cfAutoFillScore();
+  toast('Time's up! Log your score below.');
 }
 
 function cfResetTimer() {
@@ -9499,23 +10329,47 @@ function cfResetTimer() {
   _cfReps = 0;
   _cfLapTimes = [];
   _cfLastLapSeconds = 0;
+  _cfSetup.tabataPhase = 'work';
+  _cfSetup.tabataRoundsDone = 0;
+  _cfSetup.emomCurrentRound = 1;
+  _cfSetup.emomSecondsInRound = 0;
+
   const btn = document.getElementById('cf-timer-start-btn');
-  if (btn) btn.textContent = 'Start';
+  if (btn) { btn.textContent = 'Start'; btn.style.background = ''; }
+
+  // Reset display based on format
+  let displayVal = '0:00';
+  if (_cfCurrentFormat === 'AMRAP') {
+    displayVal = `${_cfSetup.amrapMin}:00`;
+  } else if (_cfCurrentFormat === 'Tabata') {
+    displayVal = `${String(_cfSetup.tabataWork).padStart(2,'0')}`;
+    cfUpdateTabataDisplay();
+  } else if ((_cfCurrentFormat === 'For Time' || _cfCurrentFormat === 'Chipper' || _cfCurrentFormat === 'Partner') && _cfSetup.capEnabled) {
+    displayVal = `${_cfSetup.capMin}:00`;
+  }
   const disp = document.getElementById('cf-timer-display');
-  if (disp) disp.textContent = '0:00';
+  if (disp) { disp.textContent = displayVal; disp.style.color = ''; }
+
   const rd = document.getElementById('cf-round-display');
   if (rd) rd.textContent = '0';
   const rpd = document.getElementById('cf-rep-display');
   if (rpd) rpd.textContent = '0';
   const laps = document.getElementById('cf-laps');
   if (laps) laps.style.display = 'none';
-  document.getElementById('cf-lap-list').innerHTML = '';
+  const lapList = document.getElementById('cf-lap-list');
+  if (lapList) lapList.innerHTML = '';
+  const setup = document.getElementById('cf-timer-setup');
+  if (setup) setup.style.opacity = '1';
+  const phase = document.getElementById('cf-tabata-phase');
+  if (phase) phase.style.display = 'none';
+  const emomInd = document.getElementById('cf-emom-indicator');
+  if (emomInd) emomInd.style.display = 'none';
 }
 
 function cfLapTimer() {
   if (_cfTimerSeconds === 0) return;
   const lapTime = _cfTimerSeconds - _cfLastLapSeconds;
-  const m = Math.floor(lapTime/60), s = lapTime%60;
+  const m = Math.floor(Math.abs(lapTime)/60), s = Math.abs(lapTime)%60;
   _cfLapTimes.push(`${m}:${String(s).padStart(2,'0')}`);
   _cfLastLapSeconds = _cfTimerSeconds;
   const lapsEl = document.getElementById('cf-laps');
@@ -9527,42 +10381,25 @@ function cfLapTimer() {
 }
 
 function cfUpdateTimerDisplay() {
-  const m = Math.floor(_cfTimerSeconds/60), s = _cfTimerSeconds%60;
+  const s = Math.abs(_cfTimerSeconds);
+  const m = Math.floor(s/60), sec = s%60;
   const disp = document.getElementById('cf-timer-display');
-  if (disp) disp.textContent = `${m}:${String(s).padStart(2,'0')}`;
+  if (disp) disp.textContent = `${m}:${String(sec).padStart(2,'0')}`;
 }
 
 function cfAutoFillScore() {
   const scoreVal = document.getElementById('cf-score-value');
   if (!scoreVal || scoreVal.value) return;
-  const m = Math.floor(_cfTimerSeconds/60), s = _cfTimerSeconds%60;
   if (_cfCurrentFormat === 'AMRAP') {
     scoreVal.value = `${_cfRounds}+${_cfReps}`;
-  } else if (['For Time','Chipper','Partner'].includes(_cfCurrentFormat) && _cfTimerSeconds > 0) {
-    scoreVal.value = `${m}:${String(s).padStart(2,'0')}`;
+  } else if (['For Time','Chipper','Partner'].includes(_cfCurrentFormat)) {
+    const elapsed = _cfSetup.capEnabled
+      ? _cfSetup.capMin * 60 - _cfTimerSeconds
+      : _cfTimerSeconds;
+    const m = Math.floor(elapsed/60), s = elapsed%60;
+    if (elapsed > 0) scoreVal.value = `${m}:${String(s).padStart(2,'0')}`;
   }
 }
-
-function cfAdjustRounds(delta) {
-  _cfRounds = Math.max(0, _cfRounds + delta);
-  const el = document.getElementById('cf-round-display');
-  if (el) el.textContent = _cfRounds;
-  if (_cfCurrentFormat === 'AMRAP') {
-    const sv = document.getElementById('cf-score-value');
-    if (sv) sv.value = `${_cfRounds}+${_cfReps}`;
-  }
-}
-
-function cfAdjustReps(delta) {
-  _cfReps = Math.max(0, _cfReps + delta);
-  const el = document.getElementById('cf-rep-display');
-  if (el) el.textContent = _cfReps;
-  if (_cfCurrentFormat === 'AMRAP') {
-    const sv = document.getElementById('cf-score-value');
-    if (sv) sv.value = `${_cfRounds}+${_cfReps}`;
-  }
-}
-
 function cfPopulateWODSuggestions() {
   const dl = document.getElementById('cf-wod-suggestions');
   if (!dl) return;
@@ -9696,10 +10533,46 @@ function cfRenderLibrary() {
   }).join('');
 }
 
+function cfParseWODTimer(wod) {
+  // Extract numeric minutes from strings like:
+  // "35 min cap", "20 min AMRAP", "18 minute AMRAP", "EMOM 20", "4 rounds Tabata"
+  // Also parses description field e.g. "20 min AMRAP", "3 Rounds for Time"
+  const searchStr = [wod.cap||'', wod.description||'', wod.format||'', wod.name||''].join(' ').toLowerCase();
+
+  // Extract first number followed by 'min' or 'minute'
+  const minMatch = searchStr.match(/(\d+)\s*(?:min|minute)/);
+  const numMatch = searchStr.match(/(\d+)/); // fallback: any number
+
+  const minutes = minMatch ? parseInt(minMatch[1]) : null;
+
+  // Parse EMOM interval — look for "every X min" or "e\d+m" style
+  const intervalMatch = searchStr.match(/every\s*(\d+)\s*min/);
+  const emomInterval = intervalMatch ? parseInt(intervalMatch[1]) : 1;
+
+  // Parse Tabata work/rest — look for "Xs work" / "Xs rest"
+  const workMatch = searchStr.match(/(\d+)s?\s*(?:on|work)/);
+  const restMatch = searchStr.match(/(\d+)s?\s*(?:off|rest)/);
+  const roundsMatch = searchStr.match(/(\d+)\s*rounds?/);
+
+  return {
+    minutes,
+    emomInterval,
+    tabataWork: workMatch ? parseInt(workMatch[1]) : 20,
+    tabataRest: restMatch ? parseInt(restMatch[1]) : 10,
+    tabataRounds: roundsMatch ? parseInt(roundsMatch[1]) : 8,
+  };
+}
+
 function cfLoadWODToTrack(wod) {
   nav('cf-track');
+
+  // Pre-fill WOD name
   const nameEl = document.getElementById('cf-score-wod');
   if (nameEl) nameEl.value = wod.name || '';
+
+  // Parse timer settings from WOD data
+  const timerParams = cfParseWODTimer(wod);
+
   // Set format chip
   const fmt = (wod.format||'For Time').split('·')[0].trim();
   document.querySelectorAll('.wod-format-chip').forEach(btn=>{
@@ -9707,7 +10580,61 @@ function cfLoadWODToTrack(wod) {
       cfSelectFormat(fmt, btn);
     }
   });
-  toast(`${wod.name} loaded — hit Start when ready`);
+
+  // Apply parsed timer settings after format is set
+  setTimeout(() => {
+    if (fmt === 'AMRAP' && timerParams.minutes) {
+      _cfSetup.amrapMin = timerParams.minutes;
+      const el = document.getElementById('cf-setup-amrap-val');
+      if (el) el.textContent = timerParams.minutes;
+      // Reset display to new duration
+      const disp = document.getElementById('cf-timer-display');
+      if (disp) disp.textContent = `${timerParams.minutes}:00`;
+
+    } else if (fmt === 'EMOM') {
+      if (timerParams.minutes) {
+        _cfSetup.emomTotal = timerParams.minutes;
+        const totalEl = document.getElementById('cf-setup-emom-total');
+        if (totalEl) totalEl.textContent = timerParams.minutes;
+      }
+      if (timerParams.emomInterval) {
+        _cfSetup.emomInterval = timerParams.emomInterval;
+        const intEl = document.getElementById('cf-setup-emom-interval');
+        if (intEl) intEl.textContent = timerParams.emomInterval;
+      }
+      cfUpdateEmomSummary();
+
+    } else if (fmt === 'Tabata') {
+      _cfSetup.tabataWork   = timerParams.tabataWork;
+      _cfSetup.tabataRest   = timerParams.tabataRest;
+      _cfSetup.tabataRounds = timerParams.tabataRounds;
+      const wEl = document.getElementById('cf-setup-tabata-work');
+      const rEl = document.getElementById('cf-setup-tabata-rest');
+      const rnEl = document.getElementById('cf-setup-tabata-rounds');
+      if (wEl)  wEl.textContent  = timerParams.tabataWork;
+      if (rEl)  rEl.textContent  = timerParams.tabataRest;
+      if (rnEl) rnEl.textContent = timerParams.tabataRounds;
+      cfUpdateTabataSummary();
+      const disp = document.getElementById('cf-timer-display');
+      if (disp) disp.textContent = String(timerParams.tabataWork).padStart(2,'0');
+
+    } else if (['For Time','Chipper','Partner'].includes(fmt) && timerParams.minutes) {
+      // Auto-enable time cap from WOD cap field
+      _cfSetup.capMin     = timerParams.minutes;
+      _cfSetup.capEnabled = true;
+      const capVal = document.getElementById('cf-setup-cap-val');
+      const capBtn = document.getElementById('cf-cap-toggle');
+      if (capVal) capVal.textContent = timerParams.minutes;
+      if (capBtn) capBtn.textContent = 'Remove Cap';
+      // Show countdown from cap
+      const disp = document.getElementById('cf-timer-display');
+      if (disp) disp.textContent = `${timerParams.minutes}:00`;
+    }
+  }, 100);
+
+  const mins = timerParams.minutes;
+  const timerMsg = mins ? ` · ${fmt === 'AMRAP' ? mins+' min' : fmt === 'EMOM' ? mins+' min EMOM' : mins+' min cap'} loaded` : '';
+  toast(`${wod.name} loaded${timerMsg} — hit Start when ready`);
 }
 
 // ── WOD Builder ──
@@ -9718,7 +10645,7 @@ function cfOpenBuildWOD() {
       <input id="cf-wod-name" placeholder='e.g. "HAUL"'></div>
     <div class="row">
       <div class="field"><label>Format</label>
-        <select id="cf-wod-format"><option>For Time</option><option>AMRAP</option><option>EMOM</option><option>Chipper</option><option>Partner</option><option>Tabata</option></select></div>
+        <select id="cf-wod-format"><option>For Time</option><option>AMRAP</option><option>EMOM</option><option>Chipper</option><option>Partner</option><option>Tabata</option><option>For Quality</option><option>Heavy</option></select></div>
       <div class="field"><label>Time Cap (min)</label>
         <input id="cf-wod-cap" type="number" placeholder="20"></div>
     </div>
@@ -9864,5 +10791,22 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
 // Mode restore handled in enterApp
 
 </script>
+  <!-- ── ALLOY FULLSCREEN TIMER ── -->
+  <div id="cf-fullscreen-timer" onclick="cfFsHandleTap(event)">
+    <button class="fs-exit-btn" onclick="cfExitFullscreen();event.stopPropagation()" title="Exit fullscreen">✕</button>
+    <div class="fs-wod-name" id="fs-wod-name"></div>
+    <div class="fs-format-label" id="fs-format-label">For Time</div>
+    <div class="fs-time" id="fs-time">0:00</div>
+    <div class="fs-phase" id="fs-phase"></div>
+    <div class="fs-rounds" id="fs-rounds"></div>
+    <div class="fs-progress-bar" id="fs-progress-bar" style="width:0%"></div>
+    <div class="fs-controls">
+      <button class="fs-btn" onclick="cfFsReset();event.stopPropagation()">Reset</button>
+      <button class="fs-btn primary" id="fs-start-btn" onclick="cfFsToggle();event.stopPropagation()">Start</button>
+      <button class="fs-btn" onclick="cfExitFullscreen();event.stopPropagation()">Exit</button>
+    </div>
+  </div>
+
+
 </body>
 </html>
