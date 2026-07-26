@@ -451,7 +451,7 @@ button.set-type-btn.active[onclick*="assisted"]{background:var(--purple);border-
 #more-menu-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:199}
 #more-menu{position:fixed;bottom:0;left:0;right:0;z-index:200;transform:translateY(100%);transition:transform .25s cubic-bezier(.32,1,.32,1)}
 #more-menu.open{transform:translateY(0)}
-#more-menu-inner{background:var(--surface);border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding-bottom:env(safe-area-inset-bottom,16px);box-shadow:var(--shadow-md);border-top:1px solid var(--border)}
+#more-menu-inner{background:var(--surface);border-radius:var(--radius-lg) var(--radius-lg) 0 0;padding-bottom:env(safe-area-inset-bottom,16px);box-shadow:var(--shadow-md);border-top:1px solid var(--border);max-height:80vh;overflow-y:auto}
 .more-menu-item{display:flex;align-items:center;gap:14px;width:100%;padding:14px 18px;background:none;border:none;border-bottom:1px solid var(--border);font-family:var(--font);font-size:13.5px;font-weight:800;color:var(--text-primary);cursor:pointer;text-align:left;text-transform:uppercase;letter-spacing:.3px}
 .more-menu-item span{font-size:20px;width:28px;text-align:center}
 .more-menu-item:last-of-type{border-bottom:none}
@@ -1341,6 +1341,16 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
     <button class="bnav-btn cf-bnav" onclick="nav('cf-track',this)"><span class="bnav-icon">⏱</span>Track</button>
     <button class="bnav-btn cf-bnav" onclick="nav('cf-library',this)"><span class="bnav-icon">📋</span>Library</button>
     <button class="bnav-btn cf-bnav" onclick="nav('cf-athletes',this)" id="cf-bnav-athletes"><span class="bnav-icon">👥</span>Athletes</button>
+    <!-- Inline mode switch pill in bottom nav -->
+    <div id="bnav-mode-pill" style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:4px 0;gap:2px">
+      <div style="display:flex;background:#1a1a1a;border:1px solid #333;border-radius:999px;padding:2px;gap:1px">
+        <button id="bnav-lift-btn" class="alloy-mode-btn lift-on" style="padding:3px 10px;font-size:9px;border-radius:999px" onclick="alloySwitchMode('lift')">⚡</button>
+        <button id="bnav-cf-btn" class="alloy-mode-btn" style="padding:3px 8px;font-size:9px;border-radius:999px;display:flex;align-items:center;gap:2px" onclick="alloySwitchMode('cf')">
+          <svg width="9" height="9" viewBox="0 0 100 100" fill="none"><path d="M50 18 L16 46 L24 46 L50 26 L76 46 L84 46 Z" fill="currentColor"/><path d="M50 40 L22 68 L30 68 L50 52 L70 68 L78 68 Z" fill="currentColor" opacity=".6"/></svg>
+        </button>
+      </div>
+      <span style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555">Mode</span>
+    </div>
     <button class="bnav-btn cf-bnav" onclick="toggleMoreMenu()" id="cf-more-nav-btn"><span class="bnav-icon">☰</span>More</button>
   </nav>
 
@@ -1681,8 +1691,19 @@ function enterApp() {
   // Restore last mode per user — fall back to WOD mode for new users
   const _modeKey = 'alloy_mode_' + (currentUser?.id || 'default');
   const _savedMode = (() => { try { return localStorage.getItem(_modeKey); } catch(e) { return null; } })();
+  // Init mobile more menu toggle to correct state before switch
+  const _initMode = _savedMode || 'cf';
+  const moreLiftBtn = document.getElementById('more-mode-btn-lift');
+  const moreCfBtn   = document.getElementById('more-mode-btn-cf');
+  if (moreLiftBtn) { moreLiftBtn.classList.toggle('lift-on', _initMode === 'lift'); moreLiftBtn.classList.toggle('cf-on', false); }
+  if (moreCfBtn)   { moreCfBtn.classList.toggle('cf-on', _initMode === 'cf');       moreCfBtn.classList.toggle('lift-on', false); }
+  // Init bnav pill
+  const _bnavLift = document.getElementById('bnav-lift-btn');
+  const _bnavCf   = document.getElementById('bnav-cf-btn');
+  if (_bnavLift) { _bnavLift.classList.toggle('lift-on', _initMode === 'lift'); _bnavLift.classList.remove('cf-on'); }
+  if (_bnavCf)   { _bnavCf.classList.toggle('cf-on', _initMode === 'cf');       _bnavCf.classList.remove('lift-on'); }
   setTimeout(() => {
-    alloySwitchMode(_savedMode || 'cf');
+    alloySwitchMode(_initMode);
   }, 50);
   loadExLibrary(); // pre-warm the exercise library cache
   checkFirstLogin(); // show onboarding tour for first-time athletes
@@ -9886,6 +9907,14 @@ function alloySwitchMode(mode) {
   const moreCfBtn   = document.getElementById('more-mode-btn-cf');
   if (moreLiftBtn) { moreLiftBtn.classList.toggle('lift-on', !_cfMode); moreLiftBtn.classList.remove('cf-on'); }
   if (moreCfBtn)   { moreCfBtn.classList.toggle('cf-on', _cfMode);      moreCfBtn.classList.remove('lift-on'); }
+  // Sync inline bottom nav pill
+  const bnavLift = document.getElementById('bnav-lift-btn');
+  const bnavCf   = document.getElementById('bnav-cf-btn');
+  if (bnavLift) { bnavLift.classList.toggle('lift-on', !_cfMode); bnavLift.classList.remove('cf-on'); }
+  if (bnavCf)   { bnavCf.classList.toggle('cf-on', _cfMode);      bnavCf.classList.remove('lift-on'); }
+  // Show/hide the pill itself (always visible on mobile regardless of mode)
+  const bnavPill = document.getElementById('bnav-mode-pill');
+  if (bnavPill) bnavPill.style.display = 'flex';
 
   // Toggle sidebar navs
   const liftNav = document.getElementById('lift-sidebar-nav');
@@ -9913,14 +9942,35 @@ function alloySwitchMode(mode) {
 
   // Navigate
   if (_cfMode) {
-    // Show CF dashboard immediately, load data async
+    // Show CF dashboard immediately
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     const cfDash = document.getElementById('view-cf-dashboard');
     if (cfDash) cfDash.classList.add('active');
     // Sync nav active states
     document.querySelectorAll('.bnav-btn, .nav-item').forEach(b => b.classList.remove('active'));
     document.querySelectorAll(".cf-bnav[onclick*='cf-dashboard']").forEach(b => b.classList.add('active'));
-    // Load data then render
+    // CRITICAL: Set week view visible RIGHT NOW before any async
+    // so the calendar is visible the instant the view appears
+    const weekViewEl  = document.getElementById('cf-week-view');
+    const monthViewEl = document.getElementById('cf-month-view');
+    const weekStripEl = document.getElementById('cf-week-strip');
+    if (weekViewEl)  weekViewEl.style.display  = 'block';
+    if (monthViewEl) monthViewEl.style.display = 'none';
+    if (weekStripEl) weekStripEl.style.display = 'none';
+    document.getElementById('cf-view-week-btn')?.classList.add('active');
+    document.getElementById('cf-view-month-btn')?.classList.remove('active');
+    // Init week start now so cfBuildWeekView has what it needs
+    if (!_cfCalWeekStart) {
+      const d = new Date();
+      d.setDate(d.getDate() - d.getDay());
+      _cfCalWeekStart = d.toISOString().slice(0,10);
+    }
+    _cfCalView = 'week';
+    _cfSelectedDate = cfTodayStr();
+    // Paint the empty grid immediately — no waiting for data
+    cfBuildWeekView();
+    cfRenderDayPanel(_cfSelectedDate);
+    // Then load data and re-render with scores
     cfLoadData().then(() => cfRenderDashboard());
   } else {
     // Switch to lift mode
