@@ -9295,7 +9295,7 @@ async function cfBuilderSetDifficulty(difficulty, btn) {
       (suggHtml || '<p style="font-size:12px;color:var(--text-muted)">No matching WODs found in library.</p>') +
       '<div style="display:flex;gap:8px;margin-top:10px">' +
       '<button class="btn btn-ghost btn-sm" onclick="cfRenderWODBuilder()">Try Again</button>' +
-      '<button class="btn btn-primary btn-sm" onclick="nav(\'cf-library\')">Browse Library</button>' +
+      '<button class="btn btn-primary btn-sm" onclick="nav(&quot;cf-library&quot;)">Browse Library</button>' +
       '</div></div>';
     console.error('CF WOD builder error:', e);
   }
