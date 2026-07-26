@@ -9199,8 +9199,8 @@ function navToCalendar(btn) {
   _liftNav('calendar', btn);
   // Sync active state on both navs
   document.querySelectorAll('.bnav-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll("[onclick*="navToCalendar"]").forEach(b => b.classList.add('active'));
-  document.querySelectorAll("[onclick*="nav('calendar'"]").forEach(b => b.classList.add('active'));
+  document.querySelectorAll('[onclick*="navToCalendar"]').forEach(b => b.classList.add('active'));
+  document.querySelectorAll('[onclick*="calendar"]').forEach(b => b.classList.add('active'));
   // Reload calendar to include WOD scores
   renderCalendar();
 }
