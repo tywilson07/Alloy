@@ -919,7 +919,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
               <button class="btn btn-white btn-icon" onclick="shiftCal(1)">›</button>
             </div>
           </div>
-          <button class="btn btn-primary btn-sm" id="cal-log-btn" onclick="openLogModal(null)">+ Log</button>
+          <button class="btn btn-primary btn-sm" id="cal-log-btn" onclick="calQuickLog()">+ Log</button>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
           <!-- Month/Week toggle -->
@@ -9350,6 +9350,17 @@ if(saved){
 }
 
 // Navigate to the unified calendar from any mode
+// Mode-aware quick log button on calendar
+function calQuickLog() {
+  if (_cfMode) {
+    // WOD mode — open WOD picker for today
+    cfPreFillTrackDate(todayStr());
+  } else {
+    // Lift mode — open lift log modal for today
+    openLogModal(todayStr(), null);
+  }
+}
+
 function navToCalendar(btn) {
   // Use the lift-side calendar view — it's now the unified one
   _liftNav('calendar', btn);
@@ -10864,6 +10875,15 @@ function alloySwitchMode(mode) {
     if (calBtn) calBtn.classList.add('active');
     _liftNav('calendar');
     setTimeout(() => { setCalView('week'); renderCalendar(); }, 100);
+  }
+
+  // Update calendar log button label + color
+  const calLogBtn = document.getElementById('cal-log-btn');
+  if (calLogBtn) {
+    calLogBtn.textContent = _cfMode ? '+ Log WOD' : '+ Log';
+    calLogBtn.style.background = _cfMode ? 'var(--cf-green)' : '';
+    calLogBtn.style.color = _cfMode ? '#0d0d0d' : '';
+    calLogBtn.style.boxShadow = _cfMode ? '0 0 16px rgba(57,211,83,.25)' : '';
   }
 
   // Persist preference per user
