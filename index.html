@@ -860,7 +860,7 @@ body.cf-mode .week-day-col.selected { border-color: var(--cf-green) !important; 
     <!-- CF SIDEBAR NAV -->
     <nav class="sidebar-nav" id="cf-sidebar-nav">
       <div class="sidebar-section">WOD Mode</div>
-      <button class="nav-item active" onclick="nav('cf-dashboard',this)"><span class="icon">🏠</span>WODs</button>
+      <button class="nav-item active" onclick="navToCalendar(this)"><span class="icon">📅</span>Calendar</button>
       <button class="nav-item" onclick="nav('cf-track',this)"><span class="icon">⏱</span>Track WOD</button>
       <button class="nav-item" onclick="nav('cf-library',this)"><span class="icon">📋</span>WOD Library</button>
       <button class="nav-item" onclick="nav('cf-builder',this)"><span class="icon">⚡</span>WOD Builder</button>
@@ -1435,10 +1435,10 @@ body.cf-mode .week-day-col.selected { border-color: var(--cf-green) !important; 
     <button class="bnav-btn lift-bnav" style="display:none" onclick="nav('progress',this)"><span class="bnav-icon">📈</span>Progress</button>
     <button class="bnav-btn lift-bnav" style="display:none" onclick="toggleMoreMenu()" id="more-nav-btn"><span class="bnav-icon">☰</span>More</button>
       <!-- CF MODE BOTTOM NAV (hidden by default) -->
-    <button class="bnav-btn cf-bnav active" onclick="nav('cf-dashboard',this)"><span class="bnav-icon">🏠</span>WODs</button>
-    <button class="bnav-btn cf-bnav" onclick="nav('cf-track',this)"><span class="bnav-icon">⏱</span>Track</button>
+    <button class="bnav-btn cf-bnav" onclick="navToCalendar(this)"><span class="bnav-icon">📅</span>Calendar</button>
+    <button class="bnav-btn cf-bnav active" onclick="nav('cf-track',this)"><span class="bnav-icon">⏱</span>Track</button>
     <button class="bnav-btn cf-bnav" onclick="nav('cf-library',this)"><span class="bnav-icon">📋</span>Library</button>
-    <button class="bnav-btn cf-bnav" onclick="nav('cf-athletes',this)" id="cf-bnav-athletes"><span class="bnav-icon">👥</span>Athletes</button>
+    <button class="bnav-btn cf-bnav" onclick="nav('cf-builder',this)"><span class="bnav-icon">⚡</span>Builder</button>
     <button class="bnav-btn cf-bnav" onclick="toggleMoreMenu()" id="cf-more-nav-btn"><span class="bnav-icon">☰</span>More</button>
   </nav>
 
@@ -1457,20 +1457,7 @@ body.cf-mode .week-day-col.selected { border-color: var(--cf-green) !important; 
           </button>
         </div>
       </div>
-      <div style="padding:10px 16px 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">More</div>
-      <button class="more-menu-item" onclick="nav('help');closeMoreMenu()"><span>❓</span>How to Use</button>
-      <div id="more-menu-coach" style="display:none">
-        <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">Coaching</div>
-        <button class="more-menu-item" onclick="nav('athletes');closeMoreMenu()"><span>👥</span>Athletes</button>
-        <button class="more-menu-item" onclick="nav('library');closeMoreMenu()"><span>📚</span>Exercise Library</button>
-        <button class="more-menu-item" onclick="nav('assign');closeMoreMenu()"><span>📤</span>Assign Workout</button>
-      </div>
-      <button class="more-menu-item" onclick="nav('templates');closeMoreMenu()"><span>📁</span>Templates</button>
-      <button class="more-menu-item" onclick="nav('builder');closeMoreMenu()"><span>🏗️</span>Workout Builder</button>
-      <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">Account</div>
-      <button class="more-menu-item" onclick="nav('settings');closeMoreMenu()"><span>⚙️</span>Settings</button>
-      <button class="more-menu-item" onclick="doLogout();closeMoreMenu()"><span>👤</span>Sign Out</button>
-      <!-- CF MORE MENU SECTION -->
+      <!-- CF MORE MENU SECTION — shown when in WOD mode -->
       <div id="cf-more-menu-section">
         <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--cf-green)">WOD Mode</div>
         <button class="more-menu-item" onclick="nav('cf-dashboard');closeMoreMenu()"><span>🏠</span>WODs</button>
@@ -1482,6 +1469,21 @@ body.cf-mode .week-day-col.selected { border-color: var(--cf-green) !important; 
           <button class="more-menu-item" onclick="nav('cf-assign');closeMoreMenu()"><span>📤</span>Assign WOD</button>
         </div>
       </div>
+      <!-- LIFT SECTION — always visible -->
+      <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">Lift Mode</div>
+      <button class="more-menu-item" onclick="alloySwitchMode('lift');nav('builder');closeMoreMenu()"><span>🏗️</span>Workout Builder</button>
+      <button class="more-menu-item" onclick="alloySwitchMode('lift');nav('templates');closeMoreMenu()"><span>📁</span>Templates</button>
+      <div id="more-menu-coach" style="display:none">
+        <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">Lift Coaching</div>
+        <button class="more-menu-item" onclick="alloySwitchMode('lift');nav('athletes');closeMoreMenu()"><span>👥</span>Athletes</button>
+        <button class="more-menu-item" onclick="alloySwitchMode('lift');nav('library');closeMoreMenu()"><span>📚</span>Exercise Library</button>
+        <button class="more-menu-item" onclick="alloySwitchMode('lift');nav('assign');closeMoreMenu()"><span>📤</span>Assign Workout</button>
+      </div>
+      <button class="more-menu-item" onclick="nav('help');closeMoreMenu()"><span>❓</span>How to Use</button>
+      <!-- ACCOUNT — always at bottom -->
+      <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">Account</div>
+      <button class="more-menu-item" onclick="nav('settings');closeMoreMenu()"><span>⚙️</span>Settings</button>
+      <button class="more-menu-item" onclick="doLogout();closeMoreMenu()"><span>👤</span>Sign Out</button>
       <div style="padding:8px 16px 16px;display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:12.5px;color:var(--text-secondary)">Dark Mode</span>
         <button id="more-dark-toggle" onclick="toggleDarkMode()" style="background:none;border:none;cursor:pointer;font-size:22px">🌙</button>
@@ -1872,6 +1874,7 @@ let currentMonth = new Date().getMonth();
 let selectedDate = todayStr();
 let _calWorkouts = {};   // local cache {date: [workout,...]}
 let _calAssigned = {};   // assigned workouts from coach {date: [assignment,...]}
+let _calWODScores = {};  // WOD scores {date: [score,...]}
 let _calPrograms = [];   // programs visible to this user
 let _activeProgAssignments = []; // [{id, program_id, start_date}] — supports multiple simultaneous active programs
 let _calOverrides = {};  // planned workout overrides {newDate: {originalDate, workoutName, programId}}
@@ -1894,16 +1897,24 @@ async function renderCalendar() {
     const queryEnd   = (() => { const d = new Date(endDate+'T12:00:00');   d.setDate(d.getDate()+6); return d.toISOString().slice(0,10); })();
     // Load programs first (getVisiblePrograms may do sequential calls for athletes)
     const progs = await getVisiblePrograms();
-    const [wkts, assigns, assigned, overrides] = await Promise.all([
+    const [wkts, assigns, assigned, overrides, wodScores] = await Promise.all([
       db('workouts','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
       db('program_assignments','GET',null,`?user_id=eq.${currentUser.id}&select=*`),
       db('workout_assignments','GET',null,`?assigned_to=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
-      db('workout_schedule_overrides','GET',null,`?user_id=eq.${currentUser.id}&select=*`).catch(()=>[])
+      db('workout_schedule_overrides','GET',null,`?user_id=eq.${currentUser.id}&select=*`).catch(()=>[]),
+      db('cf_scores','GET',null,`?user_id=eq.${currentUser.id}&logged_at=gte.${queryStart}T00:00:00&logged_at=lte.${queryEnd}T23:59:59&select=*`).catch(()=>[])
     ]);
     _calWorkouts = {};
     (wkts||[]).forEach(w => {
       if (!_calWorkouts[w.date]) _calWorkouts[w.date] = [];
       _calWorkouts[w.date].push(w);
+    });
+    _calWODScores = {};
+    (wodScores||[]).forEach(s => {
+      const date = s.logged_at?.slice(0,10);
+      if (!date) return;
+      if (!_calWODScores[date]) _calWODScores[date] = [];
+      _calWODScores[date].push(s);
     });
     _calAssigned = {};
     (assigned||[]).forEach(a => {
@@ -1948,7 +1959,11 @@ function buildWeekStrip() {
     const logs = _calWorkouts[ds] || [];
     const assigned = _calAssigned[ds] || [];
     const planned = getPlannedWorkout(ds);
+    const wodScoresStrip = _calWODScores[ds] || [];
     let dotClass = 'empty';
+    if (logs.length > 0 || wodScoresStrip.length > 0) {
+      // has activity
+    }
     if (logs.length > 0) {
       const anyPartial = logs.some(w => {
         const exs = w.exercises||[];
@@ -1976,10 +1991,14 @@ function buildWeekStrip() {
     } else if (planned) {
       dotClass = 'planned';
     }
+    const hasWOD = (_calWODScores[ds]||[]).length > 0;
     html += `<div class="week-strip-day ${isToday?'today':''} ${isSel?'selected':''}" onclick="selectDay('${ds}')">
       <div class="week-strip-dow">${DAYS_SHORT[i]}</div>
       <div class="week-strip-num">${d.getDate()}</div>
-      <div class="week-strip-dot ${dotClass}"></div>
+      <div style="display:flex;gap:2px;justify-content:center;align-items:center">
+        <div class="week-strip-dot ${dotClass}"></div>
+        ${hasWOD ? '<div class="week-strip-dot" style="background:var(--cf-green);width:5px;height:5px"></div>' : ''}
+      </div>
     </div>`;
   }
   strip.innerHTML = html;
@@ -2189,7 +2208,11 @@ function buildWeekView() {
     logs.forEach(w=>{
       chips += `<div class="week-workout-chip week-workout-logged" title="${w.day_name||w.name||'Workout'}">✓ ${w.day_name||w.name||'Workout'}</div>`;
     });
-    if (!logs.length) {
+    // Add WOD scores in green
+    (_calWODScores[ds]||[]).forEach(s=>{
+      chips += `<div class="week-workout-chip" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.25)" title="WOD: ${s.wod_name}">⚡ ${s.wod_name}</div>`;
+    });
+    if (!logs.length && !(_calWODScores[ds]||[]).length) {
       planned.forEach(p=>{
         chips += `<div class="week-workout-chip week-workout-planned" title="${p.name}">· ${p.name}</div>`;
       });
@@ -2410,16 +2433,41 @@ async function renderDayPanel(ds) {
       </div>
     </div>`;
   });
-  if (!bodyHtml) bodyHtml=`<div style="padding:16px 0;text-align:center;color:var(--gray-400);font-size:12.5px">Rest day — nothing logged.</div>`;
+  // Add WOD scores to day panel
+  const dayWODs = _calWODScores[ds] || [];
+  let wodHtml = '';
+  dayWODs.forEach(s => {
+    wodHtml += `<div style="background:var(--cf-green-dim);border:1.5px solid rgba(57,211,83,.3);border-radius:var(--radius);padding:10px 13px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+        <div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.2px;color:var(--cf-green)">⚡ ${s.wod_name}</div>
+        <span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3);font-size:10px">${s.rx_scaled||'RX'}</span>
+      </div>
+      <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">${s.score}</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${s.format||'WOD'}</div>
+      ${s.notes?`<div style="font-size:11.5px;color:var(--text-muted);margin-top:5px;font-style:italic">"${s.notes}"</div>`:''}
+    </div>`;
+  });
+
+  if (!bodyHtml && !wodHtml) bodyHtml=`<div style="padding:16px 0;text-align:center;color:var(--gray-400);font-size:12.5px">Rest day — nothing logged.</div>`;
+
+  // Footer: mode-aware log button
+  const footerBtns = _cfMode
+    ? `<button class="btn btn-primary btn-full btn-sm" onclick="cfPreFillTrackDate('${ds}')">+ Log WOD for this day</button>
+       <button class="btn btn-white btn-full btn-sm" style="margin-top:6px" onclick="openLogModal('${ds}',null)">+ Add Lift Workout</button>`
+    : `<button class="btn btn-primary btn-full btn-sm" onclick="openLogModal('${ds}',null)">+ Add Lift Workout</button>
+       <button class="btn btn-white btn-full btn-sm" style="margin-top:6px" onclick="cfPreFillTrackDate('${ds}')">+ Log WOD for this day</button>`;
 
   panel.innerHTML=`
     <div class="day-panel-header">
       <div class="day-panel-date">${label}</div>
-      ${logs.length>0?`<span class="pill pill-green">✓ ${logs.length} logged</span>`:''}
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        ${logs.length>0?`<span class="pill pill-green">✓ ${logs.length} lift</span>`:''}
+        ${dayWODs.length>0?`<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3)">⚡ ${dayWODs.length} WOD</span>`:''}
+      </div>
     </div>
-    <div class="day-panel-body">${bodyHtml}</div>
+    <div class="day-panel-body">${wodHtml}${bodyHtml}</div>
     <div class="day-panel-footer">
-      <button class="btn btn-primary btn-full btn-sm" onclick="openLogModal('${ds}',null)">+ Add Workout</button>
+      ${footerBtns}
     </div>`;
 
   // For athletes: inject coach note at top of panel if one exists for this date
@@ -5627,6 +5675,11 @@ function getCellDots(ds) {
   // Show coach-assigned workouts in purple
   assigned.forEach(a => {
     html += `<span class="cal-workout-dot cal-dot-assigned" title="Assigned by coach">📤 ${a.workout_name}</span>`;
+  });
+  // Show WOD scores in green
+  const wodScores = _calWODScores[ds] || [];
+  wodScores.forEach(s => {
+    html += `<span class="cal-workout-dot" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3)" title="WOD: ${s.wod_name} — ${s.score}">⚡ ${s.wod_name}</span>`;
   });
   // Show planned workouts from program if no logged workout
   if (logs.length === 0 && assigned.length === 0) {
@@ -9140,6 +9193,18 @@ if(saved){
   });
 }
 
+// Navigate to the unified calendar from any mode
+function navToCalendar(btn) {
+  // Use the lift-side calendar view — it's now the unified one
+  _liftNav('calendar', btn);
+  // Sync active state on both navs
+  document.querySelectorAll('.bnav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll("[onclick*="navToCalendar"]").forEach(b => b.classList.add('active'));
+  document.querySelectorAll("[onclick*="nav('calendar'"]").forEach(b => b.classList.add('active'));
+  // Reload calendar to include WOD scores
+  renderCalendar();
+}
+
 // ═══════════════════════════════════════════════════
 // ALLOY — CF AI WOD BUILDER
 // ═══════════════════════════════════════════════════
@@ -9981,8 +10046,10 @@ function cfPickCustomWOD(ds, name) {
   }, 150);
 }
 
-// Override cfRenderDashboard to use calendar
+// cfRenderDashboard now redirects to unified calendar
 function cfRenderDashboard() {
+  navToCalendar();
+  return;
   // Always force week view on entry
   _cfCalView = 'week';
 
@@ -10135,36 +10202,17 @@ function alloySwitchMode(mode) {
     // Sync nav active states
     document.querySelectorAll('.bnav-btn, .nav-item').forEach(b => b.classList.remove('active'));
     document.querySelectorAll(".cf-bnav[onclick*='cf-dashboard']").forEach(b => b.classList.add('active'));
-    // CRITICAL: Set week view visible RIGHT NOW before any async
-    // so the calendar is visible the instant the view appears
-    const weekViewEl  = document.getElementById('cf-week-view');
-    const monthViewEl = document.getElementById('cf-month-view');
-    const weekStripEl = document.getElementById('cf-week-strip');
-    if (weekViewEl)  weekViewEl.style.display  = 'block';
-    if (monthViewEl) monthViewEl.style.display = 'none';
-    if (weekStripEl) weekStripEl.style.display = 'none';
-    document.getElementById('cf-view-week-btn')?.classList.add('active');
-    document.getElementById('cf-view-month-btn')?.classList.remove('active');
-    // Init week start now so cfBuildWeekView has what it needs
-    if (!_cfCalWeekStart) {
-      const d = new Date();
-      d.setDate(d.getDate() - d.getDay());
-      _cfCalWeekStart = d.toISOString().slice(0,10);
-    }
-    _cfCalView = 'week';
-    _cfSelectedDate = cfTodayStr();
-    // Paint the empty grid immediately — no waiting for data
-    cfBuildWeekView();
-    cfRenderDayPanel(_cfSelectedDate);
-    // Then load data and re-render with scores
-    cfLoadData().then(() => cfRenderDashboard());
-  } else {
-    // Switch to lift mode
-    document.querySelectorAll('.lift-bnav').forEach(b => b.classList.remove('active'));
-    const firstLiftBtn = document.querySelector('.lift-bnav');
-    if (firstLiftBtn) firstLiftBtn.classList.add('active');
+    // Navigate to unified calendar
+    cfLoadData().then(() => renderCalendar());
     _liftNav('calendar');
-    setTimeout(() => setCalView('week'), 100);
+    setTimeout(() => setCalView('week'), 50);
+  } else {
+    // Switch to lift mode — unified calendar
+    document.querySelectorAll('.lift-bnav').forEach(b => b.classList.remove('active'));
+    const calBtn = document.querySelector(".lift-bnav[onclick*='calendar']");
+    if (calBtn) calBtn.classList.add('active');
+    _liftNav('calendar');
+    setTimeout(() => { setCalView('week'); renderCalendar(); }, 100);
   }
 
   // Persist preference per user
