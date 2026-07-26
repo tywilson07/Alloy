@@ -682,6 +682,20 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
 .cf-score-meta { font-size:11.5px; color:var(--text-muted); }
 .cf-score-wod { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.2px; }
 
+/* ── WOD PICKER ── */
+.wod-picker-item {
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 13px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.wod-picker-item:hover, .wod-picker-item:active {
+  border-color: var(--cf-green);
+  background: var(--cf-green-dim);
+}
+
 /* ── CF MODE CALENDAR COLOR OVERRIDES ── */
 body.cf-mode .cal-cell.today { background: var(--cf-green-dim); }
 body.cf-mode .cal-cell.selected { outline: 2px solid var(--cf-green); outline-offset: -2px; background: var(--cf-green-dim); }
@@ -9883,26 +9897,7 @@ function cfOpenWODPicker(ds) {
   document.getElementById('modal-footer').innerHTML = `
     <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>`;
 
-  // Add WOD picker styles if not already present
-  if (!document.getElementById('wod-picker-style')) {
-    const style = document.createElement('style');
-    style.id = 'wod-picker-style';
-    style.textContent = \`
-      .wod-picker-item {
-        background: var(--surface2);
-        border: 1.5px solid var(--border);
-        border-radius: var(--radius);
-        padding: 10px 13px;
-        cursor: pointer;
-        transition: all 0.12s;
-      }
-      .wod-picker-item:hover, .wod-picker-item:active {
-        border-color: var(--cf-green);
-        background: var(--cf-green-dim);
-      }
-    \`;
-    document.head.appendChild(style);
-  }
+  // WOD picker styles injected via CSS in stylesheet
 
   showModal();
 
