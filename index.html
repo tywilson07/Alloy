@@ -1348,6 +1348,17 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
   <div id="more-menu-overlay" style="display:none" onclick="closeMoreMenu()"></div>
   <div id="more-menu">
     <div id="more-menu-inner">
+      <!-- MODE TOGGLE — prominent at top for mobile -->
+      <div style="padding:12px 16px 10px;border-bottom:1px solid var(--border);margin-bottom:4px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px">Mode</div>
+        <div style="display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:999px;padding:3px;gap:2px">
+          <button id="more-mode-btn-lift" class="alloy-mode-btn lift-on" style="flex:1;padding:8px 0;font-size:12px" onclick="alloySwitchMode('lift');closeMoreMenu()">⚡ LIFT</button>
+          <button id="more-mode-btn-cf" class="alloy-mode-btn" style="flex:1;padding:8px 0;font-size:12px;display:flex;align-items:center;justify-content:center;gap:4px" onclick="alloySwitchMode('cf');closeMoreMenu()">
+            <svg width="11" height="11" viewBox="0 0 100 100" fill="none"><path d="M50 18 L16 46 L24 46 L50 26 L76 46 L84 46 Z" fill="currentColor"/><path d="M50 40 L22 68 L30 68 L50 52 L70 68 L78 68 Z" fill="currentColor" opacity=".6"/></svg>
+            WOD
+          </button>
+        </div>
+      </div>
       <div style="padding:10px 16px 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">More</div>
       <button class="more-menu-item" onclick="nav('help');closeMoreMenu()"><span>❓</span>How to Use</button>
       <div id="more-menu-coach" style="display:none">
@@ -9865,11 +9876,16 @@ function alloySwitchMode(mode) {
   _cfMode = (mode === 'cf');
   document.body.classList.toggle('cf-mode', _cfMode);
 
-  // Update toggle buttons
+  // Update toggle buttons — sidebar and mobile more menu
   const liftBtn = document.getElementById('mode-btn-lift');
   const cfBtn = document.getElementById('mode-btn-cf');
   if (liftBtn) { liftBtn.classList.toggle('lift-on', !_cfMode); liftBtn.classList.remove('cf-on'); }
   if (cfBtn)   { cfBtn.classList.toggle('cf-on', _cfMode);      cfBtn.classList.remove('lift-on'); }
+  // Sync mobile more menu toggle
+  const moreLiftBtn = document.getElementById('more-mode-btn-lift');
+  const moreCfBtn   = document.getElementById('more-mode-btn-cf');
+  if (moreLiftBtn) { moreLiftBtn.classList.toggle('lift-on', !_cfMode); moreLiftBtn.classList.remove('cf-on'); }
+  if (moreCfBtn)   { moreCfBtn.classList.toggle('cf-on', _cfMode);      moreCfBtn.classList.remove('lift-on'); }
 
   // Toggle sidebar navs
   const liftNav = document.getElementById('lift-sidebar-nav');
