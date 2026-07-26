@@ -11,7 +11,7 @@
 <!-- Apple touch icon for home screen -->
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='36' fill='%230D0D0F'/%3E%3Cpath d='M96 30 L28 82 L44 82 L96 46 L148 82 L164 82 Z' fill='%2339d353'/%3E%3Cpath d='M96 68 L36 118 L52 118 L96 84 L140 118 L156 118 Z' fill='%23ffffff'/%3E%3Cpath d='M68 108 L96 122 L124 108 L124 116 L96 130 L68 116 Z' fill='%2339d353'/%3E%3C/svg%3E">
 <link rel="manifest" href="/manifest.json">
-<title>Alloy — Lift & CrossFit</title>
+<title>Alloy — Lift &amp; WOD</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Barlow+Condensed:wght@700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -564,7 +564,7 @@ button.set-type-btn.active[onclick*="assisted"]{background:var(--purple);border-
 .alloy-mode-btn.lift-on { background: var(--orange); color: #fff; }
 .alloy-mode-btn.cf-on   { background: var(--cf-green); color: #0d0d0d; }
 
-/* CF mode global overrides */
+/* WOD mode global overrides */
 body.cf-mode input:focus,
 body.cf-mode textarea:focus,
 body.cf-mode select:focus {
@@ -726,10 +726,10 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
     </div>
     <!-- ALLOY MODE TOGGLE -->
     <div class="alloy-mode-toggle">
-      <button class="alloy-mode-btn" id="mode-btn-lift" onclick="alloySwitchMode('lift')">⚡ Lift</button>
-      <button class="alloy-mode-btn cf-on" id="mode-btn-cf" onclick="alloySwitchMode('cf')">
+      <button class="alloy-mode-btn" id="mode-btn-lift" onclick="alloySwitchMode('lift')">⚡ LIFT</button>
+      <button class="alloy-mode-btn cf-on" id="mode-btn-cf" onclick="alloySwitchMode('cf')" style="display:flex;align-items:center;gap:5px">
         <svg width="11" height="11" viewBox="0 0 100 100" fill="none" style="vertical-align:-1px;margin-right:3px"><path d="M50 18 L16 46 L24 46 L50 26 L76 46 L84 46 Z" fill="currentColor"/><path d="M50 40 L22 68 L30 68 L50 52 L70 68 L78 68 Z" fill="currentColor" opacity=".6"/></svg>
-        CrossFit
+        WOD
       </button>
     </div>
     <nav class="sidebar-nav" id="lift-sidebar-nav" style="display:none">
@@ -755,13 +755,13 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
     </nav><!-- end lift-sidebar-nav -->
     <!-- CF SIDEBAR NAV -->
     <nav class="sidebar-nav" id="cf-sidebar-nav">
-      <div class="sidebar-section">CrossFit</div>
+      <div class="sidebar-section">WOD Mode</div>
       <button class="nav-item active" onclick="nav('cf-dashboard',this)"><span class="icon">🏠</span>WODs</button>
       <button class="nav-item" onclick="nav('cf-track',this)"><span class="icon">⏱</span>Track WOD</button>
       <button class="nav-item" onclick="nav('cf-library',this)"><span class="icon">📋</span>WOD Library</button>
       <div id="cf-coach-nav" style="display:none">
-        <div class="sidebar-section">Coaching</div>
-        <button class="nav-item" onclick="nav('cf-athletes',this)"><span class="icon">👥</span>CF Athletes</button>
+        <div class="sidebar-section">WOD Coaching</div>
+        <button class="nav-item" onclick="nav('cf-athletes',this)"><span class="icon">👥</span>WOD Athletes</button>
         <button class="nav-item" onclick="nav('cf-assign',this)"><span class="icon">📤</span>Assign WOD</button>
       </div>
       <div class="sidebar-section">Support</div>
@@ -1163,7 +1163,7 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
     <!-- CF: ATHLETES -->
     <div class="view" id="view-cf-athletes">
       <div class="view-header">
-        <div class="view-title">CF Athletes</div>
+        <div class="view-title">WOD Athletes</div>
         <button class="btn btn-primary btn-sm" onclick="cfOpenAssignWOD()">+ Assign WOD</button>
       </div>
       <div class="view-body pad-bottom" id="cf-athletes-body">
@@ -1220,12 +1220,12 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
       <button class="more-menu-item" onclick="doLogout();closeMoreMenu()"><span>👤</span>Sign Out</button>
       <!-- CF MORE MENU SECTION -->
       <div id="cf-more-menu-section">
-        <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--cf-green)">CrossFit</div>
+        <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--cf-green)">WOD Mode</div>
         <button class="more-menu-item" onclick="nav('cf-dashboard');closeMoreMenu()"><span>🏠</span>WODs</button>
         <button class="more-menu-item" onclick="nav('cf-track');closeMoreMenu()"><span>⏱</span>Track WOD</button>
         <button class="more-menu-item" onclick="nav('cf-library');closeMoreMenu()"><span>📋</span>WOD Library</button>
         <div id="cf-more-coach" style="display:none">
-          <button class="more-menu-item" onclick="nav('cf-athletes');closeMoreMenu()"><span>👥</span>CF Athletes</button>
+          <button class="more-menu-item" onclick="nav('cf-athletes');closeMoreMenu()"><span>👥</span>WOD Athletes</button>
           <button class="more-menu-item" onclick="nav('cf-assign');closeMoreMenu()"><span>📤</span>Assign WOD</button>
         </div>
       </div>
@@ -1524,11 +1524,11 @@ function enterApp() {
     const toggle = document.getElementById('cal-mode-toggle');
     if (toggle) toggle.style.display = '';
   }
-  // Always open in CF mode (Alloy's default identity)
-  // Clear any stale lift-mode preference from earlier sessions
-  try { localStorage.removeItem('alloy_mode'); } catch(e) {}
+  // Restore last mode per user — fall back to WOD mode for new users
+  const _modeKey = 'alloy_mode_' + (currentUser?.id || 'default');
+  const _savedMode = (() => { try { return localStorage.getItem(_modeKey); } catch(e) { return null; } })();
   setTimeout(() => {
-    alloySwitchMode('cf');
+    alloySwitchMode(_savedMode || 'cf');
   }, 50);
   loadExLibrary(); // pre-warm the exercise library cache
   checkFirstLogin(); // show onboarding tour for first-time athletes
@@ -8542,7 +8542,7 @@ function renderSettings() {
       </div>
 
       <div style="text-align:center;padding:20px 0;font-size:11px;color:var(--text-muted)">
-        Alloy — Lift &amp; CrossFit<br>Built by Tyler Wilson
+        Alloy — Lift &amp; WOD<br>Built by Tyler Wilson
       </div>
     </div>`;
 }
@@ -8756,7 +8756,7 @@ async function endTour() {
 }
 
 async function checkFirstLogin() {
-  // Tour disabled in Alloy — it navigates to calendar and breaks CF mode default
+  // Tour disabled in Alloy — it navigates to calendar and breaks WOD mode default
   // Will be replaced with an Alloy-specific onboarding flow
   return;
 }
@@ -8882,7 +8882,7 @@ if(saved){
 
 let _cfCalYear  = new Date().getFullYear();
 let _cfCalMonth = new Date().getMonth();
-let _cfCalView  = 'month'; // 'month' | 'week'
+let _cfCalView  = 'week'; // 'month' | 'week'
 let _cfCalWeekStart = null;
 let _cfSelectedDate = cfTodayStr();
 let _cfCalScores = {}; // {date: [score,...]}
@@ -9213,6 +9213,16 @@ function cfRenderDashboard() {
     d.setDate(d.getDate() - d.getDay());
     _cfCalWeekStart = d.toISOString().slice(0,10);
   }
+  // Default to week view
+  const monthView = document.getElementById('cf-month-view');
+  const weekView  = document.getElementById('cf-week-view');
+  const weekStrip = document.getElementById('cf-week-strip');
+  if (monthView) monthView.style.display = 'none';
+  if (weekView)  weekView.style.display  = '';
+  if (weekStrip) weekStrip.style.display = 'none';
+  // Sync toggle buttons
+  document.getElementById('cf-view-month-btn')?.classList.toggle('active', _cfCalView==='month');
+  document.getElementById('cf-view-week-btn')?.classList.toggle('active', _cfCalView==='week');
   cfRenderCalendar();
 }
 
@@ -9338,8 +9348,11 @@ function alloySwitchMode(mode) {
     setTimeout(() => setCalView('week'), 100);
   }
 
-  // Persist preference
-  try { localStorage.setItem('alloy_mode', mode); } catch(e) {}
+  // Persist preference per user
+  try {
+    const modeKey = 'alloy_mode_' + (currentUser?.id || 'default');
+    localStorage.setItem(modeKey, mode);
+  } catch(e) {}
 }
 
 // ── Extend nav() to handle CF views ──
@@ -9763,12 +9776,12 @@ async function cfDeleteWOD(id) {
   } catch(e) { toast('Delete failed'); }
 }
 
-// ── CF Athletes ──
+// ── WOD Athletes ──
 async function cfRenderAthletes() {
   const body = document.getElementById('cf-athletes-body');
   if (!body) return;
   if (currentUser?.role !== 'admin') {
-    body.innerHTML = `<div class="empty-state"><span class="emo">🏋️</span><h3>Coach view</h3><p>Log in as a coach to see your athletes here.</p></div>`;
+    body.innerHTML = `<div class="empty-state"><span class="emo">🏋️</span><h3>Coach view</h3><p>Log in as a coach to see your WOD athletes here.</p></div>`;
     return;
   }
   body.innerHTML = '<div class="loading">Loading athletes...</div>';
@@ -9847,7 +9860,7 @@ async function cfConfirmAssignWOD() {
 
 // ── Boot: restore mode + load CF data after login ──
 const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
-// Patch enterApp to restore CF mode preference
+// Patch enterApp to restore WOD mode preference
 // Mode restore handled in enterApp
 
 </script>
