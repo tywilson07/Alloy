@@ -697,7 +697,8 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
 }
 
 /* ── CF MODE CALENDAR COLOR OVERRIDES ── */
-body.cf-mode .cal-cell.today { background: var(--cf-green-dim) !important; }
+/* Replace ALL orange with green on calendar elements */
+body.cf-mode .cal-cell.today { background: var(--cf-green-dim) !important; outline: 2px solid var(--cf-green) !important; outline-offset: -2px; }
 body.cf-mode .cal-cell.today .cal-day-num { 
   background: var(--cf-green) !important; 
   color: #0d0d0d !important; 
@@ -707,17 +708,22 @@ body.cf-mode .cal-cell.today .cal-day-num {
   font-weight: 900 !important;
 }
 body.cf-mode .cal-cell.selected { outline: 2px solid var(--cf-green) !important; outline-offset: -2px; background: var(--cf-green-dim) !important; }
+body.cf-mode .cal-cell.today.selected { outline: 2px solid var(--cf-green) !important; background: var(--cf-green-dim) !important; }
+body.cf-mode .week-strip-day.today { background: var(--cf-green-dim) !important; outline: 2px solid var(--cf-green) !important; outline-offset: -2px; }
 body.cf-mode .week-strip-day.today .week-strip-num { background: var(--cf-green) !important; color: #0d0d0d !important; }
-body.cf-mode .week-strip-day.selected { border-color: var(--cf-green) !important; background: var(--cf-green-dim) !important; }
+body.cf-mode .week-strip-day.selected { border-color: var(--cf-green) !important; background: var(--cf-green-dim) !important; outline: 2px solid var(--cf-green) !important; }
 body.cf-mode .week-strip-dot.logged { background: var(--cf-green) !important; }
 body.cf-mode .day-panel-header { border-bottom-color: var(--cf-green-dim) !important; }
-body.cf-mode #cf-view-month-btn.active,
-body.cf-mode #cf-view-week-btn.active { background: var(--cf-green) !important; color: #0d0d0d !important; }
+body.cf-mode .cal-view-month-btn.active, body.cf-mode .cal-view-week-btn.active,
+body.cf-mode #cf-view-month-btn.active, body.cf-mode #cf-view-week-btn.active,
+body.cf-mode #cal-view-month-btn.active, body.cf-mode #cal-view-week-btn.active { background: var(--cf-green) !important; color: #0d0d0d !important; border-color: var(--cf-green) !important; }
 body.cf-mode .cal-mode-btn.active { background: var(--cf-green) !important; color: #0d0d0d !important; }
 body.cf-mode .week-day-col.today .week-day-num { color: var(--cf-green) !important; }
 body.cf-mode .week-day-col.today { border-color: var(--cf-green) !important; background: var(--cf-green-dim) !important; }
 body.cf-mode .week-day-col.selected { border-color: var(--cf-green) !important; background: var(--cf-green-dim) !important; }
 body.cf-mode .week-day-col.today.selected { border-color: var(--cf-green) !important; outline: 2px solid var(--cf-green) !important; }
+body.cf-mode .prog-progress-bar, body.cf-mode .wm-progress-fill { background: var(--cf-green) !important; }
+body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: var(--cf-green) !important; }
 
 /* ── FULLSCREEN TV TIMER ── */
 #cf-fullscreen-timer{display:none;position:fixed;inset:0;background:#0d0d0d;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer}
@@ -865,6 +871,7 @@ body.cf-mode .week-day-col.today.selected { border-color: var(--cf-green) !impor
       <button class="nav-item active" onclick="navToCalendar(this)"><span class="icon">📅</span>Calendar</button>
       <button class="nav-item" onclick="nav('cf-track',this)"><span class="icon">⏱</span>Track WOD</button>
       <button class="nav-item" onclick="nav('cf-library',this)"><span class="icon">📋</span>WOD Library</button>
+      <button class="nav-item" onclick="nav('cf-history',this)"><span class="icon">📊</span>WOD History</button>
       <button class="nav-item" onclick="nav('cf-builder',this)"><span class="icon">⚡</span>WOD Builder</button>
       <div id="cf-coach-nav" style="display:none">
         <div class="sidebar-section">WOD Coaching</div>
@@ -1165,25 +1172,42 @@ body.cf-mode .week-day-col.today.selected { border-color: var(--cf-green) !impor
       </div>
     </div>
 
-    <!-- CF: TRACK / TIMER -->
+    <!-- CF: TRACK / WOD LOG BUILDER -->
     <div class="view" id="view-cf-track">
       <div class="view-header">
-        <div class="view-title">Track WOD</div>
-        <button class="btn btn-white btn-sm" onclick="nav('cf-library')">Library</button>
+        <div class="view-title">Log WOD</div>
+        <button class="btn btn-white btn-sm" onclick="nav('cf-history')">History</button>
       </div>
       <div class="view-body pad-bottom">
 
-        <!-- Format selector -->
-        <div class="section-label">Format</div>
-        <div class="wod-format-chips">
-          <button class="wod-format-chip active" onclick="cfSelectFormat('For Time',this)">For Time</button>
-          <button class="wod-format-chip" onclick="cfSelectFormat('AMRAP',this)">AMRAP</button>
-          <button class="wod-format-chip" onclick="cfSelectFormat('EMOM',this)">EMOM</button>
-          <button class="wod-format-chip" onclick="cfSelectFormat('Chipper',this)">Chipper</button>
-          <button class="wod-format-chip" onclick="cfSelectFormat('Tabata',this)">Tabata</button>
-          <button class="wod-format-chip" onclick="cfSelectFormat('Partner',this)">Partner</button>
-          <button class="wod-format-chip" onclick="cfSelectFormat('For Quality',this)">For Quality</button>
-          <button class="wod-format-chip" onclick="cfSelectFormat('Heavy',this)">Heavy</button>
+        <!-- WOD LOG BUILDER -->
+        <!-- Step 1: Format + Time Parameters -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:10px">
+          <div class="section-label" style="margin-bottom:10px">Format</div>
+          <div class="wod-format-chips" style="margin-bottom:12px">
+            <button class="wod-format-chip active" onclick="cfSelectFormat('For Time',this)">For Time</button>
+            <button class="wod-format-chip" onclick="cfSelectFormat('AMRAP',this)">AMRAP</button>
+            <button class="wod-format-chip" onclick="cfSelectFormat('EMOM',this)">EMOM</button>
+            <button class="wod-format-chip" onclick="cfSelectFormat('Chipper',this)">Chipper</button>
+            <button class="wod-format-chip" onclick="cfSelectFormat('Tabata',this)">Tabata</button>
+            <button class="wod-format-chip" onclick="cfSelectFormat('Partner',this)">Partner</button>
+            <button class="wod-format-chip" onclick="cfSelectFormat('For Quality',this)">For Quality</button>
+            <button class="wod-format-chip" onclick="cfSelectFormat('Heavy',this)">Heavy</button>
+          </div>
+          <!-- Time parameters — shown based on format -->
+          <div id="wlb-time-params"></div>
+        </div>
+
+        <!-- Step 2: Movements -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div class="section-label" style="margin:0">Movements</div>
+            <button class="btn btn-ghost btn-sm" onclick="wlbAddMovement()">+ Add</button>
+          </div>
+          <div id="wlb-movements" style="display:flex;flex-direction:column;gap:8px"></div>
+          <div id="wlb-movements-empty" style="font-size:12.5px;color:var(--text-muted);padding:8px 0;text-align:center">
+            Tap + Add to build your WOD
+          </div>
         </div>
 
         <!-- Timer -->
@@ -1329,7 +1353,119 @@ body.cf-mode .week-day-col.today.selected { border-color: var(--cf-green) !impor
           </div>
         </div><!-- end cf-timer-block -->
 
-        <!-- Score logger -->
+        <!-- Timer (shown above score when active) -->
+        <!-- No-timer message for For Quality / Heavy -->
+        <div id="cf-no-timer-msg" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;margin-bottom:12px;text-align:center">
+          <div style="font-size:28px;margin-bottom:8px">🏋️</div>
+          <div style="font-size:14px;font-weight:800;color:var(--text-primary);margin-bottom:4px">No time constraint</div>
+          <div style="font-size:12px;color:var(--text-muted)">Focus on load or quality — log your result below.</div>
+        </div>
+
+        <div id="cf-timer-block" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px;position:relative">
+          <button class="cf-fullscreen-btn" onclick="cfEnterFullscreen()" title="Fullscreen timer">⛶</button>
+          <!-- Timer setup -->
+          <div id="cf-timer-setup">
+            <div id="cf-setup-amrap" style="display:none;margin-bottom:12px">
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px">AMRAP Duration</div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:12px">
+                <button class="cf-round-btn" onclick="cfAdjustSetup('amrap',-1)">−</button>
+                <div style="text-align:center"><div id="cf-setup-amrap-val" style="font-size:36px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">18</div><div style="font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px">minutes</div></div>
+                <button class="cf-round-btn" onclick="cfAdjustSetup('amrap',1)">+</button>
+              </div>
+            </div>
+            <div id="cf-setup-emom" style="display:none;margin-bottom:12px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;text-align:center">Total (min)</div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+                    <button class="cf-round-btn" style="width:34px;height:34px;font-size:16px" onclick="cfAdjustSetup('emom-total',-1)">−</button>
+                    <div id="cf-setup-emom-total" style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:40px;text-align:center">20</div>
+                    <button class="cf-round-btn" style="width:34px;height:34px;font-size:16px" onclick="cfAdjustSetup('emom-total',1)">+</button>
+                  </div>
+                </div>
+                <div><div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;text-align:center">Interval (min)</div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+                    <button class="cf-round-btn" style="width:34px;height:34px;font-size:16px" onclick="cfAdjustSetup('emom-interval',-1)">−</button>
+                    <div id="cf-setup-emom-interval" style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:40px;text-align:center">1</div>
+                    <button class="cf-round-btn" style="width:34px;height:34px;font-size:16px" onclick="cfAdjustSetup('emom-interval',1)">+</button>
+                  </div>
+                </div>
+              </div>
+              <div id="cf-emom-summary" style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px">20 rounds · every 1 min</div>
+            </div>
+            <div id="cf-setup-tabata" style="display:none;margin-bottom:12px">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+                <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--cf-green);margin-bottom:6px;text-align:center">Work (sec)</div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+                    <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-work',-5)">−</button>
+                    <div id="cf-setup-tabata-work" style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:36px;text-align:center">20</div>
+                    <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-work',5)">+</button>
+                  </div>
+                </div>
+                <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;text-align:center">Rest (sec)</div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+                    <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-rest',-5)">−</button>
+                    <div id="cf-setup-tabata-rest" style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text-muted);min-width:36px;text-align:center">10</div>
+                    <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-rest',5)">+</button>
+                  </div>
+                </div>
+                <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;text-align:center">Rounds</div>
+                  <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+                    <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-rounds',-1)">−</button>
+                    <div id="cf-setup-tabata-rounds" style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text-primary);min-width:36px;text-align:center">8</div>
+                    <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-rounds',1)">+</button>
+                  </div>
+                </div>
+              </div>
+              <div id="cf-tabata-summary" style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px">8 rounds · 20s work / 10s rest · 4:00 total</div>
+            </div>
+            <div id="cf-setup-fortime" style="display:none;margin-bottom:12px">
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;text-align:center">Time Cap (optional)</div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:12px">
+                <button class="cf-round-btn" onclick="cfAdjustSetup('cap',-1)">−</button>
+                <div style="text-align:center"><div id="cf-setup-cap-val" style="font-size:36px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">20</div><div style="font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px">min cap</div></div>
+                <button class="cf-round-btn" onclick="cfAdjustSetup('cap',1)">+</button>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:8px;justify-content:center">
+                <button class="btn btn-ghost btn-sm" id="cf-cap-toggle" onclick="cfToggleCap()">No Cap</button>
+              </div>
+            </div>
+          </div>
+          <!-- Active timer display -->
+          <div class="cf-timer-display">
+            <div class="cf-timer-label" id="cf-timer-label">For Time</div>
+            <div class="cf-timer-time" id="cf-timer-display">0:00</div>
+            <div id="cf-tabata-phase" style="display:none;font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-top:4px;color:var(--cf-green)">WORK</div>
+            <div id="cf-emom-indicator" style="display:none;font-size:11px;font-weight:700;color:var(--text-muted);margin-top:4px">Round <span id="cf-emom-round-num">1</span> of <span id="cf-emom-total-rounds">20</span></div>
+          </div>
+          <!-- Round counter -->
+          <div class="cf-round-counter" id="cf-round-counter" style="display:none">
+            <button class="cf-round-btn" onclick="cfAdjustRounds(-1)">−</button>
+            <div><div class="cf-round-count" id="cf-round-display">0</div><div style="font-size:10px;text-align:center;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px">Rounds</div></div>
+            <button class="cf-round-btn" onclick="cfAdjustRounds(1)">+</button>
+          </div>
+          <!-- Rep counter (AMRAP) -->
+          <div id="cf-rep-counter" style="display:none;text-align:center;margin-bottom:12px">
+            <div style="font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">+ Extra Reps</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:16px">
+              <button class="cf-round-btn" style="width:38px;height:38px;font-size:18px" onclick="cfAdjustReps(-1)">−</button>
+              <span id="cf-rep-display" style="font-size:32px;font-weight:900;font-family:var(--mono);color:var(--text-primary);min-width:40px;text-align:center">0</span>
+              <button class="cf-round-btn" style="width:38px;height:38px;font-size:18px" onclick="cfAdjustReps(1)">+</button>
+            </div>
+          </div>
+          <!-- Controls -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
+            <button class="btn btn-primary" id="cf-timer-start-btn" onclick="cfToggleTimer()" style="grid-column:1/-1">Start</button>
+            <button class="btn btn-white" onclick="cfResetTimer()">Reset</button>
+            <button class="btn btn-ghost" onclick="cfLapTimer()" id="cf-lap-btn">Lap / Split</button>
+          </div>
+          <!-- Laps -->
+          <div id="cf-laps" style="display:none;margin-top:12px">
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px">Splits</div>
+            <div id="cf-lap-list" style="font-family:var(--mono);font-size:12.5px;color:var(--text-secondary)"></div>
+          </div>
+        </div><!-- end cf-timer-block -->
+
+        <!-- Step 3: Score + Save -->
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px">
           <div class="section-label" style="margin-bottom:10px">Log Score</div>
           <div class="field">
@@ -1355,7 +1491,8 @@ body.cf-mode .week-day-col.today.selected { border-color: var(--cf-green) !impor
             <label>Notes <span style="font-size:10px;color:var(--text-muted)">(optional)</span></label>
             <textarea id="cf-score-notes" rows="2" placeholder="How it felt, what you scaled..."></textarea>
           </div>
-          <button class="btn btn-primary btn-full" onclick="cfLogScore()">Save Score</button>
+          <button class="btn btn-primary btn-full" onclick="cfLogScore()" style="margin-bottom:8px">Save Score</button>
+          <button class="btn btn-ghost btn-full btn-sm" onclick="cfSaveLoggedWODToLibrary()">+ Save this WOD to Library</button>
         </div>
 
       </div>
@@ -1400,6 +1537,21 @@ body.cf-mode .week-day-col.today.selected { border-color: var(--cf-green) !impor
           <button class="wod-format-chip" onclick="cfSetLibFilter('duration','35+',this)">🏔 Grind</button>
         </div>
         <div id="cf-library-body"><div class="loading">Loading WOD library...</div></div>
+      </div>
+    </div>
+
+    <!-- CF: WOD HISTORY -->
+    <div class="view" id="view-cf-history">
+      <div class="view-header">
+        <div class="view-title">WOD History</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm cal-mode-btn active" id="cf-hist-by-wod-btn" onclick="cfSetHistView('by-wod',this)">By WOD</button>
+          <button class="btn btn-sm cal-mode-btn" id="cf-hist-by-date-btn" onclick="cfSetHistView('by-date',this)">By Date</button>
+        </div>
+      </div>
+      <div class="view-body pad-bottom">
+        <input id="cf-hist-search" placeholder="Search WODs..." oninput="cfRenderHistory()" style="margin-bottom:12px">
+        <div id="cf-history-body"><div class="loading">Loading...</div></div>
       </div>
     </div>
 
@@ -1465,6 +1617,7 @@ body.cf-mode .week-day-col.today.selected { border-color: var(--cf-green) !impor
         <button class="more-menu-item" onclick="nav('cf-track');closeMoreMenu()"><span>⏱</span>Track WOD</button>
         <button class="more-menu-item" onclick="nav('cf-library');closeMoreMenu()"><span>📋</span>WOD Library</button>
         <button class="more-menu-item" onclick="nav('cf-builder');closeMoreMenu()"><span>⚡</span>WOD Builder</button>
+        <button class="more-menu-item" onclick="nav('cf-history');closeMoreMenu()"><span>📊</span>WOD History</button>
         <div id="cf-more-coach" style="display:none">
           <button class="more-menu-item" onclick="nav('cf-athletes');closeMoreMenu()"><span>👥</span>WOD Athletes</button>
           <button class="more-menu-item" onclick="nav('cf-assign');closeMoreMenu()"><span>📤</span>Assign WOD</button>
@@ -9617,6 +9770,474 @@ function cfFsHandleTap(e) {
 }
 
 // ═══════════════════════════════════════════════════
+// ALLOY — WOD LOG BUILDER
+// ═══════════════════════════════════════════════════
+
+// Movement types for smart field detection
+const WLB_DISTANCE_MILES = ['run','sprint','jog','walk'];
+const WLB_DISTANCE_METERS = ['row','ski erg','bike erg','swim','farmers carry','sled','carry','push'];
+const WLB_CALORIES = ['air bike','assault bike','echo bike','bike','rower','ski'];
+
+let _wlbMovements = []; // [{name, reps, unit, weight, notes}]
+
+function wlbInit() {
+  _wlbMovements = [];
+  wlbRenderMovements();
+  wlbUpdateTimeParams(_cfCurrentFormat || 'For Time');
+}
+
+function wlbAddMovement(prefill) {
+  const emptyMsg = document.getElementById('wlb-movements-empty');
+  if (emptyMsg) emptyMsg.style.display = 'none';
+
+  const mv = prefill || { name:'', reps:'', unit:'reps', weight:'', notes:'' };
+  _wlbMovements.push(mv);
+  wlbRenderMovements();
+
+  // Focus the new name input
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('.wlb-mv-name');
+    const last = inputs[inputs.length - 1];
+    if (last) last.focus();
+  }, 50);
+}
+
+function wlbRemoveMovement(idx) {
+  _wlbMovements.splice(idx, 1);
+  wlbRenderMovements();
+  if (_wlbMovements.length === 0) {
+    const emptyMsg = document.getElementById('wlb-movements-empty');
+    if (emptyMsg) emptyMsg.style.display = '';
+  }
+}
+
+function wlbGetMovementType(name) {
+  const n = (name || '').toLowerCase();
+  if (WLB_DISTANCE_MILES.some(k => n.includes(k))) return 'miles';
+  if (WLB_DISTANCE_METERS.some(k => n.includes(k))) return 'meters';
+  if (WLB_CALORIES.some(k => n.includes(k))) return 'calories';
+  return 'reps';
+}
+
+function wlbRenderMovements() {
+  const container = document.getElementById('wlb-movements');
+  if (!container) return;
+
+  container.innerHTML = _wlbMovements.map((mv, idx) => {
+    const type = wlbGetMovementType(mv.name);
+    const unitLabel = type === 'miles' ? 'mi' : type === 'meters' ? 'm' : type === 'calories' ? 'cal' : 'reps';
+    const repPlaceholder = type === 'miles' ? '0.25' : type === 'meters' ? '200' : type === 'calories' ? '15' : '10';
+    const showWeight = type === 'reps' || type === 'meters';
+
+    return `<div class="wlb-movement-row" id="wlb-mv-${idx}" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <input class="wlb-mv-name" placeholder="Movement name..." value="${mv.name}"
+          oninput="_wlbMovements[${idx}].name=this.value;wlbUpdateMovementFields(${idx})"
+          style="flex:1;font-size:13px;font-weight:700">
+        <button onclick="wlbRemoveMovement(${idx})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0;flex-shrink:0">✕</button>
+      </div>
+      <div class="row" style="gap:8px" id="wlb-mv-fields-${idx}">
+        <div class="field" style="flex:1">
+          <label style="font-size:10px">${type === 'reps' ? 'Reps' : unitLabel.toUpperCase()}</label>
+          <input type="${type === 'miles' ? 'number' : 'text'}" placeholder="${repPlaceholder}"
+            value="${mv.reps}"
+            oninput="_wlbMovements[${idx}].reps=this.value"
+            style="font-family:var(--mono);font-size:15px;font-weight:700">
+        </div>
+        ${showWeight ? `<div class="field" style="flex:1">
+          <label style="font-size:10px">Weight (optional)</label>
+          <input placeholder="e.g. 135/95 lb" value="${mv.weight}"
+            oninput="_wlbMovements[${idx}].weight=this.value"
+            style="font-size:13px">
+        </div>` : ''}
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px" id="wlb-mv-presets-${idx}">
+        ${wlbGetPresets(type, idx)}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function wlbGetPresets(type, idx) {
+  if (type === 'miles') {
+    return ['0.25 mi','0.5 mi','1 mi'].map(v =>
+      `<button class="wod-format-chip" style="padding:2px 8px;font-size:10px" onclick="_wlbMovements[${idx}].reps='${v.split(' ')[0]}';wlbRenderMovements()">${v}</button>`
+    ).join('');
+  }
+  if (type === 'meters') {
+    return ['50m','100m','200m','400m','500m','1000m'].map(v =>
+      `<button class="wod-format-chip" style="padding:2px 8px;font-size:10px" onclick="_wlbMovements[${idx}].reps='${v}';wlbRenderMovements()">${v}</button>`
+    ).join('');
+  }
+  if (type === 'calories') {
+    return ['10','12','15','18','20','25'].map(v =>
+      `<button class="wod-format-chip" style="padding:2px 8px;font-size:10px" onclick="_wlbMovements[${idx}].reps='${v}';wlbRenderMovements()">${v} cal</button>`
+    ).join('');
+  }
+  return ['5','10','15','20','21'].map(v =>
+    `<button class="wod-format-chip" style="padding:2px 8px;font-size:10px" onclick="_wlbMovements[${idx}].reps='${v}';wlbRenderMovements()">${v}</button>`
+  ).join('');
+}
+
+function wlbUpdateMovementFields(idx) {
+  // Re-render just this movement's fields when name changes
+  const mv = _wlbMovements[idx];
+  if (!mv) return;
+  const type = wlbGetMovementType(mv.name);
+  const fieldsEl = document.getElementById(`wlb-mv-fields-${idx}`);
+  const presetsEl = document.getElementById(`wlb-mv-presets-${idx}`);
+  if (!fieldsEl || !presetsEl) return;
+
+  const unitLabel = type === 'miles' ? 'mi' : type === 'meters' ? 'm' : type === 'calories' ? 'cal' : 'reps';
+  const repPlaceholder = type === 'miles' ? '0.25' : type === 'meters' ? '200' : type === 'calories' ? '15' : '10';
+  const showWeight = type === 'reps' || type === 'meters';
+
+  fieldsEl.innerHTML = `
+    <div class="field" style="flex:1">
+      <label style="font-size:10px">${type === 'reps' ? 'Reps' : unitLabel.toUpperCase()}</label>
+      <input type="${type === 'miles' ? 'number' : 'text'}" placeholder="${repPlaceholder}"
+        value="${mv.reps}"
+        oninput="_wlbMovements[${idx}].reps=this.value"
+        style="font-family:var(--mono);font-size:15px;font-weight:700">
+    </div>
+    ${showWeight ? `<div class="field" style="flex:1">
+      <label style="font-size:10px">Weight (optional)</label>
+      <input placeholder="e.g. 135/95 lb" value="${mv.weight}"
+        oninput="_wlbMovements[${idx}].weight=this.value"
+        style="font-size:13px">
+    </div>` : ''}`;
+
+  presetsEl.innerHTML = wlbGetPresets(type, idx);
+}
+
+function wlbUpdateTimeParams(format) {
+  const container = document.getElementById('wlb-time-params');
+  if (!container) return;
+
+  if (['For Quality','Heavy'].includes(format)) {
+    container.innerHTML = '';
+    return;
+  }
+
+  if (format === 'AMRAP') {
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted)">Duration</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('amrap',-1);document.getElementById('wlb-amrap-display').textContent=_cfSetup.amrapMin+' min'">−</button>
+          <span id="wlb-amrap-display" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:60px;text-align:center">${_cfSetup?.amrapMin||18} min</span>
+          <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('amrap',1);document.getElementById('wlb-amrap-display').textContent=_cfSetup.amrapMin+' min'">+</button>
+        </div>
+      </div>`;
+  } else if (format === 'EMOM') {
+    container.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div style="text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px">Total (min)</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+            <button class="cf-round-btn" style="width:28px;height:28px;font-size:13px" onclick="cfAdjustSetup('emom-total',-1);wlbSyncEmom()">−</button>
+            <span id="wlb-emom-total" style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:36px;text-align:center">${_cfSetup?.emomTotal||20}</span>
+            <button class="cf-round-btn" style="width:28px;height:28px;font-size:13px" onclick="cfAdjustSetup('emom-total',1);wlbSyncEmom()">+</button>
+          </div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px">Interval (min)</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+            <button class="cf-round-btn" style="width:28px;height:28px;font-size:13px" onclick="cfAdjustSetup('emom-interval',-1);wlbSyncEmom()">−</button>
+            <span id="wlb-emom-interval" style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:36px;text-align:center">${_cfSetup?.emomInterval||1}</span>
+            <button class="cf-round-btn" style="width:28px;height:28px;font-size:13px" onclick="cfAdjustSetup('emom-interval',1);wlbSyncEmom()">+</button>
+          </div>
+        </div>
+      </div>
+      <div id="wlb-emom-summary" style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:6px">${Math.floor((_cfSetup?.emomTotal||20)/(_cfSetup?.emomInterval||1))} rounds · every ${_cfSetup?.emomInterval||1} min</div>`;
+  } else if (['For Time','Chipper','Partner'].includes(format)) {
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted)">Time Cap</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('cap',-1);wlbSyncCap()">−</button>
+          <span id="wlb-cap-display" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:70px;text-align:center">${(_cfSetup?.capEnabled?(_cfSetup?.capMin||20)+' min':'No cap')}</span>
+          <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('cap',1);wlbSyncCap()">+</button>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="cfToggleCap();wlbSyncCap()">${_cfSetup?.capEnabled?'Remove Cap':'Add Cap'}</button>
+      </div>`;
+  } else if (format === 'Tabata') {
+    container.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center">
+        <div>
+          <div style="font-size:9px;font-weight:700;color:var(--cf-green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Work</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:4px">
+            <button class="cf-round-btn" style="width:26px;height:26px;font-size:12px" onclick="cfAdjustSetup('tabata-work',-5);wlbSyncTabata()">−</button>
+            <span id="wlb-tab-work" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:32px;text-align:center">${_cfSetup?.tabataWork||20}s</span>
+            <button class="cf-round-btn" style="width:26px;height:26px;font-size:12px" onclick="cfAdjustSetup('tabata-work',5);wlbSyncTabata()">+</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Rest</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:4px">
+            <button class="cf-round-btn" style="width:26px;height:26px;font-size:12px" onclick="cfAdjustSetup('tabata-rest',-5);wlbSyncTabata()">−</button>
+            <span id="wlb-tab-rest" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--text-muted);min-width:32px;text-align:center">${_cfSetup?.tabataRest||10}s</span>
+            <button class="cf-round-btn" style="width:26px;height:26px;font-size:12px" onclick="cfAdjustSetup('tabata-rest',5);wlbSyncTabata()">+</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Rounds</div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:4px">
+            <button class="cf-round-btn" style="width:26px;height:26px;font-size:12px" onclick="cfAdjustSetup('tabata-rounds',-1);wlbSyncTabata()">−</button>
+            <span id="wlb-tab-rounds" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--text-primary);min-width:32px;text-align:center">${_cfSetup?.tabataRounds||8}</span>
+            <button class="cf-round-btn" style="width:26px;height:26px;font-size:12px" onclick="cfAdjustSetup('tabata-rounds',1);wlbSyncTabata()">+</button>
+          </div>
+        </div>
+      </div>`;
+  }
+}
+
+function wlbSyncEmom() {
+  const total = _cfSetup?.emomTotal||20, interval = _cfSetup?.emomInterval||1;
+  const totalEl = document.getElementById('wlb-emom-total');
+  const intEl = document.getElementById('wlb-emom-interval');
+  const sumEl = document.getElementById('wlb-emom-summary');
+  if (totalEl) totalEl.textContent = total;
+  if (intEl) intEl.textContent = interval;
+  if (sumEl) sumEl.textContent = `${Math.floor(total/interval)} rounds · every ${interval} min`;
+}
+function wlbSyncCap() {
+  const el = document.getElementById('wlb-cap-display');
+  const btn = el?.nextElementSibling;
+  if (el) el.textContent = _cfSetup?.capEnabled ? (_cfSetup?.capMin||20)+' min' : 'No cap';
+  if (btn) btn.textContent = _cfSetup?.capEnabled ? 'Remove Cap' : 'Add Cap';
+}
+function wlbSyncTabata() {
+  const w = document.getElementById('wlb-tab-work');
+  const r = document.getElementById('wlb-tab-rest');
+  const rn = document.getElementById('wlb-tab-rounds');
+  if (w) w.textContent = (_cfSetup?.tabataWork||20)+'s';
+  if (r) r.textContent = (_cfSetup?.tabataRest||10)+'s';
+  if (rn) rn.textContent = _cfSetup?.tabataRounds||8;
+}
+
+// Override cfSelectFormat to also update wlb time params
+const _origCfSelectFormat = cfSelectFormat;
+function cfSelectFormat(format, btn) {
+  _origCfSelectFormat(format, btn);
+  wlbUpdateTimeParams(format);
+}
+
+// Save the built WOD to library
+function cfSaveLoggedWODToLibrary() {
+  const name = document.getElementById('cf-score-wod')?.value?.trim();
+  if (!name) { toast('Name the WOD first in the Log Score section'); return; }
+
+  // Build WOD object from current state
+  const movements = _wlbMovements.map(mv => ({
+    name: mv.name,
+    reps: mv.reps,
+    detail: mv.weight || ''
+  })).filter(mv => mv.name);
+
+  let description = '';
+  if (_cfCurrentFormat === 'AMRAP') description = `${_cfSetup?.amrapMin||18} min AMRAP`;
+  else if (_cfCurrentFormat === 'EMOM') description = `${_cfSetup?.emomTotal||20} min EMOM every ${_cfSetup?.emomInterval||1} min`;
+  else if (['For Time','Chipper','Partner'].includes(_cfCurrentFormat)) {
+    description = _cfSetup?.capEnabled ? `${_cfSetup?.capMin} min cap` : 'For Time';
+  } else description = _cfCurrentFormat;
+
+  let cap = '';
+  if (_cfSetup?.capEnabled && ['For Time','Chipper','Partner'].includes(_cfCurrentFormat)) {
+    cap = `${_cfSetup.capMin} min cap`;
+  }
+
+  const wod = {
+    user_id: currentUser.id,
+    name,
+    format: _cfCurrentFormat,
+    cap,
+    description,
+    movements,
+    notes: document.getElementById('cf-score-notes')?.value?.trim() || '',
+    created_at: new Date().toISOString()
+  };
+
+  db('cf_wods','POST',wod).then(saved => {
+    if (saved?.[0]) _cfWODs.unshift(saved[0]);
+    else _cfWODs.unshift({...wod, id: Date.now().toString()});
+    toast(`"${name}" saved to WOD Library ✓`);
+  }).catch(() => {
+    _cfWODs.unshift({...wod, id: Date.now().toString(), _local: true});
+    toast(`"${name}" saved locally ✓`);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// ALLOY — WOD HISTORY
+// ═══════════════════════════════════════════════════
+
+let _cfHistView = 'by-wod'; // 'by-wod' | 'by-date'
+
+function cfSetHistView(view, btn) {
+  _cfHistView = view;
+  document.getElementById('cf-hist-by-wod-btn')?.classList.toggle('active', view==='by-wod');
+  document.getElementById('cf-hist-by-date-btn')?.classList.toggle('active', view==='by-date');
+  cfRenderHistory();
+}
+
+async function cfRenderHistory() {
+  const body = document.getElementById('cf-history-body');
+  if (!body) return;
+  body.innerHTML = '<div class="loading">Loading...</div>';
+
+  try {
+    const scores = await db('cf_scores','GET',null,
+      `?user_id=eq.${currentUser.id}&select=*&order=logged_at.desc&limit=300`
+    ).catch(() => []);
+
+    const q = (document.getElementById('cf-hist-search')?.value||'').toLowerCase();
+    let filtered = (scores||[]);
+    if (q) filtered = filtered.filter(s =>
+      s.wod_name?.toLowerCase().includes(q) ||
+      s.format?.toLowerCase().includes(q)
+    );
+
+    if (!filtered.length) {
+      body.innerHTML = `<div class="empty-state"><span class="emo">📊</span><h3>No WOD history yet</h3><p>Log a WOD score to start tracking your progress.</p><button class="btn btn-primary btn-sm" onclick="nav('cf-track')">Track a WOD</button></div>`;
+      return;
+    }
+
+    if (_cfHistView === 'by-date') {
+      cfRenderHistByDate(body, filtered);
+    } else {
+      cfRenderHistByWOD(body, filtered);
+    }
+  } catch(e) {
+    body.innerHTML = '<div class="error-msg">Could not load history</div>';
+    console.error(e);
+  }
+}
+
+function cfRenderHistByDate(body, scores) {
+  body.innerHTML = scores.map(s => {
+    const d = new Date(s.logged_at);
+    const dateLabel = d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+    return `<div class="cf-score-item" style="flex-direction:column;align-items:stretch;gap:6px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div class="cf-score-wod">${s.wod_name}</div>
+          <div class="cf-score-meta">${dateLabel} · ${s.format||'WOD'}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="cf-score-value">${s.score}</div>
+          <span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3);font-size:10px">${s.rx_scaled||'RX'}</span>
+        </div>
+      </div>
+      ${s.notes?`<div style="font-size:11.5px;color:var(--text-muted);font-style:italic">"${s.notes}"</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function cfRenderHistByWOD(body, scores) {
+  // Group by WOD name
+  const groups = {};
+  scores.forEach(s => {
+    if (!groups[s.wod_name]) groups[s.wod_name] = [];
+    groups[s.wod_name].push(s);
+  });
+
+  // Sort groups by most recent attempt
+  const sorted = Object.entries(groups).sort((a,b) =>
+    new Date(b[1][0].logged_at) - new Date(a[1][0].logged_at)
+  );
+
+  body.innerHTML = sorted.map(([wodName, attempts]) => {
+    const isForTime = attempts[0]?.format && ['For Time','Chipper','Partner'].includes(attempts[0].format);
+    const isAMRAP = attempts[0]?.format === 'AMRAP';
+
+    // Detect improvement
+    const getImprovement = (curr, prev) => {
+      if (!curr || !prev) return null;
+      // For Time: lower is better
+      if (isForTime) {
+        const parseTime = t => {
+          if (!t) return null;
+          const parts = t.split(':');
+          if (parts.length === 2) return parseInt(parts[0])*60 + parseInt(parts[1]);
+          return null;
+        };
+        const c = parseTime(curr), p = parseTime(prev);
+        if (c && p) return c < p ? 'better' : c > p ? 'worse' : 'same';
+      }
+      // AMRAP: higher is better
+      if (isAMRAP) {
+        const parseRounds = t => {
+          if (!t) return null;
+          const m = t.match(/^(\d+)(?:\+(\d+))?/);
+          return m ? parseInt(m[1])*100 + (parseInt(m[2])||0) : null;
+        };
+        const c = parseRounds(curr), p = parseRounds(prev);
+        if (c && p) return c > p ? 'better' : c < p ? 'worse' : 'same';
+      }
+      return null;
+    };
+
+    const attemptsHtml = attempts.map((s, i) => {
+      const d = new Date(s.logged_at);
+      const dateLabel = d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});
+      const improvement = i < attempts.length-1 ? getImprovement(s.score, attempts[i+1].score) : null;
+      const improveBadge = improvement === 'better'
+        ? `<span style="color:var(--cf-green);font-size:11px;font-weight:800">▲ PR</span>`
+        : improvement === 'worse'
+        ? `<span style="color:var(--red);font-size:11px;font-weight:700">▼</span>`
+        : '';
+
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-size:12px;color:var(--text-muted)">${dateLabel}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${s.rx_scaled||'RX'}${s.notes?` · "${s.notes.slice(0,30)}"`:''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${improveBadge}
+          <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">${s.score}</div>
+          <button class="btn btn-danger btn-xs" onclick="cfDeleteScoreFromHist('${s.id}','${wodName}')">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Best score
+    const best = attempts.reduce((b, s) => {
+      if (!b) return s;
+      const imp = getImprovement(s.score, b.score);
+      return imp === 'better' ? s : b;
+    }, null);
+
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:10px">
+      <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:15px;font-weight:900;text-transform:uppercase;letter-spacing:.2px">${wodName}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${attempts[0]?.format||'WOD'} · ${attempts.length} attempt${attempts.length!==1?'s':''}</div>
+        </div>
+        ${best?`<div style="text-align:right"><div style="font-size:10px;font-weight:700;color:var(--cf-green);text-transform:uppercase;letter-spacing:.5px">Best</div><div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">${best.score}</div></div>`:''}
+      </div>
+      <div style="padding:0 14px">${attemptsHtml}</div>
+      <div style="padding:10px 14px">
+        <button class="btn btn-primary btn-sm btn-full" onclick="cfPreFillTrack('${wodName}')">Do this WOD again</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function cfDeleteScoreFromHist(id, wodName) {
+  if (!confirm('Delete this score?')) return;
+  try {
+    await db('cf_scores','DELETE',null,`?id=eq.${id}`).catch(()=>{});
+    _cfScores = _cfScores.filter(s => String(s.id) !== String(id));
+    cfRenderHistory();
+    toast('Deleted');
+  } catch(e) { toast('Delete failed'); }
+}
+
+// Auto-init WOD log builder when Track view opens
+const _origNavCFTrack = nav;
+
+// ═══════════════════════════════════════════════════
 // ALLOY — CF CALENDAR
 // ═══════════════════════════════════════════════════
 
@@ -10227,7 +10848,7 @@ function alloySwitchMode(mode) {
 
 // ── Extend nav() to handle CF views ──
 function nav(view, btn) {
-  const cfViews = ['cf-dashboard','cf-track','cf-library','cf-athletes','cf-assign','cf-builder'];
+  const cfViews = ['cf-dashboard','cf-track','cf-library','cf-athletes','cf-assign','cf-builder','cf-history'];
   if (cfViews.includes(view)) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     const el = document.getElementById('view-' + view);
@@ -10240,9 +10861,10 @@ function nav(view, btn) {
     if (view === 'cf-dashboard') cfRenderDashboard();
     if (view === 'cf-library')   { cfRenderLibrary(); cfPopulateWODSuggestions(); }
     if (view === 'cf-athletes')  cfRenderAthletes();
-    if (view === 'cf-track')     cfPopulateWODSuggestions();
+    if (view === 'cf-track')     { cfPopulateWODSuggestions(); wlbInit(); }
     if (view === 'cf-assign')    cfRenderAssignWOD();
     if (view === 'cf-builder')   cfRenderWODBuilder();
+    if (view === 'cf-history')   cfRenderHistory();
     return;
   }
   // Lift-side views + shared views (settings, help, builder, etc.)
