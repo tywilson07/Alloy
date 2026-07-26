@@ -682,6 +682,20 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
 .cf-score-meta { font-size:11.5px; color:var(--text-muted); }
 .cf-score-wod { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.2px; }
 
+/* ── CF MODE CALENDAR COLOR OVERRIDES ── */
+body.cf-mode .cal-cell.today { background: var(--cf-green-dim); }
+body.cf-mode .cal-cell.selected { outline: 2px solid var(--cf-green); outline-offset: -2px; background: var(--cf-green-dim); }
+body.cf-mode .cal-cell.today .cal-day-num { color: var(--cf-green); font-weight: 900; }
+body.cf-mode .week-strip-day.today .week-strip-num { background: var(--cf-green); color: #0d0d0d; }
+body.cf-mode .week-strip-day.selected { border-color: var(--cf-green); background: var(--cf-green-dim); }
+body.cf-mode .week-strip-dot.logged { background: var(--cf-green) !important; }
+body.cf-mode .day-panel-header { border-bottom-color: var(--cf-green-dim); }
+body.cf-mode #cf-view-month-btn.active,
+body.cf-mode #cf-view-week-btn.active { background: var(--cf-green); color: #0d0d0d; }
+body.cf-mode .cal-mode-btn.active { background: var(--cf-green); color: #0d0d0d; }
+body.cf-mode .week-day-col.today .week-day-num { color: var(--cf-green); }
+body.cf-mode .week-day-col.selected { border-color: var(--cf-green); background: var(--cf-green-dim); }
+
 /* ── FULLSCREEN TV TIMER ── */
 #cf-fullscreen-timer{display:none;position:fixed;inset:0;background:#0d0d0d;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer}
 #cf-fullscreen-timer.active{display:flex}
@@ -1421,6 +1435,7 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
         <button class="more-menu-item" onclick="nav('cf-dashboard');closeMoreMenu()"><span>🏠</span>WODs</button>
         <button class="more-menu-item" onclick="nav('cf-track');closeMoreMenu()"><span>⏱</span>Track WOD</button>
         <button class="more-menu-item" onclick="nav('cf-library');closeMoreMenu()"><span>📋</span>WOD Library</button>
+        <button class="more-menu-item" onclick="nav('cf-builder');closeMoreMenu()"><span>⚡</span>WOD Builder</button>
         <div id="cf-more-coach" style="display:none">
           <button class="more-menu-item" onclick="nav('cf-athletes');closeMoreMenu()"><span>👥</span>WOD Athletes</button>
           <button class="more-menu-item" onclick="nav('cf-assign');closeMoreMenu()"><span>📤</span>Assign WOD</button>
@@ -9787,7 +9802,7 @@ function cfRenderDayPanel(ds) {
     </div>
     <div class="day-panel-body">${bodyHtml}</div>
     <div class="day-panel-footer">
-      <button class="btn btn-primary btn-full btn-sm" onclick="cfPreFillTrackDate('${ds}')">+ Log WOD for this day</button>
+      <button class="btn btn-primary btn-full btn-sm" onclick="cfPreFillTrackDate('${ds}')">+ Log WOD for this day →</button>
     </div>`;
 }
 
@@ -9816,13 +9831,136 @@ function cfPreFillTrack(wodName) {
 }
 
 function cfPreFillTrackDate(ds) {
-  nav('cf-track');
-  // Store the date so when score is saved it goes to the right date
+  // Store the date
   window._cfLogDate = ds;
+  // Open WOD picker instead of going straight to timer
+  cfOpenWODPicker(ds);
+}
+
+function cfOpenWODPicker(ds) {
+  const d = new Date(ds+'T12:00:00');
+  const label = d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+
+  // Build WOD options from library + benchmarks
+  const allWODs = [
+    ...CF_BENCHMARKS,
+    ..._cfWODs
+  ];
+
+  const wodOptions = allWODs.map(w => `
+    <div class="wod-picker-item" onclick="cfPickWOD('${ds}', ${JSON.stringify(w).replace(/"/g,'&quot;')})">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.2px">${w.name}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${w.format||''}${w.cap?' · '+w.cap:''}</div>
+        </div>
+        <div style="color:var(--cf-green);font-size:18px">›</div>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('modal-title').textContent = `Log WOD — ${label}`;
+  document.getElementById('modal-body').innerHTML = `
+    <div style="margin-bottom:12px">
+      <div class="field">
+        <label>Search or type WOD name</label>
+        <input id="wod-picker-search" placeholder="e.g. HAUL, Fran, or custom name..."
+          oninput="cfFilterWODPicker(this.value,'${ds}')"
+          autocomplete="off">
+      </div>
+    </div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px">Your Library & Benchmarks</div>
+    <div id="wod-picker-list" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">
+      ${wodOptions}
+      <div id="wod-picker-custom" style="display:none">
+        <div class="wod-picker-item" id="wod-picker-custom-btn" style="border-style:dashed">
+          <div style="text-align:center;color:var(--cf-green);font-size:13px;font-weight:700">
+            + Log as custom WOD
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>`;
+
+  // Add WOD picker styles if not already present
+  if (!document.getElementById('wod-picker-style')) {
+    const style = document.createElement('style');
+    style.id = 'wod-picker-style';
+    style.textContent = \`
+      .wod-picker-item {
+        background: var(--surface2);
+        border: 1.5px solid var(--border);
+        border-radius: var(--radius);
+        padding: 10px 13px;
+        cursor: pointer;
+        transition: all 0.12s;
+      }
+      .wod-picker-item:hover, .wod-picker-item:active {
+        border-color: var(--cf-green);
+        background: var(--cf-green-dim);
+      }
+    \`;
+    document.head.appendChild(style);
+  }
+
+  showModal();
+
+  // Focus search after modal opens
+  setTimeout(() => {
+    document.getElementById('wod-picker-search')?.focus();
+  }, 200);
+}
+
+function cfFilterWODPicker(query, ds) {
+  const q = query.toLowerCase().trim();
+  const allWODs = [...CF_BENCHMARKS, ..._cfWODs];
+  const filtered = q ? allWODs.filter(w =>
+    w.name?.toLowerCase().includes(q) ||
+    w.format?.toLowerCase().includes(q)
+  ) : allWODs;
+
+  const list = document.getElementById('wod-picker-list');
+  const customBtn = document.getElementById('wod-picker-custom');
+  if (!list) return;
+
+  const wodItems = filtered.map(w => `
+    <div class="wod-picker-item" onclick="cfPickWOD('${ds}', ${JSON.stringify(w).replace(/"/g,'&quot;')})">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.2px">${w.name}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${w.format||''}${w.cap?' · '+w.cap:''}</div>
+        </div>
+        <div style="color:var(--cf-green);font-size:18px">›</div>
+      </div>
+    </div>`).join('');
+
+  list.innerHTML = wodItems + `<div id="wod-picker-custom" style="${q ? '' : 'display:none'}">
+    <div class="wod-picker-item" style="border-style:dashed;margin-top:4px"
+      onclick="cfPickCustomWOD('${ds}', '${query}')">
+      <div style="text-align:center;color:var(--cf-green);font-size:13px;font-weight:700">
+        + Log "${query}" as a custom WOD
+      </div>
+    </div>
+  </div>`;
+}
+
+function cfPickWOD(ds, wod) {
+  closeModal();
+  // Store date and WOD name
+  window._cfLogDate = ds;
+  // Load the WOD into the track page with timer pre-configured
+  cfLoadWODToTrack(wod);
+}
+
+function cfPickCustomWOD(ds, name) {
+  closeModal();
+  window._cfLogDate = ds;
+  nav('cf-track');
   setTimeout(() => {
     const el = document.getElementById('cf-score-wod');
-    if (el) el.focus();
-  }, 100);
+    if (el) { el.value = name; el.focus(); }
+  }, 150);
 }
 
 // Override cfRenderDashboard to use calendar
