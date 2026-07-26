@@ -715,7 +715,9 @@ body.cf-mode #cf-view-month-btn.active,
 body.cf-mode #cf-view-week-btn.active { background: var(--cf-green) !important; color: #0d0d0d !important; }
 body.cf-mode .cal-mode-btn.active { background: var(--cf-green) !important; color: #0d0d0d !important; }
 body.cf-mode .week-day-col.today .week-day-num { color: var(--cf-green) !important; }
+body.cf-mode .week-day-col.today { border-color: var(--cf-green) !important; background: var(--cf-green-dim) !important; }
 body.cf-mode .week-day-col.selected { border-color: var(--cf-green) !important; background: var(--cf-green-dim) !important; }
+body.cf-mode .week-day-col.today.selected { border-color: var(--cf-green) !important; outline: 2px solid var(--cf-green) !important; }
 
 /* ── FULLSCREEN TV TIMER ── */
 #cf-fullscreen-timer{display:none;position:fixed;inset:0;background:#0d0d0d;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer}
@@ -1430,9 +1432,8 @@ body.cf-mode .week-day-col.selected { border-color: var(--cf-green) !important; 
     <!-- LIFT MODE BOTTOM NAV -->
     <button class="bnav-btn lift-bnav" style="display:none" onclick="nav('calendar',this)"><span class="bnav-icon">📅</span>Calendar</button>
     <button class="bnav-btn lift-bnav" style="display:none" onclick="nav('programs',this)"><span class="bnav-icon">📋</span>Programs</button>
-    <button class="bnav-btn lift-bnav" style="display:none" onclick="nav('history',this)"><span class="bnav-icon">📖</span>History</button>
     <button class="bnav-btn lift-bnav" style="display:none" onclick="nav('maxes',this)"><span class="bnav-icon">🏆</span>PRs</button>
-    <button class="bnav-btn lift-bnav" style="display:none" onclick="nav('progress',this)"><span class="bnav-icon">📈</span>Progress</button>
+    <button class="bnav-btn lift-bnav" style="display:none" onclick="nav('builder',this)"><span class="bnav-icon">🏗️</span>Builder</button>
     <button class="bnav-btn lift-bnav" style="display:none" onclick="toggleMoreMenu()" id="more-nav-btn"><span class="bnav-icon">☰</span>More</button>
       <!-- CF MODE BOTTOM NAV (hidden by default) -->
     <button class="bnav-btn cf-bnav" onclick="navToCalendar(this)"><span class="bnav-icon">📅</span>Calendar</button>
@@ -1472,6 +1473,8 @@ body.cf-mode .week-day-col.selected { border-color: var(--cf-green) !important; 
       <!-- LIFT SECTION — always visible -->
       <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">Lift Mode</div>
       <button class="more-menu-item" onclick="alloySwitchMode('lift');nav('builder');closeMoreMenu()"><span>🏗️</span>Workout Builder</button>
+      <button class="more-menu-item" onclick="alloySwitchMode('lift');nav('history');closeMoreMenu()"><span>📖</span>History</button>
+      <button class="more-menu-item" onclick="alloySwitchMode('lift');nav('progress');closeMoreMenu()"><span>📈</span>Progress</button>
       <button class="more-menu-item" onclick="alloySwitchMode('lift');nav('templates');closeMoreMenu()"><span>📁</span>Templates</button>
       <div id="more-menu-coach" style="display:none">
         <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)">Lift Coaching</div>
@@ -2226,7 +2229,7 @@ function buildWeekView() {
       <div class="week-day-header">
         <div class="week-day-dow">${dows[d.getDay()]}</div>
         <div class="week-day-num ${isToday?'':''}">
-          ${isToday?`<div style="background:var(--orange);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">${d.getDate()}</div>`:d.getDate()}
+          ${isToday?`<div style="background:${_cfMode?'var(--cf-green)':' var(--orange)'};color:${_cfMode?'#0d0d0d':'#fff'};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">${d.getDate()}</div>`:d.getDate()}
         </div>
       </div>
       <div class="week-day-body">${chips}</div>
@@ -7375,7 +7378,7 @@ function buildAthleteWeekView() {
     html += `<div class="week-day-col ${isToday?'today':''} ${isSelected?'selected':''}" onclick="selectAthleteDay('${ds}')">
       <div class="week-day-header">
         <div class="week-day-dow">${dows[d.getDay()]}</div>
-        <div class="week-day-num">${isToday?`<div style="background:var(--orange);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">${d.getDate()}</div>`:d.getDate()}</div>
+        <div class="week-day-num">${isToday?`<div style="background:${_cfMode?'var(--cf-green)':' var(--orange)'};color:${_cfMode?'#0d0d0d':'#fff'};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">${d.getDate()}</div>`:d.getDate()}</div>
       </div>
       <div class="week-day-body">${chips}</div>
     </div>`;
