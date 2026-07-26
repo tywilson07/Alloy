@@ -1194,8 +1194,6 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             <button class="wod-format-chip" onclick="cfSelectFormat('For Quality',this)">For Quality</button>
             <button class="wod-format-chip" onclick="cfSelectFormat('Heavy',this)">Heavy</button>
           </div>
-          <!-- Time parameters — shown based on format -->
-          <div id="wlb-time-params"></div>
         </div>
 
         <!-- Step 2: Movements -->
@@ -10027,12 +10025,7 @@ function wlbSyncTabata() {
   if (rn) rn.textContent = _cfSetup?.tabataRounds||8;
 }
 
-// Override cfSelectFormat to also update wlb time params
-const _origCfSelectFormat = cfSelectFormat;
-function cfSelectFormat(format, btn) {
-  _origCfSelectFormat(format, btn);
-  wlbUpdateTimeParams(format);
-}
+// cfSelectFormat handles timer setup panels directly (see timer JS above)
 
 // Save the built WOD to library
 function cfSaveLoggedWODToLibrary() {
