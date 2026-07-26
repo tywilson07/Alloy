@@ -1367,15 +1367,35 @@ body.cf-mode .week-day-col.selected { border-color: var(--cf-green) !important; 
       </div>
       <div class="view-body pad-bottom">
         <input id="cf-library-search" placeholder="Search WODs..." oninput="cfRenderLibrary()" style="margin-bottom:10px">
+        <!-- Format filters -->
         <div class="wod-format-chips" id="cf-lib-filter-chips">
-          <button class="wod-format-chip active" onclick="cfSetLibFilter('All',this)">All</button>
-          <button class="wod-format-chip" onclick="cfSetLibFilter('For Time',this)">For Time</button>
-          <button class="wod-format-chip" onclick="cfSetLibFilter('AMRAP',this)">AMRAP</button>
-          <button class="wod-format-chip" onclick="cfSetLibFilter('EMOM',this)">EMOM</button>
-          <button class="wod-format-chip" onclick="cfSetLibFilter('Partner',this)">Partner</button>
-          <button class="wod-format-chip" onclick="cfSetLibFilter('For Quality',this)">For Quality</button>
-          <button class="wod-format-chip" onclick="cfSetLibFilter('Heavy',this)">Heavy</button>
-          <button class="wod-format-chip" onclick="cfSetLibFilter('Benchmark',this)">Benchmarks</button>
+          <button class="wod-format-chip active" onclick="cfSetLibFilter('format','All',this)">All</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('format','For Time',this)">For Time</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('format','AMRAP',this)">AMRAP</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('format','EMOM',this)">EMOM</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('format','Chipper',this)">Chipper</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('format','Partner',this)">Partner</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('format','For Quality',this)">For Quality</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('format','Heavy',this)">Heavy</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('format','Benchmark',this)">Benchmarks</button>
+        </div>
+        <!-- Difficulty filters -->
+        <div class="wod-format-chips" id="cf-lib-difficulty-chips" style="margin-top:4px">
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);align-self:center;margin-right:4px">Level:</span>
+          <button class="wod-format-chip active" onclick="cfSetLibFilter('difficulty','All',this)">Any</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('difficulty','Beginner',this)">🌱 Beginner</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('difficulty','Intermediate',this)">🔥 Intermediate</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('difficulty','Advanced',this)">⚡ Advanced</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('difficulty','RX',this)">🏆 RX</button>
+        </div>
+        <!-- Duration filters -->
+        <div class="wod-format-chips" id="cf-lib-duration-chips" style="margin-top:4px">
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);align-self:center;margin-right:4px">Length:</span>
+          <button class="wod-format-chip active" onclick="cfSetLibFilter('duration','All',this)">Any</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('duration','5-10',this)">⚡ Short</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('duration','12-20',this)">🔥 Medium</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('duration','20-35',this)">💪 Long</button>
+          <button class="wod-format-chip" onclick="cfSetLibFilter('duration','35+',this)">🏔 Grind</button>
         </div>
         <div id="cf-library-body"><div class="loading">Loading WOD library...</div></div>
       </div>
@@ -9349,6 +9369,9 @@ async function cfSaveBuiltWOD(wod) {
     scaling: wod.scaling || '',
     notes: wod.notes || '',
     tag: 'AI Generated',
+    difficulty: _cfBuilderState.difficulty || '',
+    duration_bucket: _cfBuilderState.duration || '',
+    equipment: _cfBuilderState.equipment || [],
     created_at: new Date().toISOString()
   };
   try {
@@ -10008,7 +10031,7 @@ let _cfLapTimes = [];
 let _cfLastLapSeconds = 0;
 let _cfWODs = [];
 let _cfScores = [];
-let _cfLibFilter = 'All';
+let _cfLibFilter = { format: 'All', difficulty: 'All', duration: 'All' };
 
 // ── Built-in benchmarks ──
 const CF_BENCHMARKS = [
@@ -10234,7 +10257,14 @@ function cfRenderFeaturedWOD() {
           <button class="btn btn-ghost btn-sm" onclick="nav('cf-library')">Library</button>
         </div>
       </div>
-      <div class="wod-card-body">${movHtml}</div>
+      <div class="wod-card-body">
+        ${movHtml}
+        ${featured.difficulty || featured.duration_bucket ? 
+          '<div style="display:flex;gap:5px;margin-top:8px">' +
+          (featured.difficulty ? '<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30">'+featured.difficulty+'</span>' : '') +
+          (featured.duration_bucket ? '<span class="pill" style="background:var(--surface2);color:var(--text-muted)">'+cfDurationLabel(featured.duration_bucket)+'</span>' : '') +
+          '</div>' : ''}
+      </div>
     </div>`;
 }
 
@@ -10699,9 +10729,23 @@ async function cfDeleteScore(id) {
 }
 
 // ── WOD Library ──
-function cfSetLibFilter(filter, btn) {
-  _cfLibFilter = filter;
-  document.querySelectorAll('#cf-lib-filter-chips .wod-format-chip').forEach(b=>b.classList.remove('active'));
+function cfDurationLabel(bucket) {
+  const map = {'5-10':'⚡ Short','12-20':'🔥 Medium','20-35':'💪 Long','35+':'🏔 Grind'};
+  return map[bucket] || bucket;
+}
+
+function cfSetLibFilter(dimension, value, btn) {
+  _cfLibFilter[dimension] = value;
+  // Sync active state for the right chip group
+  const chipGroupIds = {
+    format: 'cf-lib-filter-chips',
+    difficulty: 'cf-lib-difficulty-chips',
+    duration: 'cf-lib-duration-chips'
+  };
+  const groupId = chipGroupIds[dimension];
+  if (groupId) {
+    document.querySelectorAll('#' + groupId + ' .wod-format-chip').forEach(b => b.classList.remove('active'));
+  }
   if (btn) btn.classList.add('active');
   cfRenderLibrary();
 }
@@ -10714,18 +10758,34 @@ function cfRenderLibrary() {
     ..._cfWODs.map(w=>({...w,_user:true})),
     ...CF_BENCHMARKS.map(b=>({...b,_benchmark:true}))
   ];
-  // Filter
-  if (_cfLibFilter === 'Benchmark') {
+
+  // Format filter
+  const fFmt = _cfLibFilter.format;
+  if (fFmt === 'Benchmark') {
     all = all.filter(w=>w._benchmark || w.tag==='Benchmark');
-  } else if (_cfLibFilter !== 'All') {
-    all = all.filter(w=>(w.format||'').includes(_cfLibFilter));
+  } else if (fFmt !== 'All') {
+    all = all.filter(w=>(w.format||'').includes(fFmt));
   }
+
+  // Difficulty filter
+  const fDiff = _cfLibFilter.difficulty;
+  if (fDiff !== 'All') {
+    all = all.filter(w => !w.difficulty || w.difficulty === fDiff);
+  }
+
+  // Duration filter
+  const fDur = _cfLibFilter.duration;
+  if (fDur !== 'All') {
+    all = all.filter(w => !w.duration_bucket || w.duration_bucket === fDur);
+  }
+
   // Search
   if (q) {
     all = all.filter(w=>
       (w.name||'').toLowerCase().includes(q) ||
       (w.format||'').toLowerCase().includes(q) ||
-      (w.description||'').toLowerCase().includes(q)
+      (w.description||'').toLowerCase().includes(q) ||
+      (w.difficulty||'').toLowerCase().includes(q)
     );
   }
   if (!all.length) {
@@ -10756,7 +10816,11 @@ function cfRenderLibrary() {
         ${movHtml}
         ${extra>0?`<div style="font-size:11px;color:var(--text-muted);margin-top:3px">+${extra} more</div>`:''}
         ${w.notes?`<div style="font-size:11.5px;color:var(--text-muted);margin-top:6px;font-style:italic">${w.notes}</div>`:''}
-        ${w._benchmark?'<span class="pill pill-amber" style="margin-top:6px;display:inline-flex">Benchmark</span>':''}
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
+          ${w._benchmark?'<span class="pill pill-amber">Benchmark</span>':''}
+          ${w.difficulty?'<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30">'+w.difficulty+'</span>':''}
+          ${w.duration_bucket?'<span class="pill" style="background:var(--surface2);color:var(--text-muted)">'+cfDurationLabel(w.duration_bucket)+'</span>':''}
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -10878,6 +10942,26 @@ function cfOpenBuildWOD() {
       <div class="field"><label>Time Cap (min)</label>
         <input id="cf-wod-cap" type="number" placeholder="20"></div>
     </div>
+    <div class="row">
+      <div class="field"><label>Difficulty</label>
+        <select id="cf-wod-difficulty">
+          <option value="">-- Select --</option>
+          <option value="Beginner">Beginner</option>
+          <option value="Intermediate">Intermediate</option>
+          <option value="Advanced">Advanced</option>
+          <option value="RX">RX</option>
+        </select>
+      </div>
+      <div class="field"><label>Length</label>
+        <select id="cf-wod-duration">
+          <option value="">-- Select --</option>
+          <option value="5-10">Short (5-10 min)</option>
+          <option value="12-20">Medium (12-20 min)</option>
+          <option value="20-35">Long (20-35 min)</option>
+          <option value="35+">Grind (35+ min)</option>
+        </select>
+      </div>
+    </div>
     <div class="field"><label>Description <span style="font-size:10px;color:var(--text-muted)">(e.g. "3 Rounds for Time")</span></label>
       <input id="cf-wod-desc" placeholder="e.g. 21-15-9"></div>
     <div class="field"><label>Movements <span style="font-size:10px;color:var(--text-muted)">(one per line: reps movement weight)</span></label>
@@ -10902,12 +10986,14 @@ async function cfSaveWOD() {
   const movementsRaw = document.getElementById('cf-wod-movements')?.value?.trim() || '';
   const scaling = document.getElementById('cf-wod-scaling')?.value?.trim() || '';
   const notes = document.getElementById('cf-wod-notes')?.value?.trim() || '';
+  const difficulty = document.getElementById('cf-wod-difficulty')?.value || '';
+  const duration_bucket = document.getElementById('cf-wod-duration')?.value || '';
   const movements = movementsRaw.split('\n').filter(l=>l.trim()).map(line=>{
     const match = line.trim().match(/^(\d+\/\d+|\d+)\s+(.+)$/);
     if (match) return {reps:match[1], name:match[2], detail:''};
     return {reps:'', name:line.trim(), detail:''};
   });
-  const payload = {user_id:currentUser.id, name, format, cap, description, movements, scaling, notes, created_at:new Date().toISOString()};
+  const payload = {user_id:currentUser.id, name, format, cap, description, movements, scaling, notes, difficulty, duration_bucket, created_at:new Date().toISOString()};
   try {
     const saved = await db('cf_wods','POST',payload);
     if (saved?.[0]) _cfWODs.unshift(saved[0]);
