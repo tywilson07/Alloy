@@ -701,6 +701,46 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
 #cf-fullscreen-timer:hover .fs-exit-btn{opacity:1}
 .fs-exit-btn:hover{color:#fff;background:rgba(255,255,255,.15)}
 .fs-progress-bar{position:fixed;bottom:0;left:0;height:clamp(3px,.5vw,6px);background:#39d353;transition:width 1s linear;border-radius:0 999px 999px 0}
+
+/* Fixed mode pill — mobile only, always left of More */
+#fixed-mode-pill {
+  display: none;
+  position: fixed;
+  bottom: calc(var(--bnav-h, 64px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 150;
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 999px;
+  padding: 3px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+@media (max-width: 768px) {
+  #fixed-mode-pill { display: flex; }
+}
+#fixed-mode-pill .fp-btn {
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: none;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #555;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+#fixed-mode-pill .fp-btn.lift-on { background: var(--orange); color: #fff; }
+#fixed-mode-pill .fp-btn.cf-on   { background: #39d353; color: #0d0d0d; }
+
 .cf-fullscreen-btn{position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:1}
 .cf-fullscreen-btn:hover{color:var(--cf-green);border-color:var(--cf-green)}
 
@@ -1047,9 +1087,9 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
       <div class="cal-view-body">
         <div class="cal-main-col">
           <!-- Week strip -->
-          <div class="week-strip" id="cf-week-strip"></div>
+          <div class="week-strip" id="cf-week-strip" style="display:none"></div>
           <!-- Month view -->
-          <div id="cf-month-view">
+          <div id="cf-month-view" style="display:none">
             <div class="cal-wrap">
               <div class="cal-dow-row">
                 <div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div>
@@ -1060,7 +1100,7 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
             </div>
           </div>
           <!-- Week view -->
-          <div id="cf-week-view" style="display:none">
+          <div id="cf-week-view">
             <div id="cf-week-grid"></div>
           </div>
         </div>
@@ -1341,16 +1381,6 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
     <button class="bnav-btn cf-bnav" onclick="nav('cf-track',this)"><span class="bnav-icon">⏱</span>Track</button>
     <button class="bnav-btn cf-bnav" onclick="nav('cf-library',this)"><span class="bnav-icon">📋</span>Library</button>
     <button class="bnav-btn cf-bnav" onclick="nav('cf-athletes',this)" id="cf-bnav-athletes"><span class="bnav-icon">👥</span>Athletes</button>
-    <!-- Inline mode switch pill in bottom nav -->
-    <div id="bnav-mode-pill" style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:4px 0;gap:2px">
-      <div style="display:flex;background:#1a1a1a;border:1px solid #333;border-radius:999px;padding:2px;gap:1px">
-        <button id="bnav-lift-btn" class="alloy-mode-btn lift-on" style="padding:3px 10px;font-size:9px;border-radius:999px" onclick="alloySwitchMode('lift')">⚡</button>
-        <button id="bnav-cf-btn" class="alloy-mode-btn" style="padding:3px 8px;font-size:9px;border-radius:999px;display:flex;align-items:center;gap:2px" onclick="alloySwitchMode('cf')">
-          <svg width="9" height="9" viewBox="0 0 100 100" fill="none"><path d="M50 18 L16 46 L24 46 L50 26 L76 46 L84 46 Z" fill="currentColor"/><path d="M50 40 L22 68 L30 68 L50 52 L70 68 L78 68 Z" fill="currentColor" opacity=".6"/></svg>
-        </button>
-      </div>
-      <span style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555">Mode</span>
-    </div>
     <button class="bnav-btn cf-bnav" onclick="toggleMoreMenu()" id="cf-more-nav-btn"><span class="bnav-icon">☰</span>More</button>
   </nav>
 
@@ -1697,11 +1727,11 @@ function enterApp() {
   const moreCfBtn   = document.getElementById('more-mode-btn-cf');
   if (moreLiftBtn) { moreLiftBtn.classList.toggle('lift-on', _initMode === 'lift'); moreLiftBtn.classList.toggle('cf-on', false); }
   if (moreCfBtn)   { moreCfBtn.classList.toggle('cf-on', _initMode === 'cf');       moreCfBtn.classList.toggle('lift-on', false); }
-  // Init bnav pill
-  const _bnavLift = document.getElementById('bnav-lift-btn');
-  const _bnavCf   = document.getElementById('bnav-cf-btn');
-  if (_bnavLift) { _bnavLift.classList.toggle('lift-on', _initMode === 'lift'); _bnavLift.classList.remove('cf-on'); }
-  if (_bnavCf)   { _bnavCf.classList.toggle('cf-on', _initMode === 'cf');       _bnavCf.classList.remove('lift-on'); }
+  // Init fixed mode pill
+  const _fpLift = document.getElementById('fp-lift-btn');
+  const _fpCf   = document.getElementById('fp-cf-btn');
+  if (_fpLift) { _fpLift.classList.toggle('lift-on', _initMode === 'lift'); _fpLift.classList.remove('cf-on'); }
+  if (_fpCf)   { _fpCf.classList.toggle('cf-on', _initMode === 'cf');       _fpCf.classList.remove('lift-on'); }
   setTimeout(() => {
     alloySwitchMode(_initMode);
   }, 50);
@@ -9907,14 +9937,11 @@ function alloySwitchMode(mode) {
   const moreCfBtn   = document.getElementById('more-mode-btn-cf');
   if (moreLiftBtn) { moreLiftBtn.classList.toggle('lift-on', !_cfMode); moreLiftBtn.classList.remove('cf-on'); }
   if (moreCfBtn)   { moreCfBtn.classList.toggle('cf-on', _cfMode);      moreCfBtn.classList.remove('lift-on'); }
-  // Sync inline bottom nav pill
-  const bnavLift = document.getElementById('bnav-lift-btn');
-  const bnavCf   = document.getElementById('bnav-cf-btn');
-  if (bnavLift) { bnavLift.classList.toggle('lift-on', !_cfMode); bnavLift.classList.remove('cf-on'); }
-  if (bnavCf)   { bnavCf.classList.toggle('cf-on', _cfMode);      bnavCf.classList.remove('lift-on'); }
-  // Show/hide the pill itself (always visible on mobile regardless of mode)
-  const bnavPill = document.getElementById('bnav-mode-pill');
-  if (bnavPill) bnavPill.style.display = 'flex';
+  // Sync fixed mode pill
+  const fpLift = document.getElementById('fp-lift-btn');
+  const fpCf   = document.getElementById('fp-cf-btn');
+  if (fpLift) { fpLift.classList.toggle('lift-on', !_cfMode); fpLift.classList.remove('cf-on'); }
+  if (fpCf)   { fpCf.classList.toggle('cf-on', _cfMode);      fpCf.classList.remove('lift-on'); }
 
   // Toggle sidebar navs
   const liftNav = document.getElementById('lift-sidebar-nav');
@@ -10873,6 +10900,15 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
     </div>
   </div>
 
+
+  <!-- Fixed mode toggle pill — mobile, always centered above bottom nav -->
+  <div id="fixed-mode-pill">
+    <button id="fp-lift-btn" class="fp-btn lift-on" onclick="alloySwitchMode('lift')">⚡ Lift</button>
+    <button id="fp-cf-btn" class="fp-btn" onclick="alloySwitchMode('cf')">
+      <svg width="10" height="10" viewBox="0 0 100 100" fill="none"><path d="M50 18 L16 46 L24 46 L50 26 L76 46 L84 46 Z" fill="currentColor"/><path d="M50 40 L22 68 L30 68 L50 52 L70 68 L78 68 Z" fill="currentColor" opacity=".6"/></svg>
+      WOD
+    </button>
+  </div>
 
 </body>
 </html>
