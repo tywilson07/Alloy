@@ -996,20 +996,54 @@ body.cf-mode textarea:focus { border-color: var(--cf-green); }
          ALLOY — CROSSFIT MODE VIEWS
     ════════════════════════════════════════ -->
 
-    <!-- CF: DASHBOARD -->
+    <!-- CF: CALENDAR DASHBOARD -->
     <div class="view" id="view-cf-dashboard">
-      <div class="view-header">
-        <div class="view-title" style="display:flex;align-items:center;gap:8px">
-          <svg width="20" height="20" viewBox="0 0 100 100" fill="none"><path d="M50 18 L16 46 L24 46 L50 26 L76 46 L84 46 Z" fill="#39d353"/><path d="M50 40 L22 68 L30 68 L50 52 L70 68 L78 68 Z" fill="#fff"/><path d="M37,57 L50,64 L63,57 L63,61 L50,68 L37,61 Z" fill="#39d353"/></svg>
-          WODs
+      <div class="view-header" style="flex-direction:column;align-items:stretch;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="font-size:17px;font-weight:800;letter-spacing:-.5px" id="cf-cal-month-title"></div>
+            <div style="display:flex;gap:4px">
+              <button class="btn btn-white btn-icon" onclick="cfShiftCal(-1)">&#8249;</button>
+              <button class="btn btn-white btn-sm" onclick="cfGoToday()">Today</button>
+              <button class="btn btn-white btn-icon" onclick="cfShiftCal(1)">&#8250;</button>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="nav('cf-track')">+ Track WOD</button>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="nav('cf-track')">+ Track WOD</button>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:3px;border:1px solid var(--border)">
+            <button id="cf-view-month-btn" class="btn btn-sm cal-mode-btn active" onclick="cfSetCalView('month')">Month</button>
+            <button id="cf-view-week-btn" class="btn btn-sm cal-mode-btn" onclick="cfSetCalView('week')">Week</button>
+          </div>
+        </div>
       </div>
-      <div class="view-body pad-bottom">
-        <div id="cf-featured-wod"></div>
-        <div class="section-label" style="margin-top:16px">Recent Scores</div>
-        <div id="cf-recent-scores">
-          <div class="empty-state"><span class="emo">🏋️</span><h3>No scores yet</h3><p>Track a WOD to see your scores here.</p></div>
+      <div class="cal-view-body">
+        <div class="cal-main-col">
+          <!-- Week strip -->
+          <div class="week-strip" id="cf-week-strip"></div>
+          <!-- Month view -->
+          <div id="cf-month-view">
+            <div class="cal-wrap">
+              <div class="cal-dow-row">
+                <div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div>
+                <div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div>
+                <div class="cal-dow">Sat</div>
+              </div>
+              <div class="cal-grid" id="cf-cal-grid"></div>
+            </div>
+          </div>
+          <!-- Week view -->
+          <div id="cf-week-view" style="display:none">
+            <div id="cf-week-grid"></div>
+          </div>
+        </div>
+        <!-- Day panel -->
+        <div class="cal-side-col">
+          <div id="cf-day-panel">
+            <div class="day-panel-body">
+              <p style="color:var(--gray-400);font-size:13px;text-align:center;padding:20px 0">Select a day</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -8843,6 +8877,346 @@ if(saved){
 }
 
 // ═══════════════════════════════════════════════════
+// ALLOY — CF CALENDAR
+// ═══════════════════════════════════════════════════
+
+let _cfCalYear  = new Date().getFullYear();
+let _cfCalMonth = new Date().getMonth();
+let _cfCalView  = 'month'; // 'month' | 'week'
+let _cfCalWeekStart = null;
+let _cfSelectedDate = cfTodayStr();
+let _cfCalScores = {}; // {date: [score,...]}
+let _cfCalAssigned = {}; // {date: [assignment,...]}
+
+function cfTodayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function cfDateStr(y,m,d) {
+  return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+
+async function cfRenderCalendar() {
+  const title = document.getElementById('cf-cal-month-title');
+  if (title) title.textContent = `${MONTHS[_cfCalMonth]} ${_cfCalYear}`;
+
+  // Load scores and assigned WODs for this month
+  try {
+    const startDate = cfDateStr(_cfCalYear, _cfCalMonth, 1);
+    const endDate   = cfDateStr(_cfCalYear, _cfCalMonth, new Date(_cfCalYear, _cfCalMonth+1, 0).getDate());
+    const queryStart = (() => { const d = new Date(startDate+'T12:00:00'); d.setDate(d.getDate()-6); return d.toISOString().slice(0,10); })();
+    const queryEnd   = (() => { const d = new Date(endDate+'T12:00:00');   d.setDate(d.getDate()+6); return d.toISOString().slice(0,10); })();
+
+    const [scores, assigned] = await Promise.all([
+      db('cf_scores','GET',null,`?user_id=eq.${currentUser.id}&logged_at=gte.${queryStart}T00:00:00&logged_at=lte.${queryEnd}T23:59:59&select=*`).catch(()=>[]),
+      db('workout_assignments','GET',null,`?assigned_to=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[])
+    ]);
+
+    _cfCalScores = {};
+    (scores||[]).forEach(s => {
+      const date = s.logged_at?.slice(0,10);
+      if (!date) return;
+      if (!_cfCalScores[date]) _cfCalScores[date] = [];
+      _cfCalScores[date].push(s);
+    });
+
+    _cfCalAssigned = {};
+    (assigned||[]).forEach(a => {
+      if (!_cfCalAssigned[a.date]) _cfCalAssigned[a.date] = [];
+      _cfCalAssigned[a.date].push(a);
+    });
+  } catch(e) { console.error('CF calendar load error', e); }
+
+  cfUpdateCalHeader();
+  if (_cfCalView === 'week') {
+    cfBuildWeekView();
+  } else {
+    cfBuildCalGrid();
+    cfBuildWeekStrip();
+  }
+  cfRenderDayPanel(_cfSelectedDate);
+}
+
+function cfUpdateCalHeader() {
+  const hdr = document.getElementById('cf-cal-month-title');
+  if (!hdr) return;
+  if (_cfCalView === 'week' && _cfCalWeekStart) {
+    const start = new Date(_cfCalWeekStart+'T12:00:00');
+    const end   = new Date(_cfCalWeekStart+'T12:00:00');
+    end.setDate(end.getDate()+6);
+    hdr.textContent = `${start.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${end.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
+  } else {
+    hdr.textContent = `${MONTHS[_cfCalMonth]} ${_cfCalYear}`;
+  }
+}
+
+function cfSetCalView(view) {
+  _cfCalView = view;
+  document.getElementById('cf-view-month-btn')?.classList.toggle('active', view==='month');
+  document.getElementById('cf-view-week-btn')?.classList.toggle('active', view==='week');
+  document.getElementById('cf-month-view').style.display  = view==='month' ? '' : 'none';
+  document.getElementById('cf-week-view').style.display   = view==='week'  ? '' : 'none';
+  document.getElementById('cf-week-strip').style.display  = view==='month' ? '' : 'none';
+  if (view === 'week') {
+    const d = new Date(_cfSelectedDate+'T12:00:00');
+    d.setDate(d.getDate() - d.getDay());
+    _cfCalWeekStart = d.toISOString().slice(0,10);
+    cfBuildWeekView();
+  } else {
+    cfBuildCalGrid();
+    cfBuildWeekStrip();
+  }
+  cfUpdateCalHeader();
+}
+
+function cfShiftCal(delta) {
+  if (_cfCalView === 'week') {
+    const d = new Date(_cfCalWeekStart+'T12:00:00');
+    d.setDate(d.getDate() + delta*7);
+    _cfCalWeekStart = d.toISOString().slice(0,10);
+    _cfCalYear = d.getFullYear();
+    _cfCalMonth = d.getMonth();
+  } else {
+    _cfCalMonth += delta;
+    if (_cfCalMonth < 0)  { _cfCalMonth = 11; _cfCalYear--; }
+    if (_cfCalMonth > 11) { _cfCalMonth = 0;  _cfCalYear++; }
+  }
+  cfRenderCalendar();
+}
+
+function cfGoToday() {
+  const n = new Date();
+  _cfCalYear = n.getFullYear();
+  _cfCalMonth = n.getMonth();
+  _cfSelectedDate = cfTodayStr();
+  if (_cfCalView === 'week') {
+    const d = new Date(_cfSelectedDate+'T12:00:00');
+    d.setDate(d.getDate() - d.getDay());
+    _cfCalWeekStart = d.toISOString().slice(0,10);
+    cfBuildWeekView();
+    cfUpdateCalHeader();
+  } else {
+    cfRenderCalendar();
+  }
+}
+
+function cfGetCellDots(ds) {
+  const scores  = _cfCalScores[ds]  || [];
+  const assigned = _cfCalAssigned[ds] || [];
+  let html = '';
+  scores.forEach(s => {
+    const isPR = s.notes?.toLowerCase().includes('pr') || s.rx_scaled === 'RX+';
+    const dotClass = isPR ? 'cf-cal-dot-pr' : 'cf-cal-dot-score';
+    html += `<span class="cal-workout-dot ${dotClass}">✓ ${s.wod_name}</span>`;
+  });
+  if (!scores.length) {
+    assigned.forEach(a => {
+      html += `<span class="cal-workout-dot cf-cal-dot-planned">· ${a.workout_name}</span>`;
+    });
+  }
+  return html;
+}
+
+function cfBuildCalGrid() {
+  const grid = document.getElementById('cf-cal-grid');
+  if (!grid) return;
+  const today    = cfTodayStr();
+  const firstDow = new Date(_cfCalYear, _cfCalMonth, 1).getDay();
+  const daysInMonth = new Date(_cfCalYear, _cfCalMonth+1, 0).getDate();
+  const daysInPrev  = new Date(_cfCalYear, _cfCalMonth, 0).getDate();
+  const totalCells  = Math.ceil((firstDow + daysInMonth) / 7) * 7;
+  let cells = '';
+  for (let i = 0; i < totalCells; i++) {
+    let day, year=_cfCalYear, month=_cfCalMonth, otherMonth=false;
+    if (i < firstDow) {
+      day = daysInPrev - firstDow + i + 1; month--; if(month<0){month=11;year--;} otherMonth=true;
+    } else if (i >= firstDow+daysInMonth) {
+      day = i - firstDow - daysInMonth + 1; month++; if(month>11){month=0;year++;} otherMonth=true;
+    } else { day = i - firstDow + 1; }
+    const ds = cfDateStr(year,month,day);
+    const isToday = ds===today, isSel = ds===_cfSelectedDate;
+    cells += `<div class="cal-cell ${otherMonth?'other-month':''} ${isToday?'today':''} ${isSel?'selected':''}"
+      onclick="cfSelectDay('${ds}')">
+      <div class="cal-day-num">${day}</div>
+      ${cfGetCellDots(ds)}
+    </div>`;
+  }
+  grid.innerHTML = cells;
+}
+
+function cfBuildWeekStrip() {
+  const strip = document.getElementById('cf-week-strip');
+  if (!strip) return;
+  const today = cfTodayStr();
+  const now   = new Date();
+  const sundayOffset = now.getDay();
+  const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  let html = '';
+  for (let i = 0; i < 7; i++) {
+    const d  = new Date(now.getFullYear(), now.getMonth(), now.getDate() - sundayOffset + i);
+    const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const isToday = ds===today, isSel = ds===_cfSelectedDate;
+    const scores   = _cfCalScores[ds]  || [];
+    const assigned = _cfCalAssigned[ds] || [];
+    let dotClass = 'empty';
+    if (scores.length)   dotClass = 'logged';
+    else if (assigned.length) dotClass = 'assigned';
+    html += `<div class="week-strip-day ${isToday?'today':''} ${isSel?'selected':''}" onclick="cfSelectDay('${ds}')">
+      <div class="week-strip-dow">${DAYS_SHORT[i]}</div>
+      <div class="week-strip-num">${d.getDate()}</div>
+      <div class="week-strip-dot ${dotClass}" style="${dotClass==='logged'?'background:var(--cf-green)':dotClass==='assigned'?'background:var(--purple)':''}"></div>
+    </div>`;
+  }
+  strip.innerHTML = html;
+}
+
+function cfBuildWeekView() {
+  const grid = document.getElementById('cf-week-grid');
+  if (!grid || !_cfCalWeekStart) return;
+  const today = cfTodayStr();
+  const DOWS  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  let html = '<div class="week-view-grid">';
+  for (let i = 0; i < 7; i++) {
+    const d  = new Date(_cfCalWeekStart+'T12:00:00');
+    d.setDate(d.getDate()+i);
+    const ds = d.toISOString().slice(0,10);
+    const isToday = ds===today, isSel = ds===_cfSelectedDate;
+    const scores   = _cfCalScores[ds]  || [];
+    const assigned = _cfCalAssigned[ds] || [];
+    let chips = '';
+    scores.forEach(s => {
+      chips += `<div class="week-workout-chip" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30">✓ ${s.wod_name} <span style="font-family:var(--mono);font-size:10px">${s.score}</span></div>`;
+    });
+    if (!scores.length) {
+      assigned.forEach(a => {
+        chips += `<div class="week-workout-chip" style="background:var(--purple-light);color:var(--purple)">· ${a.workout_name}</div>`;
+      });
+    }
+    if (!chips) chips = `<div class="week-day-empty">Rest</div>`;
+    html += `<div class="week-day-col ${isToday?'today':''} ${isSel?'selected':''}" onclick="cfSelectDay('${ds}')">
+      <div class="week-day-header">
+        <div class="week-day-dow">${DOWS[d.getDay()]}</div>
+        <div class="week-day-num">${isToday?`<div style="background:var(--cf-green);color:#0d0d0d;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">${d.getDate()}</div>`:d.getDate()}</div>
+      </div>
+      <div class="week-day-body">${chips}</div>
+    </div>`;
+  }
+  html += '</div>';
+  grid.innerHTML = html;
+  cfRenderDayPanel(_cfSelectedDate);
+}
+
+function cfSelectDay(ds) {
+  _cfSelectedDate = ds;
+  if (_cfCalView === 'week') {
+    cfBuildWeekView();
+  } else {
+    cfBuildCalGrid();
+    cfBuildWeekStrip();
+    cfRenderDayPanel(ds);
+  }
+}
+
+function cfRenderDayPanel(ds) {
+  const panel = document.getElementById('cf-day-panel');
+  if (!panel) return;
+  const d = new Date(ds+'T12:00:00');
+  const label = d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const scores   = _cfCalScores[ds]  || [];
+  const assigned = _cfCalAssigned[ds] || [];
+  let bodyHtml = '';
+
+  // Logged scores
+  scores.forEach(s => {
+    const isPR = s.notes?.toLowerCase().includes('pr') || s.rx_scaled === 'RX+';
+    bodyHtml += `<div style="background:var(--surface2);border:1.5px solid ${isPR?'#FFB800':'var(--cf-green)'};border-radius:var(--radius);padding:11px 13px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.2px">${s.wod_name}</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${isPR?'<span class="pill pill-amber" style="font-size:10px">🏆 PR</span>':''}
+          <span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);font-size:10px">${s.rx_scaled||'RX'}</span>
+          <button class="btn btn-danger btn-xs" onclick="cfDeleteScoreFromCal('${s.id}','${ds}')">✕</button>
+        </div>
+      </div>
+      <div style="font-size:24px;font-weight:900;font-family:var(--mono);color:var(--cf-green);margin-bottom:4px">${s.score}</div>
+      <div style="font-size:11px;color:var(--text-muted)">${s.format||'WOD'}</div>
+      ${s.notes?`<div style="font-size:12px;color:var(--text-secondary);margin-top:6px;font-style:italic;padding:6px 8px;background:var(--surface);border-radius:5px">"${s.notes}"</div>`:''}
+    </div>`;
+  });
+
+  // Assigned WODs (not yet logged)
+  if (!scores.length) {
+    assigned.forEach(a => {
+      bodyHtml += `<div style="background:var(--purple-light);border:1.5px solid #C4B5FD;border-radius:var(--radius);padding:11px 13px;margin-bottom:8px">
+        <div style="font-size:10px;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px">📤 Assigned WOD</div>
+        <div style="font-size:13px;font-weight:900;text-transform:uppercase">${a.workout_name}</div>
+        ${a.notes?`<div style="font-size:12px;color:var(--text-secondary);margin-top:4px">${a.notes}</div>`:''}
+        <button class="btn btn-sm" style="margin-top:8px;background:var(--purple);color:#fff" onclick="cfPreFillTrack('${a.workout_name}')">Log This WOD</button>
+      </div>`;
+    });
+  }
+
+  if (!bodyHtml) {
+    bodyHtml = `<div style="padding:16px 0;text-align:center;color:var(--gray-400);font-size:12.5px">Rest day — no WODs logged.</div>`;
+  }
+
+  panel.innerHTML = `
+    <div class="day-panel-header">
+      <div class="day-panel-date">${label}</div>
+      ${scores.length?`<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30">✓ ${scores.length} WOD${scores.length!==1?'s':''}</span>`:''}
+    </div>
+    <div class="day-panel-body">${bodyHtml}</div>
+    <div class="day-panel-footer">
+      <button class="btn btn-primary btn-full btn-sm" onclick="cfPreFillTrackDate('${ds}')">+ Log WOD for this day</button>
+    </div>`;
+}
+
+async function cfDeleteScoreFromCal(id, ds) {
+  if (!confirm('Delete this score?')) return;
+  try {
+    await db('cf_scores','DELETE',null,`?id=eq.${id}`).catch(()=>{});
+    _cfScores = _cfScores.filter(s=>String(s.id)!==String(id));
+    // Remove from calendar cache
+    if (_cfCalScores[ds]) {
+      _cfCalScores[ds] = _cfCalScores[ds].filter(s=>String(s.id)!==String(id));
+    }
+    cfRenderDayPanel(ds);
+    if (_cfCalView==='week') cfBuildWeekView();
+    else { cfBuildCalGrid(); cfBuildWeekStrip(); }
+    toast('Score deleted');
+  } catch(e) { toast('Delete failed'); }
+}
+
+function cfPreFillTrack(wodName) {
+  nav('cf-track');
+  setTimeout(() => {
+    const el = document.getElementById('cf-score-wod');
+    if (el) el.value = wodName;
+  }, 100);
+}
+
+function cfPreFillTrackDate(ds) {
+  nav('cf-track');
+  // Store the date so when score is saved it goes to the right date
+  window._cfLogDate = ds;
+  setTimeout(() => {
+    const el = document.getElementById('cf-score-wod');
+    if (el) el.focus();
+  }, 100);
+}
+
+// Override cfRenderDashboard to use calendar
+function cfRenderDashboard() {
+  // Init week start if not set
+  if (!_cfCalWeekStart) {
+    const d = new Date();
+    d.setDate(d.getDate() - d.getDay());
+    _cfCalWeekStart = d.toISOString().slice(0,10);
+  }
+  cfRenderCalendar();
+}
+
+// ═══════════════════════════════════════════════════
 // ALLOY — CROSSFIT MODE
 // Built on the Notch engine. All CF code below.
 // ═══════════════════════════════════════════════════
@@ -9222,6 +9596,15 @@ async function cfLogScore() {
   document.getElementById('cf-score-notes').value = '';
   cfResetTimer();
   toast(`${wodName} — ${score} ${rx} saved ✓`);
+  // Refresh calendar cache so new score shows immediately
+  const logDate = window._cfLogDate || new Date().toISOString().slice(0,10);
+  window._cfLogDate = null;
+  if (!_cfCalScores[logDate]) _cfCalScores[logDate] = [];
+  _cfCalScores[logDate].unshift({
+    id: Date.now().toString(), user_id: currentUser?.id,
+    wod_name: wodName, score, format: _cfCurrentFormat,
+    rx_scaled: rx, notes, logged_at: new Date().toISOString()
+  });
   setTimeout(()=>{ nav('cf-dashboard'); }, 500);
 }
 
