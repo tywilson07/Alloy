@@ -12498,8 +12498,7 @@ function cfToggleCap() {
 
 // ── Format selection ──
 function cfSelectFormat(format, btn) {
-  try {
-    _cfCurrentFormat = format;
+  _cfCurrentFormat = format;
     document.querySelectorAll('.wod-format-chip').forEach(b=>b.classList.remove('active'));
     if (btn) btn.classList.add('active');
   
@@ -12566,8 +12565,6 @@ function cfSelectFormat(format, btn) {
     if (format === 'Tabata') cfUpdateTabataSummary();
   
     cfResetTimer();
-  
-  } catch(e) { console.error("cfSelectFormat ERROR:", e.message, e.stack); }
 }
 
 // ── Timer core ──
@@ -12827,22 +12824,7 @@ function cfFormatScoreInput(input) {
   }
 }
 
-// Update score hint when format changes
-const _origCfSelectFormat2 = cfSelectFormat;
-function cfSelectFormat(format, btn) {
-  _origCfSelectFormat2(format, btn);
-  const hint = document.getElementById('cf-score-format-hint');
-  const input = document.getElementById('cf-score-value');
-  if (!hint || !input) return;
-  const hintMap = {
-    'For Time': 'MM:SS', 'Chipper': 'MM:SS', 'Partner': 'MM:SS',
-    'AMRAP': 'rounds+reps e.g. 9+4', 'EMOM': 'rounds completed',
-    'Tabata': 'total reps', 'Heavy': 'weight e.g. 225 lb',
-    'For Quality': 'description or Complete'
-  };
-  hint.textContent = hintMap[format] || '';
-  input.value = ''; // clear on format change
-}
+// Score hint update now merged into main cfSelectFormat below
 
 function cfSetFeel(feel, btn) {
   document.getElementById('cf-score-feel').value = feel;
