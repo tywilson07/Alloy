@@ -1225,6 +1225,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             <button class="wod-format-chip" onclick="cfSelectFormat('Partner',this)">Partner</button>
             <button class="wod-format-chip" onclick="cfSelectFormat('For Quality',this)">For Quality</button>
             <button class="wod-format-chip" onclick="cfSelectFormat('Heavy',this)">Heavy</button>
+            <button class="wod-format-chip" onclick="cfSelectFormat('Intervals',this)">Intervals</button>
           </div>
         </div>
 
@@ -1241,7 +1242,49 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             <div id="wlb-emom-stations-empty" style="font-size:12.5px;color:var(--text-muted);padding:8px 0;text-align:center">Add stations — each station is one minute of work</div>
             <div style="font-size:11px;color:var(--text-muted);margin-top:8px;padding:8px;background:var(--surface2);border-radius:var(--radius)">💡 Stations cycle in order. e.g. 20 min EMOM with 4 stations = 5 rounds through each.</div>
           </div>
-          <!-- Regular structure (hidden in EMOM) -->
+          <!-- Intervals Builder -->
+          <div id="wlb-interval-builder" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div class="section-label" style="margin:0;color:var(--cf-green)">Intervals</div>
+              <button class="btn btn-ghost btn-sm" onclick="wlbAddInterval()">+ Add Interval</button>
+            </div>
+            <!-- Rest between intervals -->
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius);margin-bottom:10px">
+              <div style="font-size:11px;font-weight:700;color:var(--text-muted);white-space:nowrap">Rest between</div>
+              <div style="display:flex;gap:5px;flex-wrap:wrap">
+                <button class="wod-format-chip" id="rest-0"   onclick="wlbSetIntervalRest(0)"   style="padding:2px 8px;font-size:10px">None</button>
+                <button class="wod-format-chip" id="rest-60"  onclick="wlbSetIntervalRest(60)"  style="padding:2px 8px;font-size:10px">1 min</button>
+                <button class="wod-format-chip" id="rest-120" onclick="wlbSetIntervalRest(120)" style="padding:2px 8px;font-size:10px">2 min</button>
+                <button class="wod-format-chip active" id="rest-240" onclick="wlbSetIntervalRest(240)" style="padding:2px 8px;font-size:10px">4 min</button>
+                <button class="wod-format-chip" id="rest-300" onclick="wlbSetIntervalRest(300)" style="padding:2px 8px;font-size:10px">5 min</button>
+                <button class="wod-format-chip" id="rest-600" onclick="wlbSetIntervalRest(600)" style="padding:2px 8px;font-size:10px">10 min</button>
+              </div>
+            </div>
+            <div id="wlb-intervals-list" style="display:flex;flex-direction:column;gap:8px"></div>
+          </div>
+
+          <!-- Heavy Builder -->
+          <div id="wlb-heavy-builder" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div class="section-label" style="margin:0;color:var(--cf-green)">Movement</div>
+            </div>
+            <!-- Movement name (single for heavy) -->
+            <div style="margin-bottom:10px">
+              <input id="wlb-heavy-movement" placeholder="Movement name (e.g. Power Clean)" autocomplete="off"
+                oninput="_wlbHeavyMovement=this.value;wlbUpdatePreview();wlbShowHeavySuggestions(this)"
+                style="width:100%;font-size:14px;font-weight:700">
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted)">Sets</div>
+              <button class="btn btn-ghost btn-sm" onclick="wlbAddHeavySet()">+ Add Set</button>
+            </div>
+            <div id="wlb-heavy-sets" style="display:flex;flex-direction:column;gap:6px"></div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:8px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius)">
+              💡 Leave weight blank to fill in after — great for max-out days
+            </div>
+          </div>
+
+          <!-- Regular structure (hidden in special modes) -->
           <div id="wlb-regular-builder">
           <!-- Rounds row -->
           <div id="wlb-rounds-row" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)">
@@ -1434,6 +1477,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             <button class="btn btn-primary" id="cf-timer-start-btn" onclick="cfTimerStartOrPause()" style="grid-column:1/-1">Start</button>
             <button class="btn btn-white" onclick="cfResetTimer()">Reset</button>
             <button class="btn btn-ghost" onclick="cfLapTimer()" id="cf-lap-btn">Lap / Split</button>
+            <button class="btn btn-primary" id="cf-next-interval-btn" onclick="cfEndIntervalWork()" style="display:none;grid-column:1/-1;background:#ff9f4a;border-color:#ff9f4a;color:#0d0d0d;font-weight:900">✓ Done — Start Rest</button>
           </div>
           <!-- Laps -->
           <div id="cf-laps" style="display:none;margin-top:12px">
@@ -9881,6 +9925,10 @@ let _wlbBuyinMovements = [];
 let _wlbBuyoutMovements = [];
 let _wlbEmomStations = []; // [{label, movements:[]}]
 let _wlbIsEmomStation = false;
+let _wlbIntervals = [];   // [{movements:[{name,reps,weight}], note:''}] for Intervals format
+let _wlbIsIntervals = false;
+let _wlbHeavySets = [];   // [{reps:'', weight:'', note:''}] for Heavy format
+let _wlbIsHeavy = false;
 let _wlbShowBuyin = false;
 let _wlbShowBuyout = false;
 
@@ -10114,12 +10162,6 @@ function wlbRenderSection(section) {
         'style="font-size:13px">' +
         '</div>' : '') +
       '</div>' +
-      '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:7px">' +
-      presets.map(v => '<button class="wod-format-chip" style="padding:2px 8px;font-size:10px" ' +
-        'onclick="wlbMvList(\'' + section + '\')[' + idx + '].reps=\'' + v + '\';wlbRenderSection(\'' + section + '\');wlbUpdatePreview()">' +
-        v + (unit !== 'reps' ? ' ' + unit : '') + '</button>'
-      ).join('') +
-      '</div>' +
       '</div>';
   }).join('');
 }
@@ -10177,6 +10219,60 @@ function wlbRenderMovements() {
 function wlbUpdatePreview() {
   const preview = document.getElementById('wlb-preview');
   if (!preview) return;
+
+  // ── Intervals mode ──
+  if (_wlbIsIntervals && _wlbIntervals.length > 0) {
+    const wtUnit = wlbGetWeightUnit();
+    const restLabel = _wlbIntervalRestSecs >= 60
+      ? Math.floor(_wlbIntervalRestSecs/60) + ' min rest'
+      : _wlbIntervalRestSecs > 0 ? _wlbIntervalRestSecs + 's rest' : 'no rest';
+
+    let html = '<div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green);margin-bottom:8px">'
+      + _wlbIntervals.length + ' Intervals · ' + restLabel + ' between</div>';
+
+    html += _wlbIntervals.map((interval, iIdx) => {
+      const movLines = interval.movements.map(mv => {
+        if (!mv.name && !mv.reps) return '';
+        const wt = mv.weight ? ' @ ' + mv.weight + ' ' + wtUnit : '';
+        const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+        return '<div style="display:flex;align-items:baseline;gap:5px;padding:2px 0">'
+          + '<span style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:28px">' + (mv.reps||'—') + '</span>'
+          + '<span style="font-size:12px;font-weight:700;color:#fff">' + (mv.name||'Movement') + unit + wt + '</span>'
+          + '</div>';
+      }).filter(Boolean).join('');
+
+      return '<div style="border-left:3px solid var(--cf-green);padding-left:8px;margin-bottom:8px">'
+        + '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--cf-green);margin-bottom:3px">Interval ' + (iIdx+1) + '</div>'
+        + movLines
+        + (interval.note ? '<div style="font-size:10px;color:var(--text-muted);margin-top:2px;font-style:italic">' + interval.note + '</div>' : '')
+        + '</div>';
+    }).join('');
+
+    preview.innerHTML = html;
+    return;
+  }
+
+  // ── Heavy mode ──
+  if (_wlbIsHeavy && _wlbHeavySets.length > 0) {
+    const wtUnit = wlbGetWeightUnit();
+    const movName = _wlbHeavyMovement || 'Movement';
+
+    let html = '<div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green);margin-bottom:8px">'
+      + movName + '</div>';
+
+    html += _wlbHeavySets.map((set, idx) => {
+      const wt = set.weight ? set.weight + ' ' + wtUnit : '—';
+      const reps = set.reps || '—';
+      return '<div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">'
+        + '<span style="font-size:11px;font-weight:700;color:var(--text-muted);min-width:40px">Set ' + (idx+1) + '</span>'
+        + '<span style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:36px">' + reps + '</span>'
+        + '<span style="font-size:13px;font-weight:700;color:#fff">' + wt + '</span>'
+        + '</div>';
+    }).join('');
+
+    preview.innerHTML = html;
+    return;
+  }
 
   // ── EMOM station mode ──
   if (_wlbIsEmomStation && _wlbEmomStations.length > 0) {
@@ -10342,6 +10438,13 @@ function wlbInit() {
   _wlbBuyoutMovements = [];
   _wlbEmomStations = [];
   _wlbIsEmomStation = (_cfCurrentFormat === 'EMOM');
+  _wlbIntervals = [];
+  _wlbIsIntervals = (_cfCurrentFormat === 'Intervals');
+  _wlbHeavySets = [];
+  _wlbIsHeavy = (_cfCurrentFormat === 'Heavy');
+  _wlbHeavyMovement = '';
+  _wlbCurrentInterval = 0;
+  _wlbIntervalPhase = 'work';
   _wlbRounds = 3;
   _wlbIsChipper = false;
   _wlbShowBuyin = false;
@@ -11772,14 +11875,20 @@ function wlbPickEmomSuggestion(name, sIdx, mIdx) {
 }
 
 function wlbUpdateStructureUI() {
-  const stationBuilder = document.getElementById('wlb-emom-station-builder');
-  const regularBuilder = document.getElementById('wlb-regular-builder');
-  if (!stationBuilder || !regularBuilder) return;
+  const stationBuilder  = document.getElementById('wlb-emom-station-builder');
+  const regularBuilder  = document.getElementById('wlb-regular-builder');
+  const intervalBuilder = document.getElementById('wlb-interval-builder');
+  const heavyBuilder    = document.getElementById('wlb-heavy-builder');
+  if (!regularBuilder) return;
+
+  // Hide all special builders
+  if (stationBuilder)  stationBuilder.style.display  = 'none';
+  if (intervalBuilder) intervalBuilder.style.display = 'none';
+  if (heavyBuilder)    heavyBuilder.style.display    = 'none';
+  regularBuilder.style.display = 'none';
 
   if (_wlbIsEmomStation) {
-    stationBuilder.style.display = 'block';
-    regularBuilder.style.display = 'none';
-    // Init with 2 stations if empty
+    if (stationBuilder) stationBuilder.style.display = 'block';
     if (_wlbEmomStations.length === 0) {
       _wlbEmomStations = [
         { label: 'Station 1', movements: [{ name:'', reps:'', unit:'reps', weight:'' }] },
@@ -11787,8 +11896,27 @@ function wlbUpdateStructureUI() {
       ];
     }
     wlbRenderEmomStations();
+  } else if (_wlbIsIntervals) {
+    if (intervalBuilder) intervalBuilder.style.display = 'block';
+    if (_wlbIntervals.length === 0) {
+      _wlbIntervals = [
+        { movements: [{ name:'', reps:'', unit:'reps', weight:'' }], note:'' },
+        { movements: [{ name:'', reps:'', unit:'reps', weight:'' }], note:'' },
+        { movements: [{ name:'', reps:'', unit:'reps', weight:'' }], note:'' },
+      ];
+    }
+    wlbRenderIntervals();
+  } else if (_wlbIsHeavy) {
+    if (heavyBuilder) heavyBuilder.style.display = 'block';
+    if (_wlbHeavySets.length === 0) {
+      _wlbHeavySets = [
+        { reps:'', weight:'', note:'' },
+        { reps:'', weight:'', note:'' },
+        { reps:'', weight:'', note:'' },
+      ];
+    }
+    wlbRenderHeavySets();
   } else {
-    stationBuilder.style.display = 'none';
     regularBuilder.style.display = 'block';
   }
   wlbUpdatePreview();
@@ -11886,6 +12014,304 @@ function wlbRenderEmomStations() {
 }
 
 // EMOM preview merged into wlbUpdatePreview below
+
+// ═══════════════════════════════════════════════════
+// ALLOY — INTERVALS FORMAT
+// ═══════════════════════════════════════════════════
+
+let _wlbIntervalRestSecs = 240; // default 4 min
+let _wlbCurrentInterval  = 0;   // which interval timer is on
+let _wlbIntervalPhase    = 'work'; // 'work' | 'rest'
+let _wlbIntervalWorkStart = 0;  // seconds when work phase started
+
+function wlbSetIntervalRest(secs) {
+  _wlbIntervalRestSecs = secs;
+  [0,60,120,240,300,600].forEach(s => {
+    const btn = document.getElementById('rest-' + s);
+    if (btn) btn.classList.toggle('active', s === secs);
+  });
+  wlbUpdatePreview();
+}
+
+function wlbAddInterval() {
+  _wlbIntervals.push({ movements: [{ name:'', reps:'', unit:'reps', weight:'' }], note:'' });
+  wlbRenderIntervals();
+  wlbUpdatePreview();
+}
+
+function wlbRemoveInterval(idx) {
+  _wlbIntervals.splice(idx, 1);
+  wlbRenderIntervals();
+  wlbUpdatePreview();
+}
+
+function wlbAddIntervalMove(iIdx) {
+  _wlbIntervals[iIdx].movements.push({ name:'', reps:'', unit:'reps', weight:'' });
+  wlbRenderIntervals();
+}
+
+function wlbRemoveIntervalMove(iIdx, mIdx) {
+  _wlbIntervals[iIdx].movements.splice(mIdx, 1);
+  if (_wlbIntervals[iIdx].movements.length === 0) {
+    _wlbIntervals[iIdx].movements = [{ name:'', reps:'', unit:'reps', weight:'' }];
+  }
+  wlbRenderIntervals();
+  wlbUpdatePreview();
+}
+
+function wlbRenderIntervals() {
+  const container = document.getElementById('wlb-intervals-list');
+  if (!container) return;
+  const wtUnit = wlbGetWeightUnit();
+
+  container.innerHTML = _wlbIntervals.map((interval, iIdx) => {
+    const movHtml = interval.movements.map((mv, mIdx) => {
+      const type = wlbGetMovementType(mv.name || '');
+      const unit = mv.unit || wlbDefaultUnit(type);
+      const showWeight = type === 'reps' || type === 'carry' || (mv._measurement === 'reps_weight') || (mv._measurement === 'dist_carry_wt');
+      const ph = wlbGetPresets(type, unit)[1] || '10';
+      return '<div style="display:flex;gap:6px;align-items:center;margin-top:5px">'
+        + '<input placeholder="Movement..." value="' + (mv.name||'') + '" autocomplete="off"'
+        + ' oninput="_wlbIntervals[' + iIdx + '].movements[' + mIdx + '].name=this.value;wlbUpdatePreview();wlbShowIntervalSuggestions(this,' + iIdx + ',' + mIdx + ')"'
+        + ' style="flex:2;font-size:12px;font-weight:700">'
+        + '<input placeholder="' + ph + '" value="' + (mv.reps||'') + '"'
+        + ' oninput="_wlbIntervals[' + iIdx + '].movements[' + mIdx + '].reps=this.value;wlbUpdatePreview()"'
+        + ' style="flex:1;font-family:var(--mono);font-size:13px;font-weight:700">'
+        + (showWeight ? '<input placeholder="wt" value="' + (mv.weight||'') + '"'
+          + ' oninput="_wlbIntervals[' + iIdx + '].movements[' + mIdx + '].weight=this.value;wlbUpdatePreview()"'
+          + ' style="flex:1;font-size:12px">' : '')
+        + (interval.movements.length > 1
+          ? '<button onclick="wlbRemoveIntervalMove(' + iIdx + ',' + mIdx + ')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;flex-shrink:0">✕</button>'
+          : '')
+        + '</div>';
+    }).join('');
+
+    return '<div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--cf-green);border-radius:var(--radius);padding:10px 12px">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+      + '<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green)">Interval ' + (iIdx+1) + '</div>'
+      + '<div style="display:flex;gap:4px">'
+      + '<button class="btn btn-ghost btn-xs" onclick="wlbAddIntervalMove(' + iIdx + ')">+ Move</button>'
+      + (_wlbIntervals.length > 1 ? '<button class="btn btn-ghost btn-xs" onclick="wlbRemoveInterval(' + iIdx + ')">✕</button>' : '')
+      + '</div>'
+      + '</div>'
+      + movHtml
+      + '<input placeholder="Note (optional, e.g. rest 4 min after)" value="' + (interval.note||'') + '"'
+      + ' oninput="_wlbIntervals[' + iIdx + '].note=this.value;wlbUpdatePreview()"'
+      + ' style="margin-top:6px;font-size:11px;color:var(--text-muted);width:100%">'
+      + '</div>';
+  }).join('');
+}
+
+function wlbShowIntervalSuggestions(input, iIdx, mIdx) {
+  document.querySelectorAll('.wlb-suggestions').forEach(el => el.remove());
+  const q = (input.value || '').toLowerCase().trim();
+  if (q.length < 2) return;
+  const all = cfGetAllMovements();
+  const startsWith = all.filter(m => m.name.toLowerCase().startsWith(q));
+  const contains   = all.filter(m => !m.name.toLowerCase().startsWith(q) && m.name.toLowerCase().includes(q));
+  const matches = [...startsWith, ...contains].slice(0, 5);
+  if (!matches.length) return;
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'wlb-suggestions';
+  dropdown.innerHTML = matches.map(m => {
+    const safeName = m.name.replace(/'/g, "\\'");
+    const nameHtml = m.name.replace(new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi'), '<strong style="color:var(--cf-green)">$1</strong>');
+    return '<div class="wlb-suggestion-item" onmousedown="wlbPickIntervalSuggestion(\'' + safeName + '\',' + iIdx + ',' + mIdx + ')">'
+      + '<span>' + nameHtml + '</span><span class="wlb-suggestion-cat">' + (m.category||'') + '</span></div>';
+  }).join('');
+
+  const wrapper = input.parentElement;
+  if (wrapper) {
+    wrapper.style.position = 'relative';
+    dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;z-index:9999;max-height:200px;overflow-y:auto;margin-top:2px';
+    wrapper.appendChild(dropdown);
+  }
+}
+
+function wlbPickIntervalSuggestion(name, iIdx, mIdx) {
+  document.querySelectorAll('.wlb-suggestions').forEach(el => el.remove());
+  if (_wlbIntervals[iIdx]?.movements[mIdx]) {
+    _wlbIntervals[iIdx].movements[mIdx].name = name;
+    const def = typeof cfGetMovementDef === 'function' ? cfGetMovementDef(name) : null;
+    if (def) {
+      const mv = _wlbIntervals[iIdx].movements[mIdx];
+      if (def.measurement === 'dist_run') mv.unit = 'miles';
+      else if (def.measurement === 'machine') mv.unit = 'calories';
+      else if (def.measurement === 'dist_carry' || def.measurement === 'dist_carry_wt') mv.unit = 'meters';
+      else mv.unit = 'reps';
+      mv._measurement = def.measurement;
+    }
+  }
+  wlbRenderIntervals();
+  wlbUpdatePreview();
+}
+
+// ═══════════════════════════════════════════════════
+// ALLOY — HEAVY FORMAT
+// ═══════════════════════════════════════════════════
+
+let _wlbHeavyMovement = '';
+
+function wlbAddHeavySet() {
+  _wlbHeavySets.push({ reps:'', weight:'', note:'' });
+  wlbRenderHeavySets();
+  wlbUpdatePreview();
+}
+
+function wlbRemoveHeavySet(idx) {
+  if (_wlbHeavySets.length <= 1) return;
+  _wlbHeavySets.splice(idx, 1);
+  wlbRenderHeavySets();
+  wlbUpdatePreview();
+}
+
+function wlbRenderHeavySets() {
+  const container = document.getElementById('wlb-heavy-sets');
+  if (!container) return;
+  const wtUnit = wlbGetWeightUnit();
+
+  // Quick-fill rep schemes
+  container.innerHTML = _wlbHeavySets.map((set, idx) => {
+    return '<div style="display:flex;gap:8px;align-items:center;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">'
+      + '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green);white-space:nowrap;min-width:40px">Set ' + (idx+1) + '</div>'
+      + '<input placeholder="Reps" value="' + (set.reps||'') + '"'
+      + ' oninput="_wlbHeavySets[' + idx + '].reps=this.value;wlbUpdatePreview()"'
+      + ' style="flex:1;font-family:var(--mono);font-size:14px;font-weight:700;text-align:center">'
+      + '<input placeholder="Weight (' + wtUnit + ')" value="' + (set.weight||'') + '"'
+      + ' oninput="_wlbHeavySets[' + idx + '].weight=this.value;wlbUpdatePreview()"'
+      + ' style="flex:2;font-size:13px">'
+      + (_wlbHeavySets.length > 1
+        ? '<button onclick="wlbRemoveHeavySet(' + idx + ')" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;flex-shrink:0">✕</button>'
+        : '')
+      + '</div>';
+  }).join('');
+
+
+}
+
+function wlbApplyRepScheme(reps) {
+  // Resize sets to match scheme
+  while (_wlbHeavySets.length < reps.length) _wlbHeavySets.push({ reps:'', weight:'', note:'' });
+  while (_wlbHeavySets.length > reps.length) _wlbHeavySets.pop();
+  reps.forEach((r, i) => { _wlbHeavySets[i].reps = r; });
+  wlbRenderHeavySets();
+  wlbUpdatePreview();
+}
+
+function wlbShowHeavySuggestions(input) {
+  document.querySelectorAll('.wlb-suggestions').forEach(el => el.remove());
+  const q = (input.value || '').toLowerCase().trim();
+  if (q.length < 2) return;
+  const all = cfGetAllMovements().filter(m => m.category === 'Barbell' || m.category === 'Dumbbell' || m.category === 'Kettlebell' || m.category === 'Odd Object');
+  const startsWith = all.filter(m => m.name.toLowerCase().startsWith(q));
+  const contains   = all.filter(m => !m.name.toLowerCase().startsWith(q) && m.name.toLowerCase().includes(q));
+  const matches = [...startsWith, ...contains].slice(0, 5);
+  if (!matches.length) return;
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'wlb-suggestions';
+  dropdown.innerHTML = matches.map(m => {
+    const safeName = m.name.replace(/'/g, "\\'");
+    const nameHtml = m.name.replace(new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi'), '<strong style="color:var(--cf-green)">$1</strong>');
+    return '<div class="wlb-suggestion-item" onmousedown="wlbPickHeavySuggestion(\'' + safeName + '\')">'
+      + '<span>' + nameHtml + '</span><span class="wlb-suggestion-cat">' + (m.category||'') + '</span></div>';
+  }).join('');
+
+  const wrapper = input.parentElement;
+  if (wrapper) {
+    wrapper.style.position = 'relative';
+    dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;z-index:9999;max-height:200px;overflow-y:auto;margin-top:2px';
+    wrapper.appendChild(dropdown);
+  }
+}
+
+function wlbPickHeavySuggestion(name) {
+  document.querySelectorAll('.wlb-suggestions').forEach(el => el.remove());
+  _wlbHeavyMovement = name;
+  const input = document.getElementById('wlb-heavy-movement');
+  if (input) input.value = name;
+  wlbUpdatePreview();
+}
+
+// ═══════════════════════════════════════════════════
+// ALLOY — INTERVALS TIMER (work/rest cycle)
+// ═══════════════════════════════════════════════════
+
+function cfIntervalTimerTick() {
+  // Called each second when format is Intervals
+  if (_wlbIntervalPhase === 'work') {
+    _cfTimerSeconds++;
+    const disp = document.getElementById('cf-timer-display');
+    const m = Math.floor(_cfTimerSeconds/60), s = _cfTimerSeconds%60;
+    if (disp) disp.textContent = m + ':' + String(s).padStart(2,'0');
+    // Sync WOD card
+    wlbSyncWODCard();
+  } else {
+    // Rest phase — count down
+    _cfTimerSeconds--;
+    const disp = document.getElementById('cf-timer-display');
+    if (disp) {
+      const m = Math.floor(_cfTimerSeconds/60), s = _cfTimerSeconds%60;
+      disp.textContent = m + ':' + String(s).padStart(2,'0');
+      disp.style.color = 'var(--text-muted)';
+    }
+    // Announce end of rest
+    if (_cfTimerSeconds === 3) cfSpeak('3');
+    else if (_cfTimerSeconds === 2) cfSpeak('2');
+    else if (_cfTimerSeconds === 1) cfSpeak('1');
+    else if (_cfTimerSeconds <= 0) {
+      // Rest done — move to next interval
+      _wlbCurrentInterval++;
+      if (_wlbCurrentInterval >= _wlbIntervals.length) {
+        // All intervals done
+        cfTimerDone();
+        cfSpeak('Workout complete!');
+        return;
+      }
+      // Start next work phase
+      _wlbIntervalPhase = 'work';
+      _cfTimerSeconds = 0;
+      cfBeepInterval();
+      cfSpeak('Interval ' + (_wlbCurrentInterval + 1));
+      const labelEl = document.getElementById('cf-timer-label');
+      if (labelEl) labelEl.textContent = 'Interval ' + (_wlbCurrentInterval + 1) + ' of ' + _wlbIntervals.length;
+      const disp2 = document.getElementById('cf-timer-display');
+      if (disp2) { disp2.textContent = '0:00'; disp2.style.color = 'var(--cf-green)'; }
+      // Refresh WOD card
+      if (document.getElementById('cf-wod-card')?.style.display !== 'none') wlbPopulateWODCard();
+    }
+    wlbSyncWODCard();
+  }
+}
+
+function cfStartIntervals() {
+  _wlbCurrentInterval = 0;
+  _wlbIntervalPhase = 'work';
+  _cfTimerSeconds = 0;
+  const labelEl = document.getElementById('cf-timer-label');
+  if (labelEl) labelEl.textContent = 'Interval 1 of ' + _wlbIntervals.length;
+  cfSpeak('Interval 1');
+  cfBeepInterval();
+}
+
+function cfEndIntervalWork() {
+  // Called when athlete taps "Next / Rest" during intervals
+  const workSecs = _cfTimerSeconds;
+  // Store split time (could log per interval)
+  _wlbIntervalPhase = 'rest';
+  _cfTimerSeconds = _wlbIntervalRestSecs;
+  cfBeepRest();
+  cfSpeak(_wlbIntervalRestSecs > 0 ? 'Rest' : 'Next interval');
+  const labelEl = document.getElementById('cf-timer-label');
+  if (labelEl) labelEl.textContent = _wlbIntervalRestSecs > 0 ? 'Rest' : 'Interval ' + (_wlbCurrentInterval + 2);
+  const disp = document.getElementById('cf-timer-display');
+  if (disp) disp.style.color = 'var(--text-muted)';
+  if (_wlbIntervalRestSecs === 0) {
+    // No rest — immediately start next
+    setTimeout(cfIntervalTimerTick, 0);
+  }
+}
 
 // ═══════════════════════════════════════════════════
 // ALLOY — CF CALENDAR
@@ -12866,6 +13292,8 @@ function cfSelectFormat(format, btn) {
   
     // Switch structure builder mode
     _wlbIsEmomStation = (format === 'EMOM');
+    _wlbIsIntervals   = (format === 'Intervals');
+    _wlbIsHeavy       = (format === 'Heavy');
     wlbUpdateStructureUI();
 
     cfResetTimer();
@@ -13050,8 +13478,17 @@ function cfAdjustReps(delta) {
 function cfToggleTimer() {
   _cfTimerRunning = !_cfTimerRunning;
   const btn = document.getElementById('cf-timer-start-btn');
+  const nextBtn = document.getElementById('cf-next-interval-btn');
   if (_cfTimerRunning) {
     if (btn) btn.textContent = 'Pause';
+    // Show Next/Rest button for Intervals work phase
+    if (nextBtn) {
+      const showNext = _cfCurrentFormat === 'Intervals' && _wlbIntervalPhase === 'work';
+      nextBtn.style.display = showNext ? '' : 'none';
+      if (showNext) nextBtn.textContent = _wlbIntervalRestSecs > 0
+        ? '✓ Done — Start Rest (' + (_wlbIntervalRestSecs >= 60 ? Math.floor(_wlbIntervalRestSecs/60) + ' min' : _wlbIntervalRestSecs + 's') + ')'
+        : '✓ Done — Next Interval';
+    }
     cfBeepStart();
     // Hide setup, lock in settings
     const setup = document.getElementById('cf-timer-setup');
@@ -13081,9 +13518,14 @@ function cfToggleTimer() {
       _cfTimerSeconds = 0; // count up
     }
 
+    // Init Intervals on fresh start
+    if (_cfCurrentFormat === 'Intervals' && _cfTimerSeconds === 0 && _wlbIntervalPhase === 'work') {
+      cfStartIntervals();
+    }
     _cfTimerInterval = setInterval(cfTimerTick, 1000);
   } else {
     if (btn) btn.textContent = 'Resume';
+    if (nextBtn) nextBtn.style.display = 'none';
     clearInterval(_cfTimerInterval);
     cfAutoFillScore();
   }
