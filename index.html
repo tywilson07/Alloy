@@ -10630,13 +10630,18 @@ function wlbShowPRCelebration(wodName, score) {
 
 // ── WOD CARD (workout display screen) ──────────────────
 function wlbStartWOD() {
-  const hasMovements = _wlbMovements.length > 0;
+  // Check for content based on current mode
+  const hasMovements = _wlbMovements.length > 0
+    || (_wlbIsEmomStation && _wlbEmomStations.length > 0)
+    || (_wlbIsIntervals && _wlbIntervals.some(iv => iv.movements.some(m => m.name)))
+    || (_wlbIsHeavy && _wlbHeavyMovement);
   if (!hasMovements) { toast('Add at least one movement first'); return; }
 
   // Show the WOD card overlay
   const card = document.getElementById('cf-wod-card');
   if (card) card.style.display = 'flex';
   document.body.style.overflow = 'hidden';
+  cfRequestWakeLock(); // keep screen on in WOD card view
 
   // Populate it
   wlbPopulateWODCard();
@@ -10651,6 +10656,7 @@ function wlbExitWODCard() {
   const card = document.getElementById('cf-wod-card');
   if (card) card.style.display = 'none';
   document.body.style.overflow = '';
+  cfReleaseWakeLock(); // WOD card closed — screen can sleep
   if (_wcSyncInterval) clearInterval(_wcSyncInterval);
   // Pause timer if running
   if (_cfTimerRunning) cfToggleTimer();
@@ -11852,6 +11858,15 @@ function wlbShowEmomSuggestions(input, sIdx, mIdx) {
   }
 }
 
+function wlbEmomSetUnit(sIdx, mIdx, unit) {
+  if (_wlbEmomStations[sIdx]?.movements[mIdx]) {
+    _wlbEmomStations[sIdx].movements[mIdx].unit = unit;
+    _wlbEmomStations[sIdx].movements[mIdx].reps = '';
+  }
+  wlbRenderEmomStations();
+  wlbUpdatePreview();
+}
+
 function wlbPickEmomSuggestion(name, sIdx, mIdx) {
   // Remove dropdown
   document.querySelectorAll('.wlb-suggestions').forEach(el => el.remove());
@@ -11984,7 +11999,6 @@ function wlbRenderEmomStations() {
         + '<input placeholder="Movement..." value="' + (mv.name||'') + '" autocomplete="off"'
         + ' oninput="_wlbEmomStations[' + sIdx + '].movements[' + mIdx + '].name=this.value;wlbUpdatePreview();wlbShowEmomSuggestions(this,' + sIdx + ',' + mIdx + ')"'
         + ' style="flex:2;font-size:12px;font-weight:700">'
-        + '<input placeholder="' + ph + '" value="' + (mv.reps||'') + '"'
         + ' oninput="_wlbEmomStations[' + sIdx + '].movements[' + mIdx + '].reps=this.value;wlbUpdatePreview()"'
         + ' style="flex:1;font-family:var(--mono);font-size:13px;font-weight:700">'
         + (showWeight ? '<input placeholder="wt" value="' + (mv.weight||'') + '"'
@@ -12022,6 +12036,7 @@ function wlbRenderEmomStations() {
 let _wlbIntervalRestSecs = 240; // default 4 min
 let _wlbCurrentInterval  = 0;   // which interval timer is on
 let _wlbIntervalPhase    = 'work'; // 'work' | 'rest'
+let _wlbIntervalSplits   = [];   // time for each completed interval
 let _wlbIntervalWorkStart = 0;  // seconds when work phase started
 
 function wlbSetIntervalRest(secs) {
@@ -12068,12 +12083,21 @@ function wlbRenderIntervals() {
     const movHtml = interval.movements.map((mv, mIdx) => {
       const type = wlbGetMovementType(mv.name || '');
       const unit = mv.unit || wlbDefaultUnit(type);
+      const unitOpts = wlbUnitOptions(type);
       const showWeight = type === 'reps' || type === 'carry' || (mv._measurement === 'reps_weight') || (mv._measurement === 'dist_carry_wt');
-      const ph = wlbGetPresets(type, unit)[1] || '10';
+      const repsLabel = unit === 'reps' ? '' : unit.toUpperCase();
+      const ph = repsLabel || '10';
+      const unitToggle = unitOpts.length > 1
+        ? '<div style="display:flex;gap:2px">' + unitOpts.map(u =>
+            '<button class="wod-format-chip' + (unit===u?' active':'') + '" style="padding:1px 5px;font-size:9px;border-radius:3px"'
+            + ' onclick="wlbIntervalSetUnit(' + iIdx + ',' + mIdx + ',\'' + u + '\')">' + u + '</button>'
+          ).join('') + '</div>'
+        : '';
       return '<div style="display:flex;gap:6px;align-items:center;margin-top:5px">'
         + '<input placeholder="Movement..." value="' + (mv.name||'') + '" autocomplete="off"'
         + ' oninput="_wlbIntervals[' + iIdx + '].movements[' + mIdx + '].name=this.value;wlbUpdatePreview();wlbShowIntervalSuggestions(this,' + iIdx + ',' + mIdx + ')"'
         + ' style="flex:2;font-size:12px;font-weight:700">'
+        + unitToggle
         + '<input placeholder="' + ph + '" value="' + (mv.reps||'') + '"'
         + ' oninput="_wlbIntervals[' + iIdx + '].movements[' + mIdx + '].reps=this.value;wlbUpdatePreview()"'
         + ' style="flex:1;font-family:var(--mono);font-size:13px;font-weight:700">'
@@ -12127,6 +12151,15 @@ function wlbShowIntervalSuggestions(input, iIdx, mIdx) {
     dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;z-index:9999;max-height:200px;overflow-y:auto;margin-top:2px';
     wrapper.appendChild(dropdown);
   }
+}
+
+function wlbIntervalSetUnit(iIdx, mIdx, unit) {
+  if (_wlbIntervals[iIdx]?.movements[mIdx]) {
+    _wlbIntervals[iIdx].movements[mIdx].unit = unit;
+    _wlbIntervals[iIdx].movements[mIdx].reps = '';
+  }
+  wlbRenderIntervals();
+  wlbUpdatePreview();
 }
 
 function wlbPickIntervalSuggestion(name, iIdx, mIdx) {
@@ -12264,7 +12297,12 @@ function cfIntervalTimerTick() {
       // Rest done — move to next interval
       _wlbCurrentInterval++;
       if (_wlbCurrentInterval >= _wlbIntervals.length) {
-        // All intervals done
+        // All intervals done — auto-fill score with splits
+        const scoreElFin = document.getElementById('cf-score-value');
+        if (scoreElFin && !scoreElFin.value && _wlbIntervalSplits.length > 0) {
+          const fmtFin = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+          scoreElFin.value = _wlbIntervalSplits.map((s,i) => 'I'+(i+1)+': '+fmtFin(s)).join(' / ');
+        }
         cfTimerDone();
         cfSpeak('Workout complete!');
         return;
@@ -12288,6 +12326,7 @@ function cfIntervalTimerTick() {
 function cfStartIntervals() {
   _wlbCurrentInterval = 0;
   _wlbIntervalPhase = 'work';
+  _wlbIntervalSplits = [];
   _cfTimerSeconds = 0;
   const labelEl = document.getElementById('cf-timer-label');
   if (labelEl) labelEl.textContent = 'Interval 1 of ' + _wlbIntervals.length;
@@ -12312,6 +12351,37 @@ function cfEndIntervalWork() {
     setTimeout(cfIntervalTimerTick, 0);
   }
 }
+
+// ═══════════════════════════════════════════════════
+// ALLOY — SCREEN WAKE LOCK
+// Keeps screen on during active workout
+// ═══════════════════════════════════════════════════
+
+
+async function cfRequestWakeLock() {
+  if (!('wakeLock' in navigator)) return; // not supported
+  try {
+    _wakeLock = await navigator.wakeLock.request('screen');
+    _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+  } catch(e) {
+    // Wake lock failed (e.g. page not visible) — silently ignore
+    console.log('Wake lock unavailable:', e.message);
+  }
+}
+
+function cfReleaseWakeLock() {
+  if (_wakeLock) {
+    _wakeLock.release().catch(() => {});
+    _wakeLock = null;
+  }
+}
+
+// Re-acquire if page becomes visible again (e.g. user switches apps and returns)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && _cfTimerRunning) {
+    cfRequestWakeLock();
+  }
+});
 
 // ═══════════════════════════════════════════════════
 // ALLOY — CF CALENDAR
@@ -13233,8 +13303,24 @@ function cfSelectFormat(format, btn) {
     const noTimerMsg = document.getElementById('cf-no-timer-msg');
     if (timerBlock) timerBlock.style.display = noTimer ? 'none' : '';
     if (noTimerMsg) noTimerMsg.style.display = noTimer ? '' : 'none';
-  
+
+    // ALWAYS hide all setup panels regardless of format
+    ['amrap','emom','tabata','fortime'].forEach(p => {
+      const el = document.getElementById('cf-setup-' + p);
+      if (el) el.style.display = 'none';
+    });
+    // Hide cap row and lead-in for no-timer formats
+    const capRowEl = document.getElementById('cf-cap-row');
+    if (capRowEl) capRowEl.style.display = noTimer ? 'none' : '';
+    const leadinRowEl = document.getElementById('cf-leadin-row');
+    if (leadinRowEl) leadinRowEl.style.display = noTimer ? 'none' : '';
+
     if (noTimer) {
+      // Switch builder mode
+      _wlbIsEmomStation = false;
+      _wlbIsIntervals   = false;
+      _wlbIsHeavy       = (format === 'Heavy');
+      wlbUpdateStructureUI();
       const sv = document.getElementById('cf-score-value');
       if (sv) sv.placeholder = format === 'Heavy' ? 'e.g. 275 lb x3 or 5RM: 225 lb' : 'e.g. Complete or Sets: 3x10';
       return;
@@ -13496,6 +13582,7 @@ function cfToggleTimer() {
   const nextBtn = document.getElementById('cf-next-interval-btn');
   if (_cfTimerRunning) {
     if (btn) btn.textContent = 'Pause';
+    cfRequestWakeLock(); // keep screen on during workout
     // Show Next/Rest button for Intervals work phase
     if (nextBtn) {
       const showNext = _cfCurrentFormat === 'Intervals' && _wlbIntervalPhase === 'work';
@@ -13541,6 +13628,7 @@ function cfToggleTimer() {
   } else {
     if (btn) btn.textContent = 'Resume';
     if (nextBtn) nextBtn.style.display = 'none';
+    cfReleaseWakeLock(); // allow screen to sleep when paused
     clearInterval(_cfTimerInterval);
     cfAutoFillScore();
   }
@@ -13636,6 +13724,7 @@ function cfUpdateTabataDisplay() {
 function cfTimerDone() {
   clearInterval(_cfTimerInterval);
   _cfTimerRunning = false;
+  cfReleaseWakeLock(); // workout done — screen can sleep again
   cfBeepDone();
   const btn = document.getElementById('cf-timer-start-btn');
   if (btn) { btn.textContent = 'Done ✓'; btn.style.background = 'var(--cf-green)'; }
