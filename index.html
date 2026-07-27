@@ -10060,9 +10060,7 @@ function wlbRenderSection(section) {
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <input class="wlb-mv-name" placeholder="Movement name..." value="${mv.name||''}"
           autocomplete="off"
-          onfocus="wlbShowSuggestions(this,'${section}',${idx})"
           oninput="wlbMvList('${section}')[${idx}].name=this.value;wlbRerenderRow('${section}',${idx});wlbShowSuggestions(this,'${section}',${idx})"
-          onblur="setTimeout(wlbHideSuggestions,300)"
           style="flex:1;font-size:13px;font-weight:700">
         ${unitToggle}
         <button onclick="wlbRemoveMovement('${section}',${idx})"
@@ -10804,8 +10802,9 @@ function wlbShowSuggestions(input, section, idx) {
   _wlbSuggestionSection = section;
   _wlbSuggestionIdx = idx;
 
-  // Remove any existing dropdown
-  wlbHideSuggestions(true);
+  // Remove any existing dropdown (direct DOM remove, bypasses suppress flag)
+  const _old = document.getElementById('wlb-suggestions-dropdown');
+  if (_old) _old.remove();
 
   const q = (input.value || '').toLowerCase().trim();
 
