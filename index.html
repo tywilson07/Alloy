@@ -10178,57 +10178,85 @@ function wlbUpdatePreview() {
   const preview = document.getElementById('wlb-preview');
   if (!preview) return;
 
+  // ── EMOM station mode ──
+  if (_wlbIsEmomStation && _wlbEmomStations.length > 0) {
+    const wtUnit = wlbGetWeightUnit();
+    const total = _cfSetup?.emomTotal || 20;
+    const interval = _cfSetup?.emomInterval || 1;
+    const totalRounds = Math.floor(total / interval);
+    const stationCount = _wlbEmomStations.length;
+    const stationColors = ['var(--cf-green)','#4a9eff','#ff9f4a','#c84aff','#ff4a7a','#4affea'];
+
+    let html = '<div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green);margin-bottom:8px">'
+      + total + ' Min EMOM · ' + stationCount + ' Stations · ' + Math.floor(totalRounds / stationCount) + ' rounds each</div>';
+
+    html += _wlbEmomStations.map((station, sIdx) => {
+      const color = station.isRest ? 'var(--text-muted)' : stationColors[sIdx % stationColors.length];
+      const movLines = station.isRest
+        ? '<div style="font-size:12px;color:var(--text-muted);font-style:italic">Rest</div>'
+        : station.movements.map(mv => {
+            if (!mv.name && !mv.reps) return '';
+            const wt = mv.weight ? ' @ ' + mv.weight + ' ' + wtUnit : '';
+            const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+            return '<div style="display:flex;align-items:baseline;gap:5px;padding:2px 0">'
+              + '<span style="font-size:16px;font-weight:900;font-family:var(--mono);color:' + color + ';min-width:28px">' + (mv.reps||'—') + '</span>'
+              + '<span style="font-size:12px;font-weight:700;color:#fff">' + (mv.name||'Movement') + unit + wt + '</span>'
+              + '</div>';
+          }).filter(Boolean).join('');
+      return '<div style="border-left:3px solid ' + color + ';padding-left:8px;margin-bottom:6px">'
+        + '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:' + color + ';margin-bottom:3px">' + (station.label||'Station '+(sIdx+1)) + '</div>'
+        + movLines + '</div>';
+    }).join('');
+
+    preview.innerHTML = html || '<div style="color:var(--text-muted);font-style:italic;font-size:12.5px">Add stations above</div>';
+    return;
+  }
+
+  // ── Regular mode ──
   const wtUnit = wlbGetWeightUnit();
   const lines = [];
 
-  // Format header
   const fmt = _cfCurrentFormat || 'For Time';
   let header = '';
-  if (fmt === 'AMRAP') header = `${_cfSetup?.amrapMin||18} Min AMRAP`;
-  else if (fmt === 'EMOM') header = `${_cfSetup?.emomTotal||20} Min EMOM`;
-  else if (_wlbRounds > 1) header = `${_wlbRounds} Rounds For Time`;
+  if (fmt === 'AMRAP') header = (_cfSetup?.amrapMin||18) + ' Min AMRAP';
+  else if (fmt === 'EMOM') header = (_cfSetup?.emomTotal||20) + ' Min EMOM';
+  else if (_wlbRounds > 1) header = _wlbRounds + ' Rounds For Time';
   else if (_wlbIsChipper) header = 'Chipper';
   else header = fmt;
 
-  const fmtHtml = `<div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green);margin-bottom:8px">${header}</div>`;
+  const fmtHtml = '<div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green);margin-bottom:8px">' + header + '</div>';
 
   const mvToLine = mv => {
     if (!mv.name && !mv.reps) return null;
-    const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
+    const wt = mv.weight ? ' @ ' + mv.weight + ' ' + wtUnit : '';
     const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-    return `<div style="display:flex;align-items:baseline;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)">
-      <span style="font-size:18px;font-weight:900;font-family:var(--mono);color:#fff;min-width:36px">${mv.reps||'—'}</span>
-      <span style="font-size:13px;font-weight:700;color:var(--text-primary)">${mv.name||'Movement'}${unit}${wt}</span>
-    </div>`;
+    return '<div style="display:flex;align-items:baseline;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)">'
+      + '<span style="font-size:18px;font-weight:900;font-family:var(--mono);color:#fff;min-width:36px">' + (mv.reps||'—') + '</span>'
+      + '<span style="font-size:13px;font-weight:700;color:var(--text-primary)">' + (mv.name||'Movement') + unit + wt + '</span>'
+      + '</div>';
   };
 
   const hasMovements = _wlbMovements.length > 0 || _wlbBuyinMovements.length > 0 || _wlbBuyoutMovements.length > 0;
-
   if (!hasMovements) {
-    preview.innerHTML = `<div style="color:var(--text-muted);font-style:italic;font-size:12.5px">Add movements above to see your WOD</div>`;
+    preview.innerHTML = '<div style="color:var(--text-muted);font-style:italic;font-size:12.5px">Add movements above to see your WOD</div>';
     return;
   }
 
   let html = fmtHtml;
-
   if (_wlbShowBuyin && _wlbBuyinMovements.length) {
-    html += `<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px">Buy-In</div>`;
+    html += '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px">Buy-In</div>';
     html += _wlbBuyinMovements.map(mvToLine).filter(Boolean).join('');
-    html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border)"></div>`;
+    html += '<div style="margin:8px 0 6px;border-top:1px solid var(--border)"></div>';
   }
-
-  if (_wlbMovements.length) {
-    html += _wlbMovements.map(mvToLine).filter(Boolean).join('');
-  }
-
+  if (_wlbMovements.length) html += _wlbMovements.map(mvToLine).filter(Boolean).join('');
   if (_wlbShowBuyout && _wlbBuyoutMovements.length) {
-    html += `<div style="margin:6px 0;border-top:1px solid var(--border)"></div>`;
-    html += `<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px">Buy-Out</div>`;
+    html += '<div style="margin:6px 0;border-top:1px solid var(--border)"></div>';
+    html += '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px">Buy-Out</div>';
     html += _wlbBuyoutMovements.map(mvToLine).filter(Boolean).join('');
   }
-
   preview.innerHTML = html;
 }
+
 
 // Update inline time parameters in the Format card
 function wlbUpdateInlineParams(format) {
@@ -11792,45 +11820,7 @@ function wlbRenderEmomStations() {
   }).join('');
 }
 
-// Update wlbUpdatePreview to include EMOM stations
-const _origWlbUpdatePreview = wlbUpdatePreview;
-function wlbUpdatePreview() {
-  if (!_wlbIsEmomStation) { _origWlbUpdatePreview(); return; }
-  const preview = document.getElementById('wlb-preview');
-  if (!preview) return;
-  const wtUnit = wlbGetWeightUnit();
-  const fmt = _cfCurrentFormat || 'EMOM';
-  const total = _cfSetup?.emomTotal || 20;
-  const interval = _cfSetup?.emomInterval || 1;
-  const totalRounds = Math.floor(total / interval);
-  const stationCount = _wlbEmomStations.length;
-
-  let html = '<div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green);margin-bottom:8px">'
-    + total + ' Min EMOM · ' + stationCount + ' Stations · ' + (stationCount > 0 ? Math.floor(totalRounds / stationCount) : 0) + ' rounds each</div>';
-
-  const stationColors = ['var(--cf-green)', '#4a9eff', '#ff9f4a', '#c84aff', '#ff4a7a', '#4affea'];
-
-  html += _wlbEmomStations.map((station, sIdx) => {
-    const color = station.isRest ? 'var(--text-muted)' : stationColors[sIdx % stationColors.length];
-    const movLines = station.isRest
-      ? '<div style="font-size:12px;color:var(--text-muted);font-style:italic">Rest</div>'
-      : station.movements.map(mv => {
-          if (!mv.name && !mv.reps) return '';
-          const wt = mv.weight ? ' @ ' + mv.weight + ' ' + wtUnit : '';
-          const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-          return '<div style="display:flex;align-items:baseline;gap:5px;padding:2px 0">'
-            + '<span style="font-size:16px;font-weight:900;font-family:var(--mono);color:' + color + ';min-width:28px">' + (mv.reps||'—') + '</span>'
-            + '<span style="font-size:12px;font-weight:700;color:#fff">' + (mv.name||'Movement') + unit + wt + '</span>'
-            + '</div>';
-        }).filter(Boolean).join('');
-
-    return '<div style="border-left:3px solid ' + color + ';padding-left:8px;margin-bottom:6px">'
-      + '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:' + color + ';margin-bottom:3px">' + (station.label||'Station '+(sIdx+1)) + '</div>'
-      + movLines + '</div>';
-  }).join('');
-
-  preview.innerHTML = html || '<div style="color:var(--text-muted);font-style:italic;font-size:12.5px">Add stations above</div>';
-}
+// EMOM preview merged into wlbUpdatePreview below
 
 // ═══════════════════════════════════════════════════
 // ALLOY — CF CALENDAR
@@ -12809,6 +12799,10 @@ function cfSelectFormat(format, btn) {
     if (format === 'EMOM') cfUpdateEmomSummary();
     if (format === 'Tabata') cfUpdateTabataSummary();
   
+    // Switch structure builder mode
+    _wlbIsEmomStation = (format === 'EMOM');
+    wlbUpdateStructureUI();
+
     cfResetTimer();
 }
 
