@@ -1361,18 +1361,20 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
               </div>
               <div id="cf-tabata-summary" style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px">8 rounds · 20s work / 10s rest · 4:00 total</div>
             </div>
-            <div id="cf-setup-fortime" style="display:none;margin-bottom:12px">
-              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;text-align:center">Time Cap (optional)</div>
-              <div style="display:flex;align-items:center;justify-content:center;gap:12px">
-                <button class="cf-round-btn" onclick="cfAdjustSetup('cap',-1)">−</button>
-                <div style="text-align:center"><div id="cf-setup-cap-val" style="font-size:36px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">20</div><div style="font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px">min cap</div></div>
-                <button class="cf-round-btn" onclick="cfAdjustSetup('cap',1)">+</button>
-              </div>
-              <div style="display:flex;gap:8px;margin-top:8px;justify-content:center">
-                <button class="btn btn-ghost btn-sm" id="cf-cap-toggle" onclick="cfToggleCap()">No Cap</button>
-              </div>
+
+          </div>
+          <!-- Lead-in countdown selector — shown for all formats -->
+          <div id="cf-leadin-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:8px 12px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);white-space:nowrap">Lead-In</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <button class="wod-format-chip" id="leadin-0"  onclick="cfSetLeadin(0)"  style="padding:3px 10px;font-size:10px" >None</button>
+              <button class="wod-format-chip" id="leadin-15" onclick="cfSetLeadin(15)" style="padding:3px 10px;font-size:10px">15s</button>
+              <button class="wod-format-chip" id="leadin-30" onclick="cfSetLeadin(30)" style="padding:3px 10px;font-size:10px">30s</button>
+              <button class="wod-format-chip" id="leadin-45" onclick="cfSetLeadin(45)" style="padding:3px 10px;font-size:10px">45s</button>
+              <button class="wod-format-chip active" id="leadin-60" onclick="cfSetLeadin(60)" style="padding:3px 10px;font-size:10px">60s</button>
             </div>
           </div>
+
           <!-- Time cap row — shown for For Time / Chipper / Partner -->
           <div id="cf-cap-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:8px 12px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
             <div style="font-size:11px;font-weight:700;color:var(--text-muted)">Time Cap</div>
@@ -1382,6 +1384,13 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
               <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px" onclick="cfAdjustSetup('cap',1);wlbSyncCapRow()">+</button>
               <button class="btn btn-ghost btn-sm" id="wlb-cap-row-toggle" onclick="cfToggleCap();wlbSyncCapRow()" style="font-size:11px">Add Cap</button>
             </div>
+          </div>
+
+          <!-- Countdown lead-in overlay -->
+          <div id="cf-countdown-overlay" style="display:none;position:absolute;inset:0;background:var(--surface);border-radius:var(--radius-lg);z-index:10;display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted)">Starting in</div>
+            <div id="cf-countdown-number" style="font-size:96px;font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1;transition:transform .1s">3</div>
+            <button class="btn btn-ghost btn-sm" onclick="cfCancelCountdown()" style="margin-top:8px">Cancel</button>
           </div>
 
           <!-- Active timer display -->
@@ -1408,7 +1417,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
           </div>
           <!-- Controls -->
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
-            <button class="btn btn-primary" id="cf-timer-start-btn" onclick="cfToggleTimer()" style="grid-column:1/-1">Start</button>
+            <button class="btn btn-primary" id="cf-timer-start-btn" onclick="cfTimerStartOrPause()" style="grid-column:1/-1">Start</button>
             <button class="btn btn-white" onclick="cfResetTimer()">Reset</button>
             <button class="btn btn-ghost" onclick="cfLapTimer()" id="cf-lap-btn">Lap / Split</button>
           </div>
@@ -10930,41 +10939,50 @@ function wlbShowSuggestions(input, section, idx) {
     </div>`;
   }).join('');
 
-  // Position below the input using fixed positioning to avoid clipping
-  const rect = input.getBoundingClientRect();
-  dropdown.style.cssText = [
-    'position:fixed',
-    `top:${rect.bottom + 4}px`,
-    `left:${rect.left}px`,
-    `width:${rect.width}px`,
-    'z-index:9999',
-    'max-height:220px',
-    'overflow-y:auto',
-  ].join(';');
-
-  document.body.appendChild(dropdown);
+  // Position below the input — use absolute inside a relative wrapper
+  // This works correctly on mobile where fixed+getBoundingClientRect can shift
+  let wrapper = input.parentElement;
+  // Make sure wrapper is relative
+  if (wrapper) {
+    wrapper.style.position = 'relative';
+    // Remove any existing dropdown inside this wrapper
+    const existing2 = wrapper.querySelector('.wlb-suggestions');
+    if (existing2) existing2.remove();
+    dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;z-index:9999;max-height:220px;overflow-y:auto;margin-top:2px';
+    wrapper.appendChild(dropdown);
+  } else {
+    document.body.appendChild(dropdown);
+  }
 }
 
 let _wlbSuppressHide = false;
 
 function wlbHideSuggestions(immediate) {
   if (_wlbSuppressHide) return;
-  const existing = document.getElementById('wlb-suggestions-dropdown');
-  if (existing) existing.remove();
+  // Remove all suggestion dropdowns (there should only ever be one)
+  document.querySelectorAll('.wlb-suggestions').forEach(el => el.remove());
 }
 
 function wlbPickSuggestion(name, section, idx) {
   const list = wlbMvList(section);
   if (list[idx]) list[idx].name = name;
+  // Remove dropdown immediately
+  const dd = document.getElementById('wlb-suggestions-dropdown');
+  if (dd) dd.remove();
   _wlbSuppressHide = true;
-  wlbHideSuggestions(true);
   wlbRerenderRow(section, idx);
-  setTimeout(() => { _wlbSuppressHide = false; }, 100);
+  // Keep suppressed briefly then clear — don't show suggestions after pick
+  setTimeout(() => {
+    _wlbSuppressHide = false;
+    // Also remove any dropdown that re-appeared during rerender
+    const dd2 = document.getElementById('wlb-suggestions-dropdown');
+    if (dd2) dd2.remove();
+  }, 200);
 }
 
 // Close suggestion dropdown when clicking outside
 document.addEventListener('click', function(e) {
-  if (!e.target.closest('#wlb-suggestions-dropdown') && !e.target.classList.contains('wlb-mv-name')) {
+  if (!e.target.closest('.wlb-suggestions') && !e.target.classList.contains('wlb-mv-name')) {
     if (!_wlbSuppressHide) wlbHideSuggestions();
   }
 });
@@ -12567,6 +12585,158 @@ function cfSelectFormat(format, btn) {
     cfResetTimer();
 }
 
+// ── Countdown lead-in timer ────────────────────────
+let _cfCountdownInterval = null;
+let _cfLeadinSeconds = 60; // default
+
+function cfSetLeadin(seconds) {
+  _cfLeadinSeconds = seconds;
+  [0,15,30,45,60].forEach(s => {
+    const btn = document.getElementById('leadin-' + s);
+    if (btn) btn.classList.toggle('active', s === seconds);
+  });
+}
+
+function cfSpeak(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate = 0.9;
+  utt.volume = 1.0;
+  window.speechSynthesis.speak(utt);
+}
+
+function cfStartWithCountdown() {
+  const overlay = document.getElementById('cf-countdown-overlay');
+  const numEl = document.getElementById('cf-countdown-number');
+  if (!overlay || !numEl) { cfToggleTimer(); return; }
+  if (_cfLeadinSeconds === 0) { cfToggleTimer(); return; }
+
+  let count = _cfLeadinSeconds;
+  numEl.textContent = count;
+  numEl.style.color = 'var(--text-muted)';
+  numEl.style.fontSize = '96px';
+  numEl.style.transform = 'scale(1)';
+  overlay.style.display = 'flex';
+
+  if (_cfCountdownInterval) clearInterval(_cfCountdownInterval);
+
+  _cfCountdownInterval = setInterval(() => {
+    count--;
+    if (count > 3) {
+      numEl.textContent = count;
+      numEl.style.color = 'var(--text-muted)';
+    } else if (count === 3) {
+      numEl.textContent = '3';
+      numEl.style.color = 'var(--cf-green)';
+      numEl.style.transform = 'scale(1.3)';
+      setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 200);
+      cfSpeak('3');
+    } else if (count === 2) {
+      numEl.textContent = '2';
+      numEl.style.transform = 'scale(1.3)';
+      setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 200);
+      cfSpeak('2');
+    } else if (count === 1) {
+      numEl.textContent = '1';
+      numEl.style.transform = 'scale(1.3)';
+      setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 200);
+      cfSpeak('1');
+    } else if (count === 0) {
+      numEl.textContent = 'GO!';
+      numEl.style.color = '#fff';
+      numEl.style.fontSize = '72px';
+      cfSpeak('Go!');
+    } else {
+      clearInterval(_cfCountdownInterval);
+      _cfCountdownInterval = null;
+      overlay.style.display = 'none';
+      numEl.style.fontSize = '96px';
+      cfToggleTimer();
+    }
+  }, 1000);
+}
+
+function cfCancelCountdown() {
+  if (_cfCountdownInterval) {
+    clearInterval(_cfCountdownInterval);
+    _cfCountdownInterval = null;
+  }
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  const overlay = document.getElementById('cf-countdown-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+
+function cfTimerStartOrPause() {
+  if (_cfTimerRunning) {
+    // Pause — cancel any speech in progress
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    cfToggleTimer();
+  } else if (_cfCountdownInterval) {
+    // Countdown running — cancel it
+    cfCancelCountdown();
+  } else {
+    const isFresh = _cfTimerSeconds === 0 ||
+      (_cfCurrentFormat === 'AMRAP' && _cfTimerSeconds === _cfSetup.amrapMin * 60) ||
+      (_cfCurrentFormat === 'Tabata' && _cfTimerSeconds === _cfSetup.tabataWork) ||
+      (['For Time','Chipper','Partner'].includes(_cfCurrentFormat) && _cfSetup.capEnabled && _cfTimerSeconds === _cfSetup.capMin * 60);
+    if (isFresh && _cfLeadinSeconds > 0) {
+      cfStartWithCountdown();
+    } else {
+      cfToggleTimer();
+    }
+  }
+}
+
+function cfStartWithCountdown() {
+  const overlay = document.getElementById('cf-countdown-overlay');
+  const numEl = document.getElementById('cf-countdown-number');
+  if (!overlay || !numEl) { cfToggleTimer(); return; }
+
+  let count = 3;
+  numEl.textContent = count;
+  numEl.style.color = 'var(--cf-green)';
+  overlay.style.display = 'flex';
+
+  if (_cfCountdownInterval) clearInterval(_cfCountdownInterval);
+
+  _cfCountdownInterval = setInterval(() => {
+    count--;
+    if (count > 0) {
+      numEl.textContent = count;
+      // Flash effect
+      numEl.style.transform = 'scale(1.3)';
+      setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 150);
+    } else if (count === 0) {
+      numEl.textContent = 'GO!';
+      numEl.style.color = '#fff';
+      numEl.style.fontSize = '64px';
+    } else {
+      // Done — start the actual timer
+      clearInterval(_cfCountdownInterval);
+      _cfCountdownInterval = null;
+      overlay.style.display = 'none';
+      numEl.style.fontSize = '96px';
+      // Also dismiss on WOD card if open
+      const wcOverlay = document.getElementById('wc-countdown-overlay');
+      if (wcOverlay) wcOverlay.style.display = 'none';
+      cfToggleTimer();
+    }
+  }, 1000);
+}
+
+function cfCancelCountdown() {
+  if (_cfCountdownInterval) {
+    clearInterval(_cfCountdownInterval);
+    _cfCountdownInterval = null;
+  }
+  const overlay = document.getElementById('cf-countdown-overlay');
+  if (overlay) overlay.style.display = 'none';
+  const wcOverlay = document.getElementById('wc-countdown-overlay');
+  if (wcOverlay) wcOverlay.style.display = 'none';
+}
+
 // ── Timer core ──
 let _cfRoundCount = 0;
 let _cfRepCount = 0;
@@ -13380,7 +13550,7 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
         <button class="cf-round-btn" onclick="cfAdjustReps(1)">+</button>
       </div>
     </div>
-    <button id="wc-start-btn" class="btn btn-primary" onclick="cfToggleTimer();wlbSyncWODCard()" style="grid-column:1/-1;background:var(--cf-green);color:#0d0d0d;font-weight:900;font-size:16px;padding:14px">Start</button>
+    <button id="wc-start-btn" class="btn btn-primary" onclick="cfTimerStartOrPause();wlbSyncWODCard()" style="grid-column:1/-1;background:var(--cf-green);color:#0d0d0d;font-weight:900;font-size:16px;padding:14px">Start</button>
     <button class="btn btn-white" onclick="cfResetTimer();wlbSyncWODCard()">Reset</button>
     <button class="btn btn-ghost" onclick="wlbExitWODCard()">✕ Done</button>
   </div>
