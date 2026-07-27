@@ -1362,8 +1362,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
         </div>
 
         <div id="cf-timer-block" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px;position:relative">
-          <button class="cf-fullscreen-btn" onclick="cfEnterFullscreen()" title="Fullscreen timer">⛶</button>
-          <!-- Timer setup -->
+                    <!-- Timer setup -->
           <div id="cf-timer-setup">
             <div id="cf-setup-amrap" style="display:none;margin-bottom:12px">
               <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px">AMRAP Duration</div>
@@ -1443,12 +1442,6 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             </div>
           </div>
 
-          <!-- Countdown lead-in overlay -->
-          <div id="cf-countdown-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9998;flex-direction:column;align-items:center;justify-content:center;gap:8px">
-            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted)">Starting in</div>
-            <div id="cf-countdown-number" style="font-size:96px;font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1;transition:transform .1s">3</div>
-            <button class="btn btn-ghost btn-sm" onclick="cfCancelCountdown()" style="margin-top:8px">Cancel</button>
-          </div>
 
           <!-- Hidden elements needed by timer JS — not displayed -->
           <div style="display:none">
@@ -14683,6 +14676,13 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
       <svg width="10" height="10" viewBox="0 0 100 100" fill="none"><path d="M50 18 L16 46 L24 46 L50 26 L76 46 L84 46 Z" fill="currentColor"/><path d="M50 40 L22 68 L30 68 L50 52 L70 68 L78 68 Z" fill="currentColor" opacity=".6"/></svg>
       WOD
     </button>
+  </div>
+
+  <!-- Lead-in countdown overlay — direct body child so overflow:hidden can't clip it -->
+  <div id="cf-countdown-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:99999;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+    <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,.5)">Starting in</div>
+    <div id="cf-countdown-number" style="font-size:120px;font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1">3</div>
+    <button onclick="cfCancelCountdown()" style="margin-top:16px;background:none;border:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.6);padding:8px 20px;border-radius:8px;font-size:13px;cursor:pointer">Cancel</button>
   </div>
 
 </body>
