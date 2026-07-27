@@ -10650,6 +10650,7 @@ function wlbStartWOD() {
   // Start syncing timer to card
   if (_wcSyncInterval) clearInterval(_wcSyncInterval);
   _wcSyncInterval = setInterval(wlbSyncWODCard, 250);
+  // Card opens showing workout — user taps Start when ready
 }
 
 function wlbExitWODCard() {
@@ -10871,6 +10872,12 @@ function wlbSyncWODCard() {
   if (wcBtn && mainBtn) {
     wcBtn.textContent = mainBtn.textContent;
     wcBtn.style.background = _cfTimerRunning ? 'var(--red)' : 'var(--cf-green)';
+  }
+  // Sync Next/Rest button on WOD card
+  const wcNextBtn2 = document.getElementById('wc-next-interval-btn');
+  if (wcNextBtn2) {
+    const showN = _cfCurrentFormat === 'Intervals' && _wlbIntervalPhase === 'work' && _cfTimerRunning;
+    wcNextBtn2.style.display = showN ? '' : 'none';
   }
 
   // Sync progress bar
@@ -11575,14 +11582,16 @@ function cfMeasurementToWlbType(measurement) {
 
 async function cfLoadCustomMovements() {
   try {
-    _cfCustomMovements = await db('cf_movements','GET',null,
+    const resp = await db('cf_movements','GET',null,
       `?user_id=eq.${currentUser.id}&select=*&order=name.asc`
-    ).catch(() => []) || [];
-    // Also load gym-wide movements (coach-promoted)
+    );
+    _cfCustomMovements = resp || [];
+
+    // Also load gym-wide movements
     const gymWide = await db('cf_movements','GET',null,
       `?gym_wide=eq.true&select=*&order=name.asc`
     ).catch(() => []) || [];
-    // Merge, dedup by name
+
     const names = new Set(_cfCustomMovements.map(m => m.name.toLowerCase()));
     gymWide.forEach(m => {
       if (!names.has(m.name.toLowerCase())) {
@@ -11590,12 +11599,19 @@ async function cfLoadCustomMovements() {
         names.add(m.name.toLowerCase());
       }
     });
+    _cfMovementLoadError = null;
   } catch(e) {
+    console.error('cfLoadCustomMovements error:', e);
+    _cfMovementLoadError = e.message || 'Unknown error';
     _cfCustomMovements = [];
   }
-  // Refresh autocomplete datalist
   cfRefreshMovementDatalist();
+  // If library view is open, refresh it
+  const libBody = document.getElementById('cf-mvlib-body');
+  if (libBody) cfRenderMovementLibrary();
 }
+
+let _cfMovementLoadError = null;
 
 function cfRefreshMovementDatalist() {
   const datalist = document.getElementById('cf-movement-suggestions');
@@ -11615,6 +11631,21 @@ function cfSetMvLibFilter(cat, btn) {
 function cfRenderMovementLibrary() {
   const body = document.getElementById('cf-mvlib-body');
   if (!body) return;
+
+  // Show DB error prominently if load failed
+  if (_cfMovementLoadError) {
+    body.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--red);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:6px">⚠️ Could not load custom movements</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">${_cfMovementLoadError}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">
+          This usually means the <strong>cf_movements</strong> table hasn't been created yet.
+          Run <strong>alloy_migration_movements.sql</strong> in your Supabase SQL editor.
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="cfLoadCustomMovements()">↻ Retry</button>
+      </div>`;
+    return;
+  }
 
   const q = (document.getElementById('cf-mvlib-search')?.value || '').toLowerCase();
   let all = cfGetAllMovements();
@@ -12158,6 +12189,7 @@ function wlbRenderIntervals() {
       + '<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green)">Interval ' + (iIdx+1) + '</div>'
       + '<div style="display:flex;gap:4px">'
       + '<button class="btn btn-ghost btn-xs" onclick="wlbAddIntervalMove(' + iIdx + ')">+ Move</button>'
+      + (iIdx < _wlbIntervals.length - 1 ? '<button class="btn btn-ghost btn-xs" onclick="wlbCopyIntervalToNext(' + iIdx + ')" title="Copy to next interval">⧉ Copy</button>' : '')
       + (_wlbIntervals.length > 1 ? '<button class="btn btn-ghost btn-xs" onclick="wlbRemoveInterval(' + iIdx + ')">✕</button>' : '')
       + '</div>'
       + '</div>'
@@ -12167,6 +12199,22 @@ function wlbRenderIntervals() {
       + ' style="margin-top:6px;font-size:11px;color:var(--text-muted);width:100%">'
       + '</div>';
   }).join('');
+}
+
+function wlbCopyIntervalToNext(iIdx) {
+  if (iIdx >= _wlbIntervals.length - 1) return;
+  const source = _wlbIntervals[iIdx];
+  // Deep copy movements — preserve name/unit/measurement but clear reps/weight for easy editing
+  _wlbIntervals[iIdx + 1].movements = source.movements.map(mv => ({
+    name:  mv.name,
+    reps:  mv.reps,   // copy reps too — easy to change
+    unit:  mv.unit,
+    weight: mv.weight,
+    _measurement: mv._measurement,
+  }));
+  wlbRenderIntervals();
+  wlbUpdatePreview();
+  toast('Interval ' + (iIdx+1) + ' copied to Interval ' + (iIdx+2));
 }
 
 function wlbShowIntervalSuggestions(input, iIdx, mIdx) {
@@ -13477,6 +13525,14 @@ function cfStartWithCountdown() {
   numEl.style.transform = 'scale(1)';
   overlay.style.display = 'flex';
 
+  // Also show countdown on WOD card if open
+  const wcOverlay = document.getElementById('wc-countdown-overlay');
+  const wcNum = document.getElementById('wc-countdown-number');
+  if (wcOverlay && document.getElementById('cf-wod-card')?.style.display !== 'none') {
+    wcOverlay.style.display = 'flex';
+    if (wcNum) wcNum.textContent = count;
+  }
+
   if (_cfCountdownInterval) clearInterval(_cfCountdownInterval);
 
   _cfCountdownInterval = setInterval(() => {
@@ -13484,32 +13540,40 @@ function cfStartWithCountdown() {
     if (count > 3) {
       numEl.textContent = count;
       numEl.style.color = 'var(--text-muted)';
+      const wcNP = document.getElementById('wc-countdown-number'); if (wcNP) wcNP.textContent = count;
     } else if (count === 3) {
       numEl.textContent = '3';
       numEl.style.color = 'var(--cf-green)';
       numEl.style.transform = 'scale(1.3)';
       setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 200);
       cfSpeak('3');
+      const wn3 = document.getElementById('wc-countdown-number'); if (wn3) { wn3.textContent='3'; wn3.style.color='var(--cf-green)'; }
     } else if (count === 2) {
       numEl.textContent = '2';
       numEl.style.transform = 'scale(1.3)';
       setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 200);
       cfSpeak('2');
+      const wn2 = document.getElementById('wc-countdown-number'); if (wn2) { wn2.textContent='2'; }
     } else if (count === 1) {
       numEl.textContent = '1';
       numEl.style.transform = 'scale(1.3)';
       setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 200);
       cfSpeak('1');
+      const wn1 = document.getElementById('wc-countdown-number'); if (wn1) { wn1.textContent='1'; }
     } else if (count === 0) {
       numEl.textContent = 'GO!';
       numEl.style.color = '#fff';
       numEl.style.fontSize = '72px';
       cfSpeak('Go!');
+      const wn0 = document.getElementById('wc-countdown-number'); if (wn0) { wn0.textContent='GO!'; wn0.style.color='#fff'; wn0.style.fontSize='72px'; }
     } else {
       clearInterval(_cfCountdownInterval);
       _cfCountdownInterval = null;
       overlay.style.display = 'none';
       numEl.style.fontSize = '96px';
+      // Hide WOD card countdown too
+      const wcOv = document.getElementById('wc-countdown-overlay');
+      if (wcOv) wcOv.style.display = 'none';
       cfToggleTimer();
     }
   }, 1000);
@@ -13523,6 +13587,8 @@ function cfCancelCountdown() {
   if (window.speechSynthesis) window.speechSynthesis.cancel();
   const overlay = document.getElementById('cf-countdown-overlay');
   if (overlay) overlay.style.display = 'none';
+  const wcOverlay = document.getElementById('wc-countdown-overlay');
+  if (wcOverlay) wcOverlay.style.display = 'none';
 }
 
 
@@ -13632,6 +13698,15 @@ function cfToggleTimer() {
       const showNext = _cfCurrentFormat === 'Intervals' && _wlbIntervalPhase === 'work';
       nextBtn.style.display = showNext ? '' : 'none';
       if (showNext) nextBtn.textContent = _wlbIntervalRestSecs > 0
+        ? '✓ Done — Start Rest (' + (_wlbIntervalRestSecs >= 60 ? Math.floor(_wlbIntervalRestSecs/60) + ' min' : _wlbIntervalRestSecs + 's') + ')'
+        : '✓ Done — Next Interval';
+    }
+    // Also sync WOD card next button
+    const wcNextBtn = document.getElementById('wc-next-interval-btn');
+    if (wcNextBtn) {
+      const showNext2 = _cfCurrentFormat === 'Intervals' && _wlbIntervalPhase === 'work';
+      wcNextBtn.style.display = showNext2 ? '' : 'none';
+      if (showNext2) wcNextBtn.textContent = _wlbIntervalRestSecs > 0
         ? '✓ Done — Start Rest (' + (_wlbIntervalRestSecs >= 60 ? Math.floor(_wlbIntervalRestSecs/60) + ' min' : _wlbIntervalRestSecs + 's') + ')'
         : '✓ Done — Next Interval';
     }
@@ -14440,9 +14515,18 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
         <button class="cf-round-btn" onclick="cfAdjustReps(1)">+</button>
       </div>
     </div>
-    <button id="wc-start-btn" class="btn btn-primary" onclick="cfTimerStartOrPause();wlbSyncWODCard()" style="grid-column:1/-1;background:var(--cf-green);color:#0d0d0d;font-weight:900;font-size:16px;padding:14px">Start</button>
+    <!-- Next/Rest button — shown during Intervals work phase -->
+    <button id="wc-next-interval-btn" onclick="cfEndIntervalWork()" style="display:none;grid-column:1/-1;background:#ff9f4a;border:none;border-radius:var(--radius);color:#0d0d0d;font-weight:900;font-size:15px;padding:14px;cursor:pointer">✓ Done — Start Rest</button>
+    <button id="wc-start-btn" class="btn btn-primary" onclick="cfTimerStartOrPause()" style="grid-column:1/-1;background:var(--cf-green);color:#0d0d0d;font-weight:900;font-size:16px;padding:14px">▶ Start</button>
     <button class="btn btn-white" onclick="cfResetTimer();wlbSyncWODCard()">Reset</button>
     <button class="btn btn-ghost" onclick="wlbExitWODCard()">✕ Done</button>
+  </div>
+
+  <!-- Countdown overlay inside WOD card -->
+  <div id="wc-countdown-overlay" style="display:none;position:absolute;inset:0;background:#0d0d0d;z-index:10;flex-direction:column;align-items:center;justify-content:center;gap:8px;border-radius:var(--radius-lg)">
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted)">Starting in</div>
+    <div id="wc-countdown-number" style="font-size:96px;font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1">3</div>
+    <button class="btn btn-ghost btn-sm" onclick="cfCancelCountdown()" style="margin-top:8px">Cancel</button>
   </div>
 </div>
 
