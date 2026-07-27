@@ -790,6 +790,42 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
 .cf-fullscreen-btn{position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:1}
 .cf-fullscreen-btn:hover{color:var(--cf-green);border-color:var(--cf-green)}
 
+
+/* ── Custom movement autocomplete ── */
+.wlb-suggestions {
+  position: absolute;
+  z-index: 999;
+  background: var(--surface2);
+  border: 1px solid var(--cf-green);
+  border-radius: var(--radius);
+  max-height: 200px;
+  overflow-y: auto;
+  width: 100%;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+.wlb-suggestion-item {
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.wlb-suggestion-item:last-child { border-bottom: none; }
+.wlb-suggestion-item:hover, .wlb-suggestion-item.highlighted {
+  background: var(--cf-green-dim);
+  color: var(--cf-green);
+}
+.wlb-suggestion-cat {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+
 </style>
   <script>
     if ("serviceWorker" in navigator) {
@@ -1250,6 +1286,18 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
           <div id="wlb-preview" style="font-size:13px;color:var(--text-muted);font-style:italic">Add movements above to see your WOD</div>
         </div>
 
+        <!-- Previous Attempts (shown when WOD has history) -->
+        <div id="wlb-prev-attempts" style="display:none;background:var(--surface);border:1px solid rgba(57,211,83,.3);border-radius:var(--radius-lg);margin-bottom:10px;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid rgba(57,211,83,.15);cursor:pointer" onclick="wlbTogglePrevAttempts()">
+            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--cf-green)">📊 Previous Attempts</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div id="wlb-prev-best-inline" style="font-size:13px;font-weight:900;font-family:var(--mono);color:var(--cf-green)"></div>
+              <span id="wlb-prev-toggle-icon" style="color:var(--text-muted);font-size:12px">▼</span>
+            </div>
+          </div>
+          <div id="wlb-prev-attempts-body" style="padding:10px 14px;display:none"></div>
+        </div>
+
         <!-- Timer -->
 
 
@@ -1370,7 +1418,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
           <div class="section-label" style="margin-bottom:10px">Log Score</div>
           <div class="field">
             <label>WOD Name</label>
-            <input id="cf-score-wod" list="cf-wod-suggestions" placeholder="e.g. HAUL, Fran, Grace...">
+            <input id="cf-score-wod" list="cf-wod-suggestions" placeholder="e.g. HAUL, Fran, Grace..." onchange="wlbLoadPreviousAttempts(this.value)" onblur="wlbLoadPreviousAttempts(this.value)">
             <datalist id="cf-wod-suggestions"></datalist>
             <datalist id="cf-movement-suggestions">
               <option>Air Squats</option><option>Back Squat</option><option>Front Squat</option>
@@ -1414,8 +1462,10 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
           </div>
           <div class="row">
             <div class="field">
-              <label>Score</label>
-              <input id="cf-score-value" placeholder="e.g. 24:38 or 9+4">
+              <label>Score <span id="cf-score-format-hint" style="font-size:10px;color:var(--cf-green);font-weight:700"></span></label>
+              <input id="cf-score-value" placeholder="e.g. 24:38 or 9+4"
+                oninput="cfFormatScoreInput(this)"
+                style="font-family:var(--mono);font-size:18px;font-weight:900;letter-spacing:.5px">
             </div>
             <div class="field">
               <label>RX / Scaled</label>
@@ -1426,9 +1476,26 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
               </select>
             </div>
           </div>
+          <!-- Feel rating -->
+          <div class="field">
+            <label>How did it feel?</label>
+            <div style="display:flex;gap:8px;margin-top:4px" id="cf-feel-btns">
+              <button class="cf-feel-btn" data-feel="💀" onclick="cfSetFeel('💀',this)" title="Destroyed me"
+                style="flex:1;padding:8px 4px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);font-size:20px;cursor:pointer;transition:all .15s">💀</button>
+              <button class="cf-feel-btn" data-feel="😵" onclick="cfSetFeel('😵',this)" title="Really hard"
+                style="flex:1;padding:8px 4px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);font-size:20px;cursor:pointer;transition:all .15s">😵</button>
+              <button class="cf-feel-btn" data-feel="😅" onclick="cfSetFeel('😅',this)" title="Hard but good"
+                style="flex:1;padding:8px 4px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);font-size:20px;cursor:pointer;transition:all .15s">😅</button>
+              <button class="cf-feel-btn" data-feel="💪" onclick="cfSetFeel('💪',this)" title="Felt strong"
+                style="flex:1;padding:8px 4px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);font-size:20px;cursor:pointer;transition:all .15s">💪</button>
+              <button class="cf-feel-btn" data-feel="🔥" onclick="cfSetFeel('🔥',this)" title="Crushed it"
+                style="flex:1;padding:8px 4px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface2);font-size:20px;cursor:pointer;transition:all .15s">🔥</button>
+            </div>
+            <input type="hidden" id="cf-score-feel" value="">
+          </div>
           <div class="field">
             <label>Notes <span style="font-size:10px;color:var(--text-muted)">(optional)</span></label>
-            <textarea id="cf-score-notes" rows="2" placeholder="How it felt, what you scaled..."></textarea>
+            <textarea id="cf-score-notes" rows="4" placeholder="What did you scale? How did it go? Any PRs? Things to remember next time..."></textarea>
           </div>
           <button class="btn btn-primary btn-full" onclick="cfLogScore()" style="margin-bottom:8px">Save Score</button>
           <button class="btn btn-ghost btn-full btn-sm" onclick="cfSaveLoggedWODToLibrary()">+ Save this WOD to Library</button>
@@ -2560,17 +2627,26 @@ async function renderDayPanel(ds) {
   const dayWODs = _calWODScores[ds] || [];
   let wodHtml = '';
   dayWODs.forEach(s => {
-    wodHtml += `<div style="background:var(--cf-green-dim);border:1.5px solid rgba(57,211,83,.3);border-radius:var(--radius);padding:10px 13px;margin-bottom:8px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
-        <div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.2px;color:var(--cf-green)">⚡ ${s.wod_name}</div>
-        <span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3);font-size:10px">${s.rx_scaled||'RX'}</span>
-      </div>
-      <div style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">${s.score}</div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${s.format||'WOD'}</div>
-      ${s.notes?`<div style="font-size:11.5px;color:var(--text-muted);margin-top:5px;font-style:italic">"${s.notes}"</div>`:''}
-    </div>`;
+    const wodDef = [...(_cfWODs||[]), ...(CF_BENCHMARKS||[])].find(w => w.name === s.wod_name);
+    const movPreview = wodDef?.movements?.slice(0,3).map(m =>
+      '<div style="font-size:11px;color:rgba(57,211,83,.7)">' + (m.reps||'') + ' ' + (m.name||'') + '</div>'
+    ).join('') || '';
+    const feelEmoji = s.feel ? '<span style="font-size:16px;margin-left:4px">' + s.feel + '</span>' : '';
+    wodHtml += '<div style="background:var(--cf-green-dim);border:1.5px solid rgba(57,211,83,.3);border-radius:var(--radius);padding:10px 13px;margin-bottom:8px">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+      + '<div style="font-size:12px;font-weight:900;text-transform:uppercase;color:var(--cf-green)">⚡ ' + s.wod_name + feelEmoji + '</div>'
+      + '<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3);font-size:10px">' + (s.rx_scaled||'RX') + '</span>'
+      + '</div>'
+      + '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">'
+      + '<div style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">' + s.score + '</div>'
+      + '<div style="font-size:11px;color:var(--text-muted)">' + (s.format||'WOD') + '</div>'
+      + '</div>'
+      + (movPreview ? '<div style="border-top:1px solid rgba(57,211,83,.2);padding-top:5px;margin-top:4px">' + movPreview
+        + (wodDef?.movements?.length > 3 ? '<div style="font-size:10px;color:var(--text-muted)">+' + (wodDef.movements.length-3) + ' more</div>' : '')
+        + '</div>' : '')
+      + (s.notes ? '<div style="font-size:11.5px;color:var(--text-muted);margin-top:5px;font-style:italic;border-top:1px solid rgba(57,211,83,.15);padding-top:4px">"' + s.notes.slice(0,80) + (s.notes.length>80?'…':'') + '"</div>' : '')
+      + '</div>';
   });
-
   if (!bodyHtml && !wodHtml) bodyHtml=`<div style="padding:16px 0;text-align:center;color:var(--gray-400);font-size:12.5px">Rest day — nothing logged.</div>`;
 
   // Footer: mode-aware log button
@@ -9988,9 +10064,10 @@ function wlbRenderSection(section) {
     return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <input class="wlb-mv-name" placeholder="Movement name..." value="${mv.name||''}"
-          list="cf-movement-suggestions"
-          oninput="wlbMvList('${section}')[${idx}].name=this.value;wlbRerenderRow('${section}',${idx})"
-          onchange="wlbMvList('${section}')[${idx}].name=this.value;wlbRerenderRow('${section}',${idx})"
+          autocomplete="off"
+          onfocus="wlbShowSuggestions(this,'${section}',${idx})"
+          oninput="wlbMvList('${section}')[${idx}].name=this.value;wlbRerenderRow('${section}',${idx});wlbShowSuggestions(this,'${section}',${idx})"
+          onblur="setTimeout(()=>wlbHideSuggestions(),200)"
           style="flex:1;font-size:13px;font-weight:700">
         ${unitToggle}
         <button onclick="wlbRemoveMovement('${section}',${idx})"
@@ -10134,6 +10211,159 @@ function wlbInit() {
   wlbUpdatePreview();
 }
 
+
+// ═══════════════════════════════════════════════════
+// ALLOY — PREVIOUS ATTEMPTS ON TRACK PAGE
+// ═══════════════════════════════════════════════════
+
+let _wlbPrevAttempts = [];
+let _wlbPrevExpanded = false;
+
+async function wlbLoadPreviousAttempts(wodName) {
+  const panel = document.getElementById('wlb-prev-attempts');
+  const body  = document.getElementById('wlb-prev-attempts-body');
+  const bestInline = document.getElementById('wlb-prev-best-inline');
+  if (!panel || !body) return;
+  if (!wodName) { panel.style.display = 'none'; return; }
+
+  let attempts = (_cfScores||[]).filter(s =>
+    s.wod_name?.toLowerCase() === wodName.toLowerCase()
+  ).sort((a,b) => new Date(b.logged_at) - new Date(a.logged_at));
+
+  if (!attempts.length) {
+    try {
+      attempts = await db('cf_scores','GET',null,
+        `?user_id=eq.${currentUser.id}&wod_name=eq.${encodeURIComponent(wodName)}&select=*&order=logged_at.desc&limit=20`
+      ).catch(()=>[]) || [];
+    } catch(e) {}
+  }
+
+  _wlbPrevAttempts = attempts;
+
+  if (!attempts.length) {
+    panel.style.display = 'none';
+    const ghostEl = document.getElementById('wc-ghost-target');
+    if (ghostEl) ghostEl.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'block';
+  const fmt = attempts[0]?.format || _cfCurrentFormat;
+  const best = wlbFindBestScore(attempts, fmt);
+  const last = attempts[0];
+
+  if (bestInline) bestInline.textContent = 'Best: ' + (best?.score || last.score);
+
+  const ghostEl = document.getElementById('wc-ghost-target');
+  if (ghostEl) {
+    const lastDate = new Date(last.logged_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});
+    ghostEl.textContent = 'Last: ' + last.score + ' (' + lastDate + ') · Best: ' + (best?.score||last.score);
+    ghostEl.style.display = 'block';
+  }
+
+  wlbRenderPrevAttempts(attempts, fmt, best);
+}
+
+function wlbFindBestScore(attempts, fmt) {
+  if (!attempts.length) return null;
+  const isForTime = ['For Time','Chipper','Partner'].includes(fmt);
+  const isAMRAP = fmt === 'AMRAP';
+  if (isForTime) {
+    const pt = t => { const m = t?.match(/(\d+):(\d+)/); return m ? parseInt(m[1])*60+parseInt(m[2]) : Infinity; };
+    return attempts.reduce((b,s) => pt(s.score) < pt(b.score) ? s : b);
+  }
+  if (isAMRAP) {
+    const pr = t => { const m = t?.match(/^(\d+)(?:\+(\d+))?/); return m ? parseInt(m[1])*100+(parseInt(m[2])||0) : -1; };
+    return attempts.reduce((b,s) => pr(s.score) > pr(b.score) ? s : b);
+  }
+  return attempts[0];
+}
+
+function wlbRenderPrevAttempts(attempts, fmt, best) {
+  const body = document.getElementById('wlb-prev-attempts-body');
+  if (!body) return;
+  const isForTime = ['For Time','Chipper','Partner'].includes(fmt);
+  const isAMRAP = fmt === 'AMRAP';
+
+  body.innerHTML = attempts.slice(0,5).map((s,i) => {
+    const d = new Date(s.logged_at);
+    const dateLabel = d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'2-digit'});
+    const isBest = best && String(s.id) === String(best.id);
+    const isLast = i === 0;
+    let arrow = '';
+    if (i < attempts.length - 1) {
+      const prev = attempts[i+1];
+      if (isForTime) {
+        const pt = t => { const m = t?.match(/(\d+):(\d+)/); return m ? parseInt(m[1])*60+parseInt(m[2]) : null; };
+        const c = pt(s.score), p = pt(prev.score);
+        if (c && p) arrow = c < p ? '<span style="color:var(--cf-green);font-size:11px;font-weight:800"> ▲</span>' : c > p ? '<span style="color:var(--red);font-size:11px;font-weight:700"> ▼</span>' : '';
+      } else if (isAMRAP) {
+        const pr = t => { const m = t?.match(/^(\d+)(?:\+(\d+))?/); return m ? parseInt(m[1])*100+(parseInt(m[2])||0) : null; };
+        const c = pr(s.score), p = pr(prev.score);
+        if (c && p) arrow = c > p ? '<span style="color:var(--cf-green);font-size:11px;font-weight:800"> ▲</span>' : c < p ? '<span style="color:var(--red);font-size:11px;font-weight:700"> ▼</span>' : '';
+      }
+    }
+    const len = attempts.slice(0,5).length;
+    return '<div style="padding:8px 0;border-bottom:' + (i===len-1?'none':'1px solid var(--border)') + '">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between">'
+      + '<div>'
+      + '<div style="font-size:11px;color:var(--text-muted)">' + dateLabel + ' ' + (s.feel||'') + '</div>'
+      + '<div style="display:flex;align-items:center;gap:4px;margin-top:2px">'
+      + '<span style="font-size:18px;font-weight:900;font-family:var(--mono);color:' + (isBest?'var(--cf-green)':'#fff') + '">' + s.score + arrow + '</span>'
+      + (isBest ? '<span style="font-size:9px;font-weight:800;background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3);border-radius:4px;padding:1px 5px">BEST</span>' : '')
+      + (isLast && !isBest ? '<span style="font-size:9px;font-weight:700;color:var(--text-muted);border:1px solid var(--border);border-radius:4px;padding:1px 5px">LAST</span>' : '')
+      + '</div>'
+      + '<div style="font-size:10px;color:var(--text-muted);margin-top:1px">' + (s.rx_scaled||'RX') + '</div>'
+      + '</div></div>'
+      + (s.notes ? '<div style="font-size:11.5px;color:var(--text-muted);margin-top:5px;padding:5px 8px;background:var(--surface2);border-radius:4px;font-style:italic">"' + s.notes.slice(0,100) + (s.notes.length>100?'…':'') + '"</div>' : '')
+      + '</div>';
+  }).join('');
+
+  if (attempts.length > 5) {
+    body.innerHTML += '<div style="font-size:11px;color:var(--text-muted);padding:6px 0;text-align:center">+' + (attempts.length-5) + ' more — <a href="#" onclick="event.preventDefault();nav(\'cf-history\')" style="color:var(--cf-green);font-weight:700">WOD History</a></div>';
+  }
+}
+
+function wlbTogglePrevAttempts() {
+  _wlbPrevExpanded = !_wlbPrevExpanded;
+  const body = document.getElementById('wlb-prev-attempts-body');
+  const icon = document.getElementById('wlb-prev-toggle-icon');
+  if (body) body.style.display = _wlbPrevExpanded ? 'block' : 'none';
+  if (icon) icon.textContent = _wlbPrevExpanded ? '▲' : '▼';
+}
+
+function wlbCheckPR(wodName, newScore, fmt) {
+  const prev = (_cfScores||[]).filter(s => s.wod_name?.toLowerCase() === wodName.toLowerCase());
+  if (prev.length < 2) return false;
+  const best = wlbFindBestScore(prev.slice(1), fmt);
+  if (!best) return false;
+  const isForTime = ['For Time','Chipper','Partner'].includes(fmt);
+  const isAMRAP = fmt === 'AMRAP';
+  if (isForTime) {
+    const pt = t => { const m = t?.match(/(\d+):(\d+)/); return m ? parseInt(m[1])*60+parseInt(m[2]) : null; };
+    const c = pt(newScore), p = pt(best.score);
+    return c && p && c < p;
+  }
+  if (isAMRAP) {
+    const pr = t => { const m = t?.match(/^(\d+)(?:\+(\d+))?/); return m ? parseInt(m[1])*100+(parseInt(m[2])||0) : null; };
+    const c = pr(newScore), p = pr(best.score);
+    return c && p && c > p;
+  }
+  return false;
+}
+
+function wlbShowPRCelebration(wodName, score) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px';
+  overlay.innerHTML = '<div style="font-size:64px">🏆</div>'
+    + '<div style="font-size:28px;font-weight:900;text-transform:uppercase;letter-spacing:1px;color:var(--cf-green)">New PR!</div>'
+    + '<div style="font-size:22px;font-weight:900;font-family:var(--mono);color:#fff">' + wodName + '</div>'
+    + '<div style="font-size:36px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">' + score + '</div>'
+    + '<button class="btn btn-primary" onclick="this.parentElement.remove()" style="margin-top:12px;background:var(--cf-green);color:#0d0d0d;font-weight:900;padding:12px 32px;font-size:16px">Lets Go! 💪</button>';
+  document.body.appendChild(overlay);
+  setTimeout(() => { if (overlay.parentElement) overlay.remove(); }, 8000);
+}
+
 // ── WOD CARD (workout display screen) ──────────────────
 function wlbStartWOD() {
   const hasMovements = _wlbMovements.length > 0;
@@ -10234,6 +10464,18 @@ function wlbPopulateWODCard() {
   const wcRepSection = document.getElementById('wc-rep-section');
   if (wcCounter) wcCounter.style.display = showRounds ? 'flex' : 'none';
   if (wcRepSection) wcRepSection.style.display = fmt2 === 'AMRAP' ? 'flex' : 'none';
+
+  // Set ghost target from previous best
+  const ghostEl = document.getElementById('wc-ghost-target');
+  if (ghostEl && _wlbPrevAttempts.length) {
+    const best = wlbFindBestScore(_wlbPrevAttempts, _cfCurrentFormat);
+    const last = _wlbPrevAttempts[0];
+    const lastDate = new Date(last.logged_at).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    ghostEl.textContent = '🎯 Last: ' + last.score + ' (' + lastDate + ')' + (best && best.id !== last.id ? '  ·  Best: ' + best.score : '');
+    ghostEl.style.display = 'block';
+  } else if (ghostEl) {
+    ghostEl.style.display = 'none';
+  }
 }
 
 function wlbSyncWODCard() {
@@ -10491,7 +10733,7 @@ function cfRenderHistByWOD(body, scores) {
 
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
         <div>
-          <div style="font-size:12px;color:var(--text-muted)">${dateLabel}</div>
+          <div style="font-size:12px;color:var(--text-muted)">${dateLabel} ${s.feel||''}</div>
           <div style="font-size:11px;color:var(--text-muted)">${s.rx_scaled||'RX'}${s.notes?` · "${s.notes.slice(0,30)}"`:''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
@@ -10537,6 +10779,266 @@ async function cfDeleteScoreFromHist(id, wodName) {
 
 // Auto-init WOD log builder when Track view opens
 const _origNavCFTrack = nav;
+
+// ── Custom movement autocomplete ──────────────────
+let _wlbSuggestionTarget = null;
+let _wlbSuggestionSection = null;
+let _wlbSuggestionIdx = null;
+
+function wlbShowSuggestions(input, section, idx) {
+  _wlbSuggestionTarget = input;
+  _wlbSuggestionSection = section;
+  _wlbSuggestionIdx = idx;
+
+  // Remove any existing dropdown
+  wlbHideSuggestions(true);
+
+  const q = (input.value || '').toLowerCase().trim();
+  const all = cfGetAllMovements();
+
+  // Filter: show all on focus with empty query, filter by query otherwise
+  const matches = q.length === 0
+    ? all.slice(0, 20) // show first 20 on focus
+    : all.filter(m => m.name.toLowerCase().includes(q)).slice(0, 12);
+
+  if (!matches.length) return;
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'wlb-suggestions';
+  dropdown.id = 'wlb-suggestions-dropdown';
+
+  dropdown.innerHTML = matches.map(m => {
+    const mt = CF_MEASUREMENT_TYPES.find(t => t.id === m.measurement);
+    const mtShort = mt ? mt.label.split('(')[0].trim() : '';
+    return `<div class="wlb-suggestion-item"
+      onmousedown="wlbPickSuggestion('${m.name.replace(/'/g,"\\'")}','${section}',${idx})"
+    >
+      <span>${m.name}</span>
+      <span class="wlb-suggestion-cat">${m.category||''} · ${mtShort}</span>
+    </div>`;
+  }).join('');
+
+  // Position relative to input
+  const wrapper = input.closest('div');
+  if (!wrapper) return;
+  wrapper.style.position = 'relative';
+  wrapper.appendChild(dropdown);
+}
+
+function wlbHideSuggestions(immediate) {
+  const existing = document.getElementById('wlb-suggestions-dropdown');
+  if (existing) existing.remove();
+}
+
+function wlbPickSuggestion(name, section, idx) {
+  const list = wlbMvList(section);
+  if (list[idx]) list[idx].name = name;
+  wlbHideSuggestions(true);
+  wlbRerenderRow(section, idx);
+}
+
+// ═══════════════════════════════════════════════════
+// ALLOY — CF ASSIGN WOD TO ATHLETES
+// ═══════════════════════════════════════════════════
+
+let _cfAssignAthlete = null; // currently selected athlete for WOD assignment
+
+async function cfRenderAssign() {
+  const body = document.getElementById('cf-assign-body');
+  if (!body) return;
+
+  // Load athletes
+  let athletes = [];
+  try {
+    athletes = await db('users','GET',null,'?role=eq.athlete&select=id,username,display_name').catch(()=>[]) || [];
+  } catch(e) { athletes = []; }
+
+  if (!athletes.length) {
+    body.innerHTML = `<div class="empty-state"><span class="emo">👥</span><h3>No athletes yet</h3><p>Athletes will appear here once they sign up.</p></div>`;
+    return;
+  }
+
+  body.innerHTML = `
+    <div style="margin-bottom:16px">
+      <div class="section-label" style="margin-bottom:8px">Select Athlete</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${athletes.map(a => `
+          <button class="cf-assign-athlete-btn" data-id="${a.id}" data-name="${(a.display_name||a.username).replace(/"/g,'&quot;')}"
+            onclick="cfSelectAssignAthlete(this.dataset.id,this.dataset.name,this)"
+            style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;text-align:left;transition:all .15s">
+            <div style="width:36px;height:36px;border-radius:50%;background:var(--cf-green-dim);border:1px solid rgba(57,211,83,.3);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:var(--cf-green);flex-shrink:0">
+              ${(a.display_name||a.username||'?')[0].toUpperCase()}
+            </div>
+            <div style="font-size:14px;font-weight:700">${a.display_name||a.username}</div>
+          </button>`).join('')}
+      </div>
+    </div>
+
+    <!-- WOD assignment form — shown after selecting athlete -->
+    <div id="cf-assign-form" style="display:none">
+      <div class="section-label" style="margin-bottom:8px">Assign WOD</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;display:flex;flex-direction:column;gap:12px">
+
+        <!-- Selected athlete display -->
+        <div style="display:flex;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+          <span style="font-size:12px;color:var(--text-muted)">Assigning to:</span>
+          <span id="cf-assign-athlete-name" style="font-size:13px;font-weight:800;color:var(--cf-green)"></span>
+        </div>
+
+        <!-- Date -->
+        <div class="field" style="margin:0">
+          <label>Date</label>
+          <input type="date" id="cf-assign-date" value="${new Date().toISOString().slice(0,10)}">
+        </div>
+
+        <!-- WOD picker -->
+        <div class="field" style="margin:0">
+          <label>WOD</label>
+          <div style="display:flex;gap:8px">
+            <input id="cf-assign-wod-name" placeholder="Search or type WOD name..." style="flex:1"
+              oninput="cfFilterAssignWODs(this.value)" list="cf-assign-wod-list">
+            <datalist id="cf-assign-wod-list">
+              ${[...(CF_BENCHMARKS||[]),...(_cfWODs||[])].map(w=>`<option value="${w.name}">`).join('')}
+            </datalist>
+          </div>
+        </div>
+
+        <!-- WOD quick-pick from library -->
+        <div>
+          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:6px">Quick Pick</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${CF_BENCHMARKS.map(b=>`<button class="wod-format-chip"
+              onclick="document.getElementById('cf-assign-wod-name').value='${b.name}'">${b.name}</button>`).join('')}
+          </div>
+        </div>
+
+        <!-- Notes for athlete -->
+        <div class="field" style="margin:0">
+          <label>Coach Notes <span style="font-size:10px;color:var(--text-muted)">(optional)</span></label>
+          <textarea id="cf-assign-notes" rows="2" placeholder="Scaling suggestions, focus points, expectations..."></textarea>
+        </div>
+
+        <!-- RX target -->
+        <div class="field" style="margin:0">
+          <label>Target</label>
+          <select id="cf-assign-rx">
+            <option value="RX">RX</option>
+            <option value="Scaled">Scaled</option>
+            <option value="RX+">RX+</option>
+            <option value="">No target</option>
+          </select>
+        </div>
+
+        <button class="btn btn-primary btn-full" onclick="cfSaveWODAssignment()">Assign WOD</button>
+      </div>
+
+      <!-- Existing assignments for this athlete -->
+      <div id="cf-assign-existing" style="margin-top:16px"></div>
+    </div>
+  `;
+}
+
+function cfSelectAssignAthlete(id, name, btn) {
+  _cfAssignAthlete = { id, name };
+  // Highlight selected
+  document.querySelectorAll('.cf-assign-athlete-btn').forEach(b => {
+    b.style.background = 'var(--surface)';
+    b.style.borderColor = 'var(--border)';
+  });
+  if (btn) {
+    btn.style.background = 'var(--cf-green-dim)';
+    btn.style.borderColor = 'rgba(57,211,83,.5)';
+  }
+  // Show form
+  const form = document.getElementById('cf-assign-form');
+  const nameEl = document.getElementById('cf-assign-athlete-name');
+  if (form) form.style.display = 'block';
+  if (nameEl) nameEl.textContent = name;
+  // Load their existing WOD assignments
+  cfLoadAthleteWODAssignments(id);
+  // Scroll to form
+  setTimeout(() => form?.scrollIntoView({ behavior:'smooth', block:'start' }), 100);
+}
+
+async function cfLoadAthleteWODAssignments(athleteId) {
+  const container = document.getElementById('cf-assign-existing');
+  if (!container) return;
+  container.innerHTML = '<div class="loading">Loading assignments...</div>';
+
+  try {
+    const assignments = await db('cf_wod_assignments','GET',null,
+      `?assigned_to=eq.${athleteId}&select=*&order=date.desc&limit=10`
+    ).catch(() => []) || [];
+
+    if (!assignments.length) {
+      container.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:8px 0">No WODs assigned yet.</div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="section-label" style="margin-bottom:8px">Recent Assignments</div>
+      ${assignments.map(a => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:5px">
+          <div>
+            <div style="font-size:13px;font-weight:700">${a.wod_name}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${a.date} · ${a.rx_target||'No target'}</div>
+            ${a.coach_notes?`<div style="font-size:11px;color:var(--text-muted);font-style:italic">"${a.coach_notes.slice(0,50)}"</div>`:''}
+          </div>
+          <button class="btn btn-danger btn-xs" onclick="cfDeleteWODAssignment('${a.id}')">✕</button>
+        </div>`).join('')}`;
+  } catch(e) {
+    container.innerHTML = '';
+  }
+}
+
+async function cfSaveWODAssignment() {
+  if (!_cfAssignAthlete) { toast('Select an athlete first'); return; }
+  const wodName = document.getElementById('cf-assign-wod-name')?.value?.trim();
+  const date = document.getElementById('cf-assign-date')?.value;
+  const notes = document.getElementById('cf-assign-notes')?.value?.trim() || '';
+  const rx = document.getElementById('cf-assign-rx')?.value || '';
+
+  if (!wodName) { toast('Enter a WOD name'); return; }
+  if (!date) { toast('Select a date'); return; }
+
+  const payload = {
+    assigned_by: currentUser.id,
+    assigned_to: _cfAssignAthlete.id,
+    wod_name: wodName,
+    date,
+    coach_notes: notes,
+    rx_target: rx,
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    await db('cf_wod_assignments','POST',payload);
+    toast(`"${wodName}" assigned to ${_cfAssignAthlete.name} for ${date} ✓`);
+    document.getElementById('cf-assign-wod-name').value = '';
+    document.getElementById('cf-assign-notes').value = '';
+    cfLoadAthleteWODAssignments(_cfAssignAthlete.id);
+  } catch(e) {
+    toast('Save failed — run SQL migration first');
+  }
+}
+
+async function cfDeleteWODAssignment(id) {
+  if (!confirm('Remove this WOD assignment?')) return;
+  try {
+    await db('cf_wod_assignments','DELETE',null,`?id=eq.${id}`);
+    cfLoadAthleteWODAssignments(_cfAssignAthlete?.id);
+    toast('Assignment removed');
+  } catch(e) { toast('Delete failed'); }
+}
+
+function cfFilterAssignWODs(q) {
+  // Update datalist dynamically based on search
+  const dl = document.getElementById('cf-assign-wod-list');
+  if (!dl) return;
+  const all = [...(CF_BENCHMARKS||[]),...(_cfWODs||[])];
+  const matches = q ? all.filter(w => w.name.toLowerCase().includes(q.toLowerCase())) : all;
+  dl.innerHTML = matches.slice(0,20).map(w=>`<option value="${w.name}">`).join('');
+}
 
 // ═══════════════════════════════════════════════════
 // ALLOY — CF MOVEMENT LIBRARY
@@ -11327,8 +11829,9 @@ function cfOpenWODPicker(ds) {
     </div>`;
 
   document.getElementById('modal-footer').innerHTML = `
-    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-primary" onclick="cfPickBuildNew('${ds}')">+ Build New WOD</button>`;
+    <button class="btn btn-ghost btn-sm" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-white btn-sm" onclick="closeModal();nav('cf-builder')" title="Let AI build a WOD for you">⚡ AI Builder</button>
+    <button class="btn btn-primary btn-sm" onclick="cfPickBuildNew('${ds}')">+ Build My Own</button>`;
 
   // WOD picker styles injected via CSS in stylesheet
 
@@ -11617,10 +12120,19 @@ function nav(view, btn) {
     if (view === 'cf-dashboard') cfRenderDashboard();
     if (view === 'cf-library')   { cfRenderLibrary(); cfPopulateWODSuggestions(); }
     if (view === 'cf-athletes')  cfRenderAthletes();
-    if (view === 'cf-track')     { cfPopulateWODSuggestions(); wlbInit(); }
+    if (view === 'cf-track')     {
+      cfPopulateWODSuggestions();
+      wlbInit();
+      // Clear previous attempts panel on fresh nav
+      const prevPanel = document.getElementById('wlb-prev-attempts');
+      if (prevPanel) prevPanel.style.display = 'none';
+      _wlbPrevAttempts = [];
+      _wlbPrevExpanded = false;
+    }
     if (view === 'cf-assign')    cfRenderAssignWOD();
     if (view === 'cf-builder')   cfRenderWODBuilder();
     if (view === 'cf-history')   cfRenderHistory();
+    if (view === 'cf-assign')    cfRenderAssign();
     if (view === 'cf-movement-library') cfRenderMovementLibrary();
     return;
   }
@@ -11840,6 +12352,12 @@ function cfToggleCap() {
   if (btn) btn.textContent = _cfSetup.capEnabled ? 'Remove Cap' : 'No Cap';
   if (capVal) capVal.style.opacity = _cfSetup.capEnabled ? '1' : '0.3';
   if (capLabel) capLabel.style.opacity = _cfSetup.capEnabled ? '1' : '0.3';
+  // Update timer display immediately
+  if (!_cfTimerRunning) {
+    const disp = document.getElementById('cf-timer-display');
+    if (disp) disp.textContent = _cfSetup.capEnabled ? `${_cfSetup.capMin}:00` : '0:00';
+    _cfTimerSeconds = _cfSetup.capEnabled ? _cfSetup.capMin * 60 : 0;
+  }
 }
 
 // ── Format selection ──
@@ -12121,6 +12639,77 @@ function cfUpdateTimerDisplay() {
   if (disp) disp.textContent = `${m}:${String(sec).padStart(2,'0')}`;
 }
 
+// ── Score auto-format ──────────────────────────────
+function cfFormatScoreInput(input) {
+  const fmt = _cfCurrentFormat;
+  let val = input.value;
+  const hint = document.getElementById('cf-score-format-hint');
+
+  if (['For Time','Chipper','Partner'].includes(fmt)) {
+    // Auto-format as MM:SS as digits are typed
+    // Strip non-digits
+    const digits = val.replace(/\D/g,'');
+    if (digits.length >= 3) {
+      // Format: everything before last 2 digits = minutes, last 2 = seconds
+      const secs = digits.slice(-2);
+      const mins = digits.slice(0,-2);
+      const secsNum = parseInt(secs);
+      if (secsNum < 60) {
+        input.value = `${parseInt(mins)||0}:${secs}`;
+      }
+    }
+    if (hint) hint.textContent = 'MM:SS';
+
+  } else if (fmt === 'AMRAP') {
+    // Format: rounds+reps e.g. 9+4
+    // Auto-add + if just a number typed and they're continuing
+    if (hint) hint.textContent = 'rounds+reps';
+
+  } else if (fmt === 'EMOM') {
+    if (hint) hint.textContent = 'rounds completed';
+
+  } else if (fmt === 'Tabata') {
+    if (hint) hint.textContent = 'total reps';
+
+  } else if (fmt === 'Heavy') {
+    if (hint) hint.textContent = 'weight lifted';
+
+  } else {
+    if (hint) hint.textContent = '';
+  }
+}
+
+// Update score hint when format changes
+const _origCfSelectFormat2 = cfSelectFormat;
+function cfSelectFormat(format, btn) {
+  _origCfSelectFormat2(format, btn);
+  const hint = document.getElementById('cf-score-format-hint');
+  const input = document.getElementById('cf-score-value');
+  if (!hint || !input) return;
+  const hintMap = {
+    'For Time': 'MM:SS', 'Chipper': 'MM:SS', 'Partner': 'MM:SS',
+    'AMRAP': 'rounds+reps e.g. 9+4', 'EMOM': 'rounds completed',
+    'Tabata': 'total reps', 'Heavy': 'weight e.g. 225 lb',
+    'For Quality': 'description or Complete'
+  };
+  hint.textContent = hintMap[format] || '';
+  input.value = ''; // clear on format change
+}
+
+function cfSetFeel(feel, btn) {
+  document.getElementById('cf-score-feel').value = feel;
+  document.querySelectorAll('.cf-feel-btn').forEach(b => {
+    b.style.background = 'var(--surface2)';
+    b.style.borderColor = 'var(--border)';
+    b.style.transform = 'scale(1)';
+  });
+  if (btn) {
+    btn.style.background = 'var(--cf-green-dim)';
+    btn.style.borderColor = 'var(--cf-green)';
+    btn.style.transform = 'scale(1.15)';
+  }
+}
+
 function cfAutoFillScore() {
   const scoreVal = document.getElementById('cf-score-value');
   if (!scoreVal || scoreVal.value) return;
@@ -12152,6 +12741,7 @@ async function cfLogScore() {
   if (!score)   { toast('Enter your score'); return; }
   const rx = document.getElementById('cf-score-rx')?.value || 'RX';
   const notes = document.getElementById('cf-score-notes')?.value?.trim() || '';
+  const feel = document.getElementById('cf-score-feel')?.value || '';
   const payload = {
     user_id: currentUser.id,
     wod_name: wodName,
@@ -12159,6 +12749,7 @@ async function cfLogScore() {
     format: _cfCurrentFormat,
     rx_scaled: rx,
     notes,
+    feel,
     logged_at: new Date().toISOString()
   };
   try {
@@ -12178,8 +12769,20 @@ async function cfLogScore() {
   document.getElementById('cf-score-wod').value = '';
   document.getElementById('cf-score-value').value = '';
   document.getElementById('cf-score-notes').value = '';
+  document.getElementById('cf-score-feel').value = '';
+  document.querySelectorAll('.cf-feel-btn').forEach(b => {
+    b.style.background = 'var(--surface2)';
+    b.style.borderColor = 'var(--border)';
+    b.style.transform = 'scale(1)';
+  });
   cfResetTimer();
-  toast(`${wodName} — ${score} ${rx} saved ✓`);
+  // Check for PR
+  const isPR = wlbCheckPR(wodName, score, _cfCurrentFormat);
+  if (isPR) {
+    setTimeout(() => wlbShowPRCelebration(wodName, score), 600);
+  } else {
+    toast(`${wodName} — ${score} ${rx} saved ✓`);
+  }
   // Refresh calendar cache so new score shows immediately
   const logDate = window._cfLogDate || new Date().toISOString().slice(0,10);
   window._cfLogDate = null;
@@ -12403,6 +13006,9 @@ function cfLoadWODToTrack(wod) {
   const mins = timerParams.minutes;
   const timerMsg = mins ? ` · ${fmt === 'AMRAP' ? mins+' min' : fmt === 'EMOM' ? mins+' min EMOM' : mins+' min cap'} loaded` : '';
   toast(`${wod.name} loaded${timerMsg} — hit Start when ready`);
+
+  // Load previous attempts for this WOD
+  setTimeout(() => wlbLoadPreviousAttempts(wod.name), 150);
 }
 
 // ── WOD Builder ──
@@ -12597,6 +13203,8 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
 
   <!-- Timer -->
   <div style="text-align:center;padding:20px 18px 12px;border-bottom:1px solid rgba(57,211,83,.15)">
+    <!-- Ghost target from previous best -->
+    <div id="wc-ghost-target" style="display:none;font-size:11px;font-weight:700;color:rgba(57,211,83,.5);margin-bottom:6px;letter-spacing:.5px"></div>
     <div id="wc-timer" style="font-size:72px;font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1;letter-spacing:-2px">0:00</div>
     <div id="wc-phase" style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--cf-green);margin-top:4px;min-height:18px"></div>
     <div id="wc-round-info" style="font-size:14px;font-weight:700;color:var(--text-muted);margin-top:2px;min-height:20px"></div>
