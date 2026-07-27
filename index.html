@@ -793,15 +793,10 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
 
 /* ── Custom movement autocomplete ── */
 .wlb-suggestions {
-  position: absolute;
-  z-index: 999;
   background: var(--surface2);
   border: 1px solid var(--cf-green);
   border-radius: var(--radius);
-  max-height: 200px;
-  overflow-y: auto;
-  width: 100%;
-  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  box-shadow: 0 8px 32px rgba(0,0,0,.6);
 }
 .wlb-suggestion-item {
   padding: 9px 12px;
@@ -10794,12 +10789,15 @@ function wlbShowSuggestions(input, section, idx) {
   wlbHideSuggestions(true);
 
   const q = (input.value || '').toLowerCase().trim();
-  const all = cfGetAllMovements();
 
-  // Filter: show all on focus with empty query, filter by query otherwise
-  const matches = q.length === 0
-    ? all.slice(0, 20) // show first 20 on focus
-    : all.filter(m => m.name.toLowerCase().includes(q)).slice(0, 12);
+  // Don't show on empty focus — only show once user starts typing
+  if (q.length < 2) return;
+
+  const all = cfGetAllMovements();
+  // Sort by relevance: starts-with first, then contains
+  const startsWith = all.filter(m => m.name.toLowerCase().startsWith(q));
+  const contains   = all.filter(m => !m.name.toLowerCase().startsWith(q) && m.name.toLowerCase().includes(q));
+  const matches = [...startsWith, ...contains].slice(0, 5);
 
   if (!matches.length) return;
 
@@ -10810,24 +10808,40 @@ function wlbShowSuggestions(input, section, idx) {
   dropdown.innerHTML = matches.map(m => {
     const mt = CF_MEASUREMENT_TYPES.find(t => t.id === m.measurement);
     const mtShort = mt ? mt.label.split('(')[0].trim() : '';
+    // Highlight matching portion
+    const nameHtml = m.name.replace(new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi'),
+      '<strong style="color:var(--cf-green)">$1</strong>');
     return `<div class="wlb-suggestion-item"
       onmousedown="wlbPickSuggestion('${m.name.replace(/'/g,"\\'")}','${section}',${idx})"
     >
-      <span>${m.name}</span>
-      <span class="wlb-suggestion-cat">${m.category||''} · ${mtShort}</span>
+      <span>${nameHtml}</span>
+      <span class="wlb-suggestion-cat">${m.category||''}</span>
     </div>`;
   }).join('');
 
-  // Position relative to input
-  const wrapper = input.closest('div');
-  if (!wrapper) return;
-  wrapper.style.position = 'relative';
-  wrapper.appendChild(dropdown);
+  // Position below the input using fixed positioning to avoid clipping
+  const rect = input.getBoundingClientRect();
+  dropdown.style.cssText = [
+    'position:fixed',
+    `top:${rect.bottom + 4}px`,
+    `left:${rect.left}px`,
+    `width:${rect.width}px`,
+    'z-index:9999',
+    'max-height:220px',
+    'overflow-y:auto',
+  ].join(';');
+
+  document.body.appendChild(dropdown);
 }
 
 function wlbHideSuggestions(immediate) {
   const existing = document.getElementById('wlb-suggestions-dropdown');
   if (existing) existing.remove();
+  // Clean up position:relative added to wrappers
+  document.querySelectorAll('.wlb-mv-name').forEach(inp => {
+    const wrapper = inp.closest('div');
+    if (wrapper) wrapper.style.position = '';
+  });
 }
 
 function wlbPickSuggestion(name, section, idx) {
