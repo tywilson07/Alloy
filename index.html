@@ -11706,6 +11706,71 @@ function wlbRerenderRow(section, idx) {
 // ALLOY — EMOM STATION BUILDER
 // ═══════════════════════════════════════════════════
 
+// Autocomplete for EMOM station movement inputs
+function wlbShowEmomSuggestions(input, sIdx, mIdx) {
+  // Remove any existing dropdown
+  const old = document.getElementById('wlb-suggestions-dropdown');
+  if (old) old.remove();
+  document.querySelectorAll('.wlb-suggestions').forEach(el => el.remove());
+
+  const q = (input.value || '').toLowerCase().trim();
+  if (q.length < 2) return;
+
+  const all = cfGetAllMovements();
+  const startsWith = all.filter(m => m.name.toLowerCase().startsWith(q));
+  const contains   = all.filter(m => !m.name.toLowerCase().startsWith(q) && m.name.toLowerCase().includes(q));
+  const matches = [...startsWith, ...contains].slice(0, 5);
+  if (!matches.length) return;
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'wlb-suggestions';
+  dropdown.id = 'wlb-suggestions-dropdown';
+
+  dropdown.innerHTML = matches.map(m => {
+    const mt = CF_MEASUREMENT_TYPES.find(t => t.id === m.measurement);
+    const mtShort = mt ? mt.label.split('(')[0].trim() : '';
+    const nameHtml = m.name.replace(
+      new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi'),
+      '<strong style="color:var(--cf-green)">$1</strong>'
+    );
+    const safeName = m.name.replace(/'/g, "\\'");
+    return '<div class="wlb-suggestion-item" onmousedown="wlbPickEmomSuggestion(\'' + safeName + '\',' + sIdx + ',' + mIdx + ')">'
+      + '<span>' + nameHtml + '</span>'
+      + '<span class="wlb-suggestion-cat">' + (m.category||'') + '</span>'
+      + '</div>';
+  }).join('');
+
+  // Position below input
+  let wrapper = input.parentElement;
+  if (wrapper) {
+    wrapper.style.position = 'relative';
+    dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;z-index:9999;max-height:220px;overflow-y:auto;margin-top:2px';
+    wrapper.appendChild(dropdown);
+  }
+}
+
+function wlbPickEmomSuggestion(name, sIdx, mIdx) {
+  // Remove dropdown
+  document.querySelectorAll('.wlb-suggestions').forEach(el => el.remove());
+
+  // Update station movement
+  if (_wlbEmomStations[sIdx] && _wlbEmomStations[sIdx].movements[mIdx]) {
+    _wlbEmomStations[sIdx].movements[mIdx].name = name;
+    // Auto-set unit from library
+    const def = typeof cfGetMovementDef === 'function' ? cfGetMovementDef(name) : null;
+    if (def) {
+      const mv = _wlbEmomStations[sIdx].movements[mIdx];
+      if (def.measurement === 'dist_run') mv.unit = 'miles';
+      else if (def.measurement === 'dist_carry' || def.measurement === 'dist_carry_wt') mv.unit = 'meters';
+      else if (def.measurement === 'machine') mv.unit = 'calories';
+      else mv.unit = 'reps';
+      mv._measurement = def.measurement;
+    }
+  }
+  wlbRenderEmomStations();
+  wlbUpdatePreview();
+}
+
 function wlbUpdateStructureUI() {
   const stationBuilder = document.getElementById('wlb-emom-station-builder');
   const regularBuilder = document.getElementById('wlb-regular-builder');
@@ -11789,7 +11854,7 @@ function wlbRenderEmomStations() {
       const ph = wlbGetPresets(type, unit)[2] || '10';
       return '<div style="display:flex;gap:6px;align-items:center;margin-top:5px">'
         + '<input placeholder="Movement..." value="' + (mv.name||'') + '" autocomplete="off"'
-        + ' oninput="_wlbEmomStations[' + sIdx + '].movements[' + mIdx + '].name=this.value;wlbUpdatePreview()"'
+        + ' oninput="_wlbEmomStations[' + sIdx + '].movements[' + mIdx + '].name=this.value;wlbUpdatePreview();wlbShowEmomSuggestions(this,' + sIdx + ',' + mIdx + ')"'
         + ' style="flex:2;font-size:12px;font-weight:700">'
         + '<input placeholder="' + ph + '" value="' + (mv.reps||'') + '"'
         + ' oninput="_wlbEmomStations[' + sIdx + '].movements[' + mIdx + '].reps=this.value;wlbUpdatePreview()"'
