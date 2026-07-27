@@ -10062,7 +10062,7 @@ function wlbRenderSection(section) {
           autocomplete="off"
           onfocus="wlbShowSuggestions(this,'${section}',${idx})"
           oninput="wlbMvList('${section}')[${idx}].name=this.value;wlbRerenderRow('${section}',${idx});wlbShowSuggestions(this,'${section}',${idx})"
-          onblur="setTimeout(()=>wlbHideSuggestions(),200)"
+          onblur="setTimeout(wlbHideSuggestions,300)"
           style="flex:1;font-size:13px;font-weight:700">
         ${unitToggle}
         <button onclick="wlbRemoveMovement('${section}',${idx})"
@@ -10095,22 +10095,41 @@ function wlbRerenderRow(section, idx) {
   const list = wlbMvList(section);
   const mv = list[idx];
   if (!mv) return;
-  const type = wlbGetMovementType(mv.name || '');
-  const newUnit = wlbDefaultUnit(type);
-  // Always update unit to match detected movement type
-  // (user can still override with the toggle buttons)
-  mv.unit = newUnit;
+
+  // Check library definition first, fall back to keyword detection
+  const def = typeof cfGetMovementDef === 'function' ? cfGetMovementDef(mv.name) : null;
+  if (def) {
+    if (def.measurement === 'dist_run') mv.unit = 'miles';
+    else if (def.measurement === 'dist_carry' || def.measurement === 'dist_carry_wt') mv.unit = 'meters';
+    else if (def.measurement === 'machine') mv.unit = 'calories';
+    else if (def.measurement === 'time') mv.unit = 'seconds';
+    else mv.unit = 'reps';
+    mv._measurement = def.measurement;
+  } else {
+    const type = wlbGetMovementType(mv.name || '');
+    mv.unit = wlbDefaultUnit(type);
+    mv._measurement = null;
+  }
+
+  // Suppress blur-triggered hide while we rebuild the DOM
+  _wlbSuppressHide = true;
   wlbRenderSection(section);
   wlbUpdatePreview();
-  // Re-focus the name input so typing can continue
+
+  // Re-focus and re-show suggestions
   setTimeout(() => {
+    _wlbSuppressHide = false;
     const container = document.getElementById(wlbMvContainerId(section));
     const inputs = container?.querySelectorAll('.wlb-mv-name');
     if (inputs?.[idx]) {
-      inputs[idx].focus();
-      // Move cursor to end
-      const len = inputs[idx].value.length;
-      inputs[idx].setSelectionRange(len, len);
+      const input = inputs[idx];
+      input.focus();
+      const len = input.value.length;
+      input.setSelectionRange(len, len);
+      // Re-show suggestions if still typing
+      if (input.value.length >= 2) {
+        wlbShowSuggestions(input, section, idx);
+      }
     }
   }, 30);
 }
@@ -10834,22 +10853,30 @@ function wlbShowSuggestions(input, section, idx) {
   document.body.appendChild(dropdown);
 }
 
+let _wlbSuppressHide = false;
+
 function wlbHideSuggestions(immediate) {
+  if (_wlbSuppressHide) return;
   const existing = document.getElementById('wlb-suggestions-dropdown');
   if (existing) existing.remove();
-  // Clean up position:relative added to wrappers
-  document.querySelectorAll('.wlb-mv-name').forEach(inp => {
-    const wrapper = inp.closest('div');
-    if (wrapper) wrapper.style.position = '';
-  });
 }
 
 function wlbPickSuggestion(name, section, idx) {
   const list = wlbMvList(section);
   if (list[idx]) list[idx].name = name;
+  _wlbSuppressHide = true;
   wlbHideSuggestions(true);
   wlbRerenderRow(section, idx);
+  setTimeout(() => { _wlbSuppressHide = false; }, 100);
 }
+
+// Close suggestion dropdown when clicking outside
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#wlb-suggestions-dropdown') && !e.target.classList.contains('wlb-mv-name')) {
+    if (!_wlbSuppressHide) wlbHideSuggestions();
+  }
+});
+
 
 // ═══════════════════════════════════════════════════
 // ALLOY — CF ASSIGN WOD TO ATHLETES
