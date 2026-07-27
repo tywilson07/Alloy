@@ -1362,6 +1362,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
         </div>
 
         <div id="cf-timer-block" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px;position:relative">
+          <button class="cf-fullscreen-btn" onclick="cfEnterFullscreen()" title="Fullscreen timer">⛶</button>
           <!-- Timer setup -->
           <div id="cf-timer-setup">
             <div id="cf-setup-amrap" style="display:none;margin-bottom:12px">
@@ -1441,7 +1442,6 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
               <button class="btn btn-ghost btn-sm" id="wlb-cap-row-toggle" onclick="cfToggleCap();wlbSyncCapRow()" style="font-size:11px">Add Cap</button>
             </div>
           </div>
-
 
           <!-- Hidden elements needed by timer JS — not displayed -->
           <div style="display:none">
@@ -12447,11 +12447,8 @@ function cfStartIntervals() {
 function cfEndIntervalWork() {
   const workSecs = _cfTimerSeconds;
   _wlbIntervalSplits[_wlbCurrentInterval] = workSecs;
-
   _wlbIntervalPhase = 'rest';
   _cfTimerSeconds = _wlbIntervalRestSecs;
-
-  // Update displays immediately
   const fmtT = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
   const disp = document.getElementById('cf-timer-display');
   if (disp) { disp.textContent = fmtT(_wlbIntervalRestSecs); disp.style.color = 'var(--text-muted)'; }
@@ -12459,16 +12456,12 @@ function cfEndIntervalWork() {
   if (wcTimer) { wcTimer.textContent = fmtT(_wlbIntervalRestSecs); wcTimer.style.color = 'rgba(255,255,255,.4)'; }
   const wcPhase = document.getElementById('wc-phase');
   if (wcPhase) { wcPhase.textContent = 'REST'; wcPhase.style.color = 'rgba(255,255,255,.4)'; }
-  const labelEl = document.getElementById('cf-timer-label');
-  if (labelEl) labelEl.textContent = 'REST';
   ['wc-next-interval-btn','cf-next-interval-btn'].forEach(id => {
     const b = document.getElementById(id); if (b) b.style.display = 'none';
   });
   cfBeepRest();
   if (_wlbIntervalRestSecs === 0) {
-    _wlbCurrentInterval++;
-    _wlbIntervalPhase = 'work';
-    _cfTimerSeconds = 0;
+    _wlbCurrentInterval++; _wlbIntervalPhase = 'work'; _cfTimerSeconds = 0;
   }
 }
 
@@ -13650,30 +13643,47 @@ function cfCancelCountdown() {
 
 // Single entry point for starting timer from WOD card or timer block
 function cfWODCardStart() {
-  // 1. Prime audio (must be in user gesture — this function IS called from onclick)
+  // Prime audio synchronously in user gesture
   try {
-    if (!_cfAudioCtx) {
-      _cfAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
+    if (!_cfAudioCtx) _cfAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (_cfAudioCtx.state === 'suspended') _cfAudioCtx.resume();
   } catch(e) {}
 
-  // 2. If already running — pause
-  if (_cfTimerRunning) {
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
-    cfToggleTimer();
-    return;
-  }
+  if (_cfTimerRunning) { cfToggleTimer(); return; }
+  if (_cfCountdownInterval) { cfCancelCountdown(); return; }
 
-  // 3. If countdown is running — cancel it
-  if (_cfCountdownInterval) {
-    cfCancelCountdown();
-    return;
-  }
-
-  // 4. Start with lead-in if set
   if (_cfLeadinSeconds > 0) {
-    cfStartWithCountdown();
+    // Show overlay directly
+    const ov = document.getElementById('cf-countdown-overlay');
+    const wov = document.getElementById('wc-countdown-overlay');
+    if (ov) ov.style.display = 'flex';
+    if (wov) wov.style.display = 'flex';
+
+    let count = _cfLeadinSeconds;
+    const setNum = function(n, color) {
+      var el = document.getElementById('cf-countdown-number');
+      var wel = document.getElementById('wc-countdown-number');
+      if (el) { el.textContent = n; el.style.color = color || 'rgba(255,255,255,.5)'; el.style.fontSize = (n==='GO!'?'72px':'120px'); }
+      if (wel) { wel.textContent = n; wel.style.color = color || 'rgba(255,255,255,.5)'; }
+    };
+    setNum(count);
+
+    _cfCountdownInterval = setInterval(function() {
+      count--;
+      if (count > 3) { setNum(count); }
+      else if (count === 3) { setNum('3','var(--cf-green)'); cfBeep(880,0.15,0.7); }
+      else if (count === 2) { setNum('2','var(--cf-green)'); cfBeep(880,0.15,0.7); }
+      else if (count === 1) { setNum('1','var(--cf-green)'); cfBeep(880,0.15,0.7); }
+      else if (count === 0) { setNum('GO!','#fff'); cfBeep(880,0.15,0.7); setTimeout(function(){cfBeep(1100,0.3,0.8);},180); }
+      else {
+        clearInterval(_cfCountdownInterval); _cfCountdownInterval = null;
+        var ov2 = document.getElementById('cf-countdown-overlay');
+        var wov2 = document.getElementById('wc-countdown-overlay');
+        if (ov2) ov2.style.display = 'none';
+        if (wov2) wov2.style.display = 'none';
+        cfToggleTimer();
+      }
+    }, 1000);
   } else {
     cfToggleTimer();
   }
@@ -14688,7 +14698,6 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
     </button>
   </div>
 
-  <!-- Countdown overlay — direct body child, nothing can clip it -->
   <div id="cf-countdown-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:99999;flex-direction:column;align-items:center;justify-content:center;gap:12px">
     <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:rgba(255,255,255,.5)">Starting in</div>
     <div id="cf-countdown-number" style="font-size:120px;font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1">3</div>
