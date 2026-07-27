@@ -1450,39 +1450,18 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             <button class="btn btn-ghost btn-sm" onclick="cfCancelCountdown()" style="margin-top:8px">Cancel</button>
           </div>
 
-          <!-- Active timer display -->
-          <div class="cf-timer-display">
-            <div class="cf-timer-label" id="cf-timer-label">For Time</div>
-            <div class="cf-timer-time" id="cf-timer-display">0:00</div>
-            <div id="cf-tabata-phase" style="display:none;font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-top:4px;color:var(--cf-green)">WORK</div>
-            <div id="cf-emom-indicator" style="display:none;font-size:11px;font-weight:700;color:var(--text-muted);margin-top:4px">Round <span id="cf-emom-round-num">1</span> of <span id="cf-emom-total-rounds">20</span></div>
-          </div>
-          <!-- Round counter -->
-          <div class="cf-round-counter" id="cf-round-counter" style="display:none">
-            <button class="cf-round-btn" onclick="cfAdjustRounds(-1)">−</button>
-            <div><div class="cf-round-count" id="cf-round-display">0</div><div style="font-size:10px;text-align:center;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px">Rounds</div></div>
-            <button class="cf-round-btn" onclick="cfAdjustRounds(1)">+</button>
-          </div>
-          <!-- Rep counter (AMRAP) -->
-          <div id="cf-rep-counter" style="display:none;text-align:center;margin-bottom:12px">
-            <div style="font-size:10px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">+ Extra Reps</div>
-            <div style="display:flex;align-items:center;justify-content:center;gap:16px">
-              <button class="cf-round-btn" style="width:38px;height:38px;font-size:18px" onclick="cfAdjustReps(-1)">−</button>
-              <span id="cf-rep-display" style="font-size:32px;font-weight:900;font-family:var(--mono);color:var(--text-primary);min-width:40px;text-align:center">0</span>
-              <button class="cf-round-btn" style="width:38px;height:38px;font-size:18px" onclick="cfAdjustReps(1)">+</button>
-            </div>
-          </div>
-          <!-- Controls -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
-            <button class="btn btn-primary" id="cf-timer-start-btn" onclick="cfGetAudioCtx();cfTimerStartOrPause()" style="grid-column:1/-1">Start</button>
-            <button class="btn btn-white" onclick="cfResetTimer()">Reset</button>
-            <button class="btn btn-ghost" onclick="cfLapTimer()" id="cf-lap-btn">Lap / Split</button>
-            <button class="btn btn-primary" id="cf-next-interval-btn" onclick="cfEndIntervalWork()" style="display:none;grid-column:1/-1;background:#ff9f4a;border-color:#ff9f4a;color:#0d0d0d;font-weight:900">✓ Done — Start Rest</button>
-          </div>
-          <!-- Laps -->
-          <div id="cf-laps" style="display:none;margin-top:12px">
-            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px">Splits</div>
-            <div id="cf-lap-list" style="font-family:var(--mono);font-size:12.5px;color:var(--text-secondary)"></div>
+          <!-- Hidden elements needed by timer JS — not displayed -->
+          <div style="display:none">
+            <div id="cf-timer-label">For Time</div>
+            <div id="cf-timer-display">0:00</div>
+            <div id="cf-tabata-phase">WORK</div>
+            <div id="cf-emom-indicator">Round <span id="cf-emom-round-num">1</span> of <span id="cf-emom-total-rounds">20</span></div>
+            <div id="cf-round-counter"><div id="cf-round-display">0</div></div>
+            <div id="cf-rep-counter"><span id="cf-rep-display">0</span></div>
+            <button id="cf-timer-start-btn" onclick="cfWODCardStart()"></button>
+            <button id="cf-next-interval-btn" onclick="cfEndIntervalWork()"></button>
+            <button id="cf-lap-btn" onclick="cfLapTimer()"></button>
+            <div id="cf-laps"><div id="cf-lap-list"></div></div>
           </div>
         </div><!-- end cf-timer-block -->
 
@@ -13598,9 +13577,8 @@ function cfStartWithCountdown() {
   numEl.style.color = 'var(--text-muted)';
   numEl.style.fontSize = '96px';
   numEl.style.transform = 'scale(1)';
+  // Show BOTH overlays — cf-countdown-overlay is position:fixed so covers everything
   overlay.style.display = 'flex';
-
-  // Also sync WOD card countdown overlay
   const wcOverlay = document.getElementById('wc-countdown-overlay');
   const wcNum = document.getElementById('wc-countdown-number');
   if (wcOverlay) {
@@ -13666,6 +13644,37 @@ function cfCancelCountdown() {
   if (wcOverlay) wcOverlay.style.display = 'none';
 }
 
+
+// Single entry point for starting timer from WOD card or timer block
+function cfWODCardStart() {
+  // 1. Prime audio (must be in user gesture — this function IS called from onclick)
+  try {
+    if (!_cfAudioCtx) {
+      _cfAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (_cfAudioCtx.state === 'suspended') _cfAudioCtx.resume();
+  } catch(e) {}
+
+  // 2. If already running — pause
+  if (_cfTimerRunning) {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    cfToggleTimer();
+    return;
+  }
+
+  // 3. If countdown is running — cancel it
+  if (_cfCountdownInterval) {
+    cfCancelCountdown();
+    return;
+  }
+
+  // 4. Start with lead-in if set
+  if (_cfLeadinSeconds > 0) {
+    cfStartWithCountdown();
+  } else {
+    cfToggleTimer();
+  }
+}
 
 function cfTimerStartOrPause() {
   if (_cfTimerRunning) {
@@ -14638,7 +14647,7 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
     </div>
     <!-- Next/Rest button — shown during Intervals work phase -->
     <button id="wc-next-interval-btn" onclick="cfEndIntervalWork()" style="display:none;grid-column:1/-1;background:#ff9f4a;border:none;border-radius:var(--radius);color:#0d0d0d;font-weight:900;font-size:15px;padding:14px;cursor:pointer">✓ Done — Start Rest</button>
-    <button id="wc-start-btn" class="btn btn-primary" onclick="cfGetAudioCtx();cfTimerStartOrPause()" style="grid-column:1/-1;background:var(--cf-green);color:#0d0d0d;font-weight:900;font-size:16px;padding:14px">▶ Start</button>
+    <button id="wc-start-btn" class="btn btn-primary" onclick="cfWODCardStart()" style="grid-column:1/-1;background:var(--cf-green);color:#0d0d0d;font-weight:900;font-size:16px;padding:14px">▶ Start</button>
     <button class="btn btn-white" onclick="cfResetTimer();wlbSyncWODCard()">Reset</button>
     <button class="btn btn-ghost" onclick="wlbExitWODCard()">✕ Done</button>
   </div>
