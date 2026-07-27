@@ -1196,16 +1196,57 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
           </div>
         </div>
 
-        <!-- Step 2: Movements -->
+        <!-- Step 2: WOD Structure -->
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:10px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-            <div class="section-label" style="margin:0">Movements</div>
-            <button class="btn btn-ghost btn-sm" onclick="wlbAddMovement()">+ Add</button>
+
+          <!-- Rounds row -->
+          <div id="wlb-rounds-row" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);white-space:nowrap">Rounds</div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <button class="cf-round-btn" style="width:28px;height:28px;font-size:14px" onclick="wlbAdjustRounds(-1)">−</button>
+              <span id="wlb-rounds-display" style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:28px;text-align:center">3</span>
+              <button class="cf-round-btn" style="width:28px;height:28px;font-size:14px" onclick="wlbAdjustRounds(1)">+</button>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted)" id="wlb-rounds-label">rounds</div>
+            <button class="btn btn-ghost btn-xs" id="wlb-chipper-toggle" onclick="wlbToggleChipper()" style="margin-left:auto;font-size:10px">Chipper (1 round)</button>
+          </div>
+
+          <!-- Buy-in (optional) -->
+          <div id="wlb-buyin-section" style="margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted)">Buy-In <span style="color:var(--text-muted);font-weight:500">(once before)</span></div>
+              <button class="btn btn-ghost btn-xs" onclick="wlbToggleBuyin()">+ Add Buy-In</button>
+            </div>
+            <div id="wlb-buyin-movements" style="display:none;flex-direction:column;gap:6px"></div>
+          </div>
+
+          <!-- Main movements -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--cf-green)">Main Work</div>
+            <button class="btn btn-ghost btn-sm" onclick="wlbAddMovement('main')">+ Add Movement</button>
           </div>
           <div id="wlb-movements" style="display:flex;flex-direction:column;gap:8px"></div>
           <div id="wlb-movements-empty" style="font-size:12.5px;color:var(--text-muted);padding:8px 0;text-align:center">
-            Tap + Add to build your WOD
+            Tap + Add Movement to build your WOD
           </div>
+
+          <!-- Buy-out (optional) -->
+          <div id="wlb-buyout-section" style="margin-top:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted)">Buy-Out <span style="color:var(--text-muted);font-weight:500">(once after)</span></div>
+              <button class="btn btn-ghost btn-xs" onclick="wlbToggleBuyout()">+ Add Buy-Out</button>
+            </div>
+            <div id="wlb-buyout-movements" style="display:none;flex-direction:column;gap:6px"></div>
+          </div>
+        </div>
+
+        <!-- Step 3: Preview + Start -->
+        <div style="background:var(--surface);border:1.5px solid var(--cf-green);border-radius:var(--radius-lg);padding:14px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div class="section-label" style="margin:0;color:var(--cf-green)">WOD Preview</div>
+            <button class="btn btn-primary btn-sm" onclick="wlbStartWOD()" style="background:var(--cf-green);color:#0d0d0d;font-weight:900">▶ Start WOD</button>
+          </div>
+          <div id="wlb-preview" style="font-size:13px;color:var(--text-muted);font-style:italic">Add movements above to see your WOD</div>
         </div>
 
         <!-- Timer -->
@@ -1330,6 +1371,45 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             <label>WOD Name</label>
             <input id="cf-score-wod" list="cf-wod-suggestions" placeholder="e.g. HAUL, Fran, Grace...">
             <datalist id="cf-wod-suggestions"></datalist>
+            <datalist id="cf-movement-suggestions">
+              <option>Air Squats</option><option>Back Squat</option><option>Front Squat</option>
+              <option>Overhead Squat</option><option>Power Clean</option><option>Hang Power Clean</option>
+              <option>Squat Clean</option><option>Power Snatch</option><option>Hang Power Snatch</option>
+              <option>Deadlift</option><option>Sumo Deadlift High Pull</option>
+              <option>Thruster</option><option>Push Press</option><option>Push Jerk</option>
+              <option>Split Jerk</option><option>Strict Press</option>
+              <option>Pull-Ups</option><option>Chest-to-Bar Pull-Ups</option>
+              <option>Muscle-Ups</option><option>Bar Muscle-Ups</option><option>Ring Muscle-Ups</option>
+              <option>Toes-to-Bar</option><option>Knees-to-Elbows</option>
+              <option>Handstand Push-Ups</option><option>Strict Handstand Push-Ups</option>
+              <option>Handstand Walk</option><option>Push-Ups</option><option>Ring Dips</option>
+              <option>Dips</option><option>Box Jumps</option><option>Box Step-Ups</option>
+              <option>Burpees</option><option>Burpee Box Jump-Overs</option>
+              <option>Wall Balls</option><option>Wall Walk</option>
+              <option>Kettlebell Swings</option><option>Goblet Squats</option>
+              <option>Dumbbell Snatches</option><option>Dumbbell Thrusters</option>
+              <option>Double-Unders</option><option>Single-Unders</option>
+              <option>Run</option><option>Row</option><option>Bike</option>
+              <option>Ski Erg</option><option>Air Bike</option><option>Assault Bike</option>
+              <option>Farmers Carry</option><option>Sandbag Carry</option>
+              <option>Sled Push</option><option>Rope Climbs</option>
+              <option>GHD Sit-Ups</option><option>Sit-Ups</option><option>V-Ups</option>
+              <option>Walking Lunges</option><option>Overhead Lunges</option>
+              <option>Front Rack Lunges</option><option>Pistol Squats</option>
+              <option>Farmers Carry</option><option>Suitcase Carry</option>
+              <option>Sandbag Carry</option><option>Front Rack Carry</option>
+              <option>Overhead Carry</option><option>Yoke Carry</option>
+              <option>Yoke Walk</option><option>Sled Push</option>
+              <option>Sled Pull</option><option>Sled Drag</option>
+              <option>Prowler Push</option><option>Bear Crawl</option>
+              <option>Crab Walk</option><option>Broad Jumps</option>
+              <option>Shuttle Run</option><option>Tire Flip</option>
+              <option>Swim</option><option>Handstand Walk</option>
+              <option>Dumbbell Walking Lunges</option>
+              <option>Sandbag Squats</option><option>Sandbag Cleans</option>
+              <option>Atlas Stones</option><option>Log Press</option>
+              <option>Band Pull-Aparts</option><option>Face Pulls</option>
+            </datalist>
           </div>
           <div class="row">
             <div class="field">
@@ -8822,6 +8902,7 @@ async function saveDisplayName() {
 function renderSettings() {
   const body = document.getElementById('settings-body');
   if (!body) return;
+  const wtUnit = alloyGetWeightUnit();
   const isDark = document.body.classList.contains('dark-mode') || !document.body.classList.contains('light-mode');
   body.innerHTML = `
     <div style="max-width:500px;margin:0 auto;display:flex;flex-direction:column;gap:12px">
@@ -8839,7 +8920,24 @@ function renderSettings() {
         <button class="btn btn-ghost btn-sm btn-full" style="margin-top:8px" onclick="doLogout()">Sign Out</button>
       </div>
 
-      <!-- Appearance -->
+       <!-- Units -->
+      <div style=\"background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px\">
+        <div style=\"font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:12px\">Units</div>
+        <div style=\"display:flex;align-items:center;justify-content:space-between\">
+          <div>
+            <div style=\"font-size:14px;font-weight:600;color:var(--text-primary)\">Weight Unit</div>
+            <div style=\"font-size:12px;color:var(--text-muted)\">Used in WOD builder and workout logging</div>
+          </div>
+          <div style=\"display:flex;gap:6px\">
+            <button class=\"btn btn-sm ${wtUnit==='lbs'?'btn-primary':'btn-ghost'}\"
+              onclick=\"alloySetWeightUnit('lbs');renderSettings()\">lbs</button>
+            <button class=\"btn btn-sm ${wtUnit==='kg'?'btn-primary':'btn-ghost'}\"
+              onclick=\"alloySetWeightUnit('kg');renderSettings()\">kg</button>
+          </div>
+        </div>
+      </div>
+
+     <!-- Appearance -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px">
         <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:12px">Appearance</div>
         <div style="display:flex;align-items:center;justify-content:space-between">
@@ -9639,6 +9737,548 @@ function cfFsHandleTap(e) {
 }
 
 // ═══════════════════════════════════════════════════
+// ALLOY — WOD STRUCTURE BUILDER
+// ═══════════════════════════════════════════════════
+
+// State
+let _wlbRounds = 3;
+let _wlbIsChipper = false;
+let _wlbBuyinMovements = [];
+let _wlbBuyoutMovements = [];
+let _wlbShowBuyin = false;
+let _wlbShowBuyout = false;
+
+// Unit preferences — loaded from app settings
+function wlbGetWeightUnit() {
+  return localStorage.getItem('alloy_weight_unit') || 'lbs';
+}
+
+function wlbAdjustRounds(delta) {
+  _wlbRounds = Math.max(1, Math.min(50, _wlbRounds + delta));
+  _wlbIsChipper = false;
+  const display = document.getElementById('wlb-rounds-display');
+  const label = document.getElementById('wlb-rounds-label');
+  const btn = document.getElementById('wlb-chipper-toggle');
+  if (display) display.textContent = _wlbRounds;
+  if (label) label.textContent = _wlbRounds === 1 ? 'round' : 'rounds';
+  if (btn) btn.textContent = 'Chipper (1 round)';
+  wlbUpdatePreview();
+}
+
+function wlbToggleChipper() {
+  _wlbIsChipper = !_wlbIsChipper;
+  _wlbRounds = _wlbIsChipper ? 1 : 3;
+  const display = document.getElementById('wlb-rounds-display');
+  const label = document.getElementById('wlb-rounds-label');
+  const btn = document.getElementById('wlb-chipper-toggle');
+  if (display) display.textContent = _wlbRounds;
+  if (label) label.textContent = _wlbIsChipper ? 'round (Chipper)' : 'rounds';
+  if (btn) btn.textContent = _wlbIsChipper ? '✓ Chipper mode' : 'Chipper (1 round)';
+  wlbUpdatePreview();
+}
+
+function wlbToggleBuyin() {
+  _wlbShowBuyin = !_wlbShowBuyin;
+  const container = document.getElementById('wlb-buyin-movements');
+  const btn = document.querySelector('[onclick="wlbToggleBuyin()"]');
+  if (container) container.style.display = _wlbShowBuyin ? 'flex' : 'none';
+  if (btn) btn.textContent = _wlbShowBuyin ? '✕ Remove Buy-In' : '+ Add Buy-In';
+  if (_wlbShowBuyin && _wlbBuyinMovements.length === 0) {
+    wlbAddMovement('buyin');
+  }
+  wlbUpdatePreview();
+}
+
+function wlbToggleBuyout() {
+  _wlbShowBuyout = !_wlbShowBuyout;
+  const container = document.getElementById('wlb-buyout-movements');
+  const btn = document.querySelector('[onclick="wlbToggleBuyout()"]');
+  if (container) container.style.display = _wlbShowBuyout ? 'flex' : 'none';
+  if (btn) btn.textContent = _wlbShowBuyout ? '✕ Remove Buy-Out' : '+ Add Buy-Out';
+  if (_wlbShowBuyout && _wlbBuyoutMovements.length === 0) {
+    wlbAddMovement('buyout');
+  }
+  wlbUpdatePreview();
+}
+
+// Movement type detection
+function wlbGetMovementType(name) {
+  const n = (name || '').toLowerCase();
+
+  // Shuttle — distance in meters/feet (check before run)
+  if (n.includes('shuttle')) return 'carry';
+
+  // Run/sprint — distance in miles or meters
+  const RUN_KEYS = ['run','sprint','jog','400m','800m','mile','1600','5k','10k'];
+  if (RUN_KEYS.some(k => n.includes(k))) return 'run';
+
+  // Row / Ski Erg — meters or calories
+  // Use word-boundary check so 'row' doesn't match 'prowler' or 'grow'
+  const ROW_KEYS = ['rowing','ski erg','skierg'];
+  if (ROW_KEYS.some(k => n.includes(k))) return 'row';
+  if (/\brow\b/.test(n)) return 'row'; // 'row' as a whole word only
+
+  // Bike — calories or meters
+  const BIKE_KEYS = ['air bike','assault bike','echo bike','airdyne','concept2 bike','bike erg','bikeerg'];
+  // "bike" alone matches last so it doesn't catch "bike erg" conflicts
+  if (BIKE_KEYS.some(k => n.includes(k))) return 'bike';
+  if (n === 'bike') return 'bike';
+
+  // Distance carries — meters or feet
+  // Anything that moves the athlete or an object across a distance
+  const CARRY_KEYS = [
+    'carry',          // farmers carry, sandbag carry, suitcase carry, front rack carry
+    'suitcase',       // suitcase carry / suitcase deadlift walk
+    'yoke',           // yoke carry, yoke walk
+    'sled',           // sled push, sled pull, sled drag
+    'drag',           // sled drag, tire drag
+    'prowler',        // prowler push
+    'tire flip',      // tire flip (distance-based)
+    'lunge',          // walking lunges, overhead lunges, front rack lunges
+    'walk',           // walking lunges, overhead walk, handstand walk
+    'bear crawl',     // bear crawl
+    'crab walk',      // crab walk
+    'broad jump',     // broad jumps (distance)
+    'shuttle',        // shuttle run / shuttle sprint
+    'sprint',         // sprint (catches "50m sprint" etc — before run check above)
+    'swim',           // swimming — meters
+    'waterfall',      // waterfall carry
+    'tank',           // tank push
+  ];
+  if (CARRY_KEYS.some(k => n.includes(k))) return 'carry';
+
+  return 'reps';
+}
+
+function wlbDefaultUnit(type) {
+  if (type === 'run') return 'miles';
+  if (type === 'row' || type === 'carry') return 'meters';
+  if (type === 'bike') return 'calories';
+  return 'reps';
+}
+
+function wlbUnitOptions(type) {
+  if (type === 'run') return ['miles','meters'];
+  if (type === 'row') return ['meters','calories'];
+  if (type === 'bike') return ['calories','meters'];
+  if (type === 'carry') return ['meters','feet'];
+  return ['reps'];
+}
+
+function wlbGetPresets(type, unit) {
+  if (type === 'run') return unit === 'miles' ? ['0.25','0.5','1'] : ['200','400','800','1600'];
+  if (type === 'row') return unit === 'calories' ? ['10','12','15','20'] : ['250','500','1000','2000'];
+  if (type === 'bike') return unit === 'calories' ? ['10','12','15','18','20'] : ['500','1000'];
+  if (type === 'carry') return unit === 'feet' ? ['50','100','200'] : ['15','30','50','100'];
+  return ['5','10','15','20','21','30'];
+}
+
+function wlbMvList(section) {
+  if (section === 'buyin') return _wlbBuyinMovements;
+  if (section === 'buyout') return _wlbBuyoutMovements;
+  return _wlbMovements;
+}
+
+function wlbMvContainerId(section) {
+  if (section === 'buyin') return 'wlb-buyin-movements';
+  if (section === 'buyout') return 'wlb-buyout-movements';
+  return 'wlb-movements';
+}
+
+function wlbAddMovement(section) {
+  section = section || 'main';
+  const list = wlbMvList(section);
+  list.push({ name:'', reps:'', unit:'reps', weight:'', notes:'', section });
+  wlbRenderSection(section);
+  // Focus last name input
+  setTimeout(() => {
+    const container = document.getElementById(wlbMvContainerId(section));
+    const inputs = container?.querySelectorAll('.wlb-mv-name');
+    inputs?.[inputs.length-1]?.focus();
+  }, 50);
+  wlbUpdatePreview();
+}
+
+function wlbRemoveMovement(section, idx) {
+  const list = wlbMvList(section);
+  list.splice(idx, 1);
+  wlbRenderSection(section);
+  // Show empty msg if main is empty
+  if (section === 'main' || !section) {
+    const emptyMsg = document.getElementById('wlb-movements-empty');
+    if (emptyMsg) emptyMsg.style.display = _wlbMovements.length === 0 ? '' : 'none';
+  }
+  wlbUpdatePreview();
+}
+
+function wlbUpdateMovementUnit(section, idx, unit) {
+  const list = wlbMvList(section);
+  if (list[idx]) {
+    list[idx].unit = unit;
+    list[idx].reps = ''; // clear reps when unit changes
+  }
+  wlbRenderSection(section);
+  wlbUpdatePreview();
+}
+
+function wlbRenderSection(section) {
+  section = section || 'main';
+  const list = wlbMvList(section);
+  const containerId = wlbMvContainerId(section);
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const emptyMsg = document.getElementById('wlb-movements-empty');
+  if (section === 'main' && emptyMsg) {
+    emptyMsg.style.display = list.length === 0 ? '' : 'none';
+  }
+
+  container.innerHTML = list.map((mv, idx) => {
+    const type = wlbGetMovementType(mv.name);
+    const unit = mv.unit || wlbDefaultUnit(type);
+    const unitOpts = wlbUnitOptions(type);
+    const presets = wlbGetPresets(type, unit);
+    const wtUnit = wlbGetWeightUnit();
+    const showWeight = type === 'reps' || type === 'carry';
+    const repsLabel = unit === 'reps' ? 'Reps' : unit.toUpperCase();
+    const repsPh = presets[Math.floor(presets.length/2)];
+
+    // Unit toggle (only if multiple unit options)
+    const unitToggle = unitOpts.length > 1
+      ? `<div style="display:flex;gap:3px;margin-left:auto">
+          ${unitOpts.map(u => `<button class="wod-format-chip${unit===u?' active':''}"
+            style="padding:2px 7px;font-size:10px;border-radius:4px"
+            onclick="wlbUpdateMovementUnit('${section}',${idx},'${u}')">${u}</button>`).join('')}
+        </div>`
+      : '';
+
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <input class="wlb-mv-name" placeholder="Movement name..." value="${mv.name}"
+          list="cf-movement-suggestions"
+          oninput="wlbMvList('${section}')[${idx}].name=this.value;wlbRerenderRow('${section}',${idx})"
+          style="flex:1;font-size:13px;font-weight:700">
+        ${unitToggle}
+        <button onclick="wlbRemoveMovement('${section}',${idx})"
+          style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0;flex-shrink:0">✕</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <div class="field" style="flex:1;margin:0">
+          <label style="font-size:10px">${repsLabel}</label>
+          <input placeholder="${repsPh}" value="${mv.reps}"
+            oninput="wlbMvList('${section}')[${idx}].reps=this.value;wlbUpdatePreview()"
+            style="font-family:var(--mono);font-size:15px;font-weight:700">
+        </div>
+        ${showWeight ? `<div class="field" style="flex:1;margin:0">
+          <label style="font-size:10px">Weight (${wtUnit})</label>
+          <input placeholder="e.g. 135/95" value="${mv.weight}"
+            oninput="wlbMvList('${section}')[${idx}].weight=this.value;wlbUpdatePreview()"
+            style="font-size:13px">
+        </div>` : ''}
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:7px">
+        ${presets.map(v => `<button class="wod-format-chip"
+          style="padding:2px 8px;font-size:10px"
+          onclick="wlbMvList('${section}')[${idx}].reps='${v}';wlbRenderSection('${section}');wlbUpdatePreview()">${v}${unit!=='reps'?' '+unit:''}</button>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function wlbRerenderRow(section, idx) {
+  // Re-render the section when movement name changes (to update unit toggle/presets)
+  const list = wlbMvList(section);
+  const mv = list[idx];
+  if (!mv) return;
+  const type = wlbGetMovementType(mv.name);
+  const newUnit = wlbDefaultUnit(type);
+  // Only update unit if the name-derived type changed
+  if (mv.unit === 'reps' && newUnit !== 'reps') {
+    mv.unit = newUnit;
+  }
+  wlbRenderSection(section);
+  wlbUpdatePreview();
+}
+
+function wlbRenderMovements() {
+  wlbRenderSection('main');
+  wlbRenderSection('buyin');
+  wlbRenderSection('buyout');
+}
+
+function wlbUpdatePreview() {
+  const preview = document.getElementById('wlb-preview');
+  if (!preview) return;
+
+  const wtUnit = wlbGetWeightUnit();
+  const lines = [];
+
+  // Format header
+  const fmt = _cfCurrentFormat || 'For Time';
+  let header = '';
+  if (fmt === 'AMRAP') header = `${_cfSetup?.amrapMin||18} Min AMRAP`;
+  else if (fmt === 'EMOM') header = `${_cfSetup?.emomTotal||20} Min EMOM`;
+  else if (_wlbRounds > 1) header = `${_wlbRounds} Rounds For Time`;
+  else if (_wlbIsChipper) header = 'Chipper';
+  else header = fmt;
+
+  const fmtHtml = `<div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green);margin-bottom:8px">${header}</div>`;
+
+  const mvToLine = mv => {
+    if (!mv.name && !mv.reps) return null;
+    const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
+    const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+    return `<div style="display:flex;align-items:baseline;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:18px;font-weight:900;font-family:var(--mono);color:#fff;min-width:36px">${mv.reps||'—'}</span>
+      <span style="font-size:13px;font-weight:700;color:var(--text-primary)">${mv.name||'Movement'}${unit}${wt}</span>
+    </div>`;
+  };
+
+  const hasMovements = _wlbMovements.length > 0 || _wlbBuyinMovements.length > 0 || _wlbBuyoutMovements.length > 0;
+
+  if (!hasMovements) {
+    preview.innerHTML = `<div style="color:var(--text-muted);font-style:italic;font-size:12.5px">Add movements above to see your WOD</div>`;
+    return;
+  }
+
+  let html = fmtHtml;
+
+  if (_wlbShowBuyin && _wlbBuyinMovements.length) {
+    html += `<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px">Buy-In</div>`;
+    html += _wlbBuyinMovements.map(mvToLine).filter(Boolean).join('');
+    html += `<div style="margin:8px 0 6px;border-top:1px solid var(--border)"></div>`;
+  }
+
+  if (_wlbMovements.length) {
+    html += _wlbMovements.map(mvToLine).filter(Boolean).join('');
+  }
+
+  if (_wlbShowBuyout && _wlbBuyoutMovements.length) {
+    html += `<div style="margin:6px 0;border-top:1px solid var(--border)"></div>`;
+    html += `<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px">Buy-Out</div>`;
+    html += _wlbBuyoutMovements.map(mvToLine).filter(Boolean).join('');
+  }
+
+  preview.innerHTML = html;
+}
+
+function wlbInit() {
+  _wlbMovements = [];
+  _wlbBuyinMovements = [];
+  _wlbBuyoutMovements = [];
+  _wlbRounds = 3;
+  _wlbIsChipper = false;
+  _wlbShowBuyin = false;
+  _wlbShowBuyout = false;
+
+  // Reset buy-in/buy-out UI
+  const buyinContainer = document.getElementById('wlb-buyin-movements');
+  const buyoutContainer = document.getElementById('wlb-buyout-movements');
+  const buyinBtn = document.querySelector('[onclick="wlbToggleBuyin()"]');
+  const buyoutBtn = document.querySelector('[onclick="wlbToggleBuyout()"]');
+  if (buyinContainer) buyinContainer.style.display = 'none';
+  if (buyoutContainer) buyoutContainer.style.display = 'none';
+  if (buyinBtn) buyinBtn.textContent = '+ Add Buy-In';
+  if (buyoutBtn) buyoutBtn.textContent = '+ Add Buy-Out';
+
+  // Reset rounds
+  const rd = document.getElementById('wlb-rounds-display');
+  const rl = document.getElementById('wlb-rounds-label');
+  if (rd) rd.textContent = '3';
+  if (rl) rl.textContent = 'rounds';
+
+  wlbRenderMovements();
+  wlbUpdatePreview();
+}
+
+// ── WOD CARD (workout display screen) ──────────────────
+function wlbStartWOD() {
+  const hasMovements = _wlbMovements.length > 0;
+  if (!hasMovements) { toast('Add at least one movement first'); return; }
+
+  // Show the WOD card overlay
+  const card = document.getElementById('cf-wod-card');
+  if (card) card.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+
+  // Populate it
+  wlbPopulateWODCard();
+  wlbSyncWODCard();
+
+  // Start syncing timer to card
+  if (_wcSyncInterval) clearInterval(_wcSyncInterval);
+  _wcSyncInterval = setInterval(wlbSyncWODCard, 250);
+}
+
+function wlbExitWODCard() {
+  const card = document.getElementById('cf-wod-card');
+  if (card) card.style.display = 'none';
+  document.body.style.overflow = '';
+  if (_wcSyncInterval) clearInterval(_wcSyncInterval);
+  // Pause timer if running
+  if (_cfTimerRunning) cfToggleTimer();
+  // Scroll to score section
+  setTimeout(() => {
+    const scoreEl = document.getElementById('cf-score-wod');
+    if (scoreEl) scoreEl.scrollIntoView({ behavior:'smooth', block:'center' });
+  }, 200);
+}
+
+let _wcSyncInterval = null;
+
+function wlbPopulateWODCard() {
+  const wtUnit = wlbGetWeightUnit();
+  const wodName = document.getElementById('cf-score-wod')?.value || 'WOD';
+  const fmt = _cfCurrentFormat || 'For Time';
+
+  // Header
+  const nameEl = document.getElementById('wc-wod-name');
+  const fmtEl = document.getElementById('wc-format-label');
+  if (nameEl) nameEl.textContent = wodName;
+
+  let fmtLabel = fmt;
+  if (fmt === 'AMRAP') fmtLabel = `${_cfSetup?.amrapMin||18} Min AMRAP`;
+  else if (fmt === 'EMOM') fmtLabel = `${_cfSetup?.emomTotal||20} Min EMOM`;
+  else if (_wlbRounds > 1) fmtLabel = `${_wlbRounds} Rounds For Time`;
+  if (fmtEl) fmtEl.textContent = fmtLabel;
+
+  const mvToCardRow = (mv, highlight) => {
+    if (!mv.name && !mv.reps) return '';
+    const wt = mv.weight ? ` <span style="color:var(--text-muted);font-size:12px">@ ${mv.weight} ${wtUnit}</span>` : '';
+    const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+    return `<div style="display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)">
+      <span style="font-size:28px;font-weight:900;font-family:var(--mono);color:${highlight||'#fff'};min-width:52px;line-height:1">${mv.reps||''}</span>
+      <span style="font-size:16px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
+    </div>`;
+  };
+
+  // Buy-in
+  const buyinEl = document.getElementById('wc-buyin');
+  const buyinList = document.getElementById('wc-buyin-list');
+  if (_wlbShowBuyin && _wlbBuyinMovements.length) {
+    if (buyinEl) buyinEl.style.display = 'block';
+    if (buyinList) buyinList.innerHTML = _wlbBuyinMovements.map(mv => mvToCardRow(mv,'var(--text-muted)')).join('');
+  } else {
+    if (buyinEl) buyinEl.style.display = 'none';
+  }
+
+  // Main rounds label
+  const rlEl = document.getElementById('wc-rounds-label');
+  if (rlEl) {
+    if (fmt === 'AMRAP') rlEl.textContent = 'Complete as many rounds as possible';
+    else if (_wlbRounds > 1) rlEl.textContent = `${_wlbRounds} Rounds`;
+    else rlEl.textContent = '';
+  }
+
+  // Main movements
+  const mvList = document.getElementById('wc-movements-list');
+  if (mvList) mvList.innerHTML = _wlbMovements.map(mv => mvToCardRow(mv,'var(--cf-green)')).join('');
+
+  // Buy-out
+  const buyoutEl = document.getElementById('wc-buyout');
+  const buyoutList = document.getElementById('wc-buyout-list');
+  if (_wlbShowBuyout && _wlbBuyoutMovements.length) {
+    if (buyoutEl) buyoutEl.style.display = 'block';
+    if (buyoutList) buyoutList.innerHTML = _wlbBuyoutMovements.map(mv => mvToCardRow(mv,'var(--text-muted)')).join('');
+  } else {
+    if (buyoutEl) buyoutEl.style.display = 'none';
+  }
+
+  // Round/rep counters
+  const fmt2 = _cfCurrentFormat || 'For Time';
+  const showRounds = ['AMRAP','EMOM'].includes(fmt2);
+  const wcCounter = document.getElementById('wc-round-counter');
+  const wcRepSection = document.getElementById('wc-rep-section');
+  if (wcCounter) wcCounter.style.display = showRounds ? 'flex' : 'none';
+  if (wcRepSection) wcRepSection.style.display = fmt2 === 'AMRAP' ? 'flex' : 'none';
+}
+
+function wlbSyncWODCard() {
+  // Sync timer display
+  const timerEl = document.getElementById('wc-timer');
+  const mainTimer = document.getElementById('cf-timer-display');
+  if (timerEl && mainTimer) timerEl.textContent = mainTimer.textContent;
+
+  // Sync phase
+  const phaseEl = document.getElementById('wc-phase');
+  const mainPhase = document.getElementById('cf-tabata-phase');
+  if (phaseEl) phaseEl.textContent = mainPhase?.style.display !== 'none' ? mainPhase?.textContent || '' : '';
+
+  // Sync round info
+  const roundInfoEl = document.getElementById('wc-round-info');
+  const mainEmom = document.getElementById('cf-emom-indicator');
+  if (roundInfoEl) roundInfoEl.textContent = mainEmom?.style.display !== 'none' ? mainEmom?.textContent || '' : '';
+
+  // Sync round counter displays
+  const wcRd = document.getElementById('wc-round-display');
+  const mainRd = document.getElementById('cf-round-display');
+  if (wcRd && mainRd) wcRd.textContent = mainRd.textContent;
+  const wcRpd = document.getElementById('wc-rep-display');
+  const mainRpd = document.getElementById('cf-rep-display');
+  if (wcRpd && mainRpd) wcRpd.textContent = mainRpd.textContent;
+
+  // Sync start button
+  const wcBtn = document.getElementById('wc-start-btn');
+  const mainBtn = document.getElementById('cf-timer-start-btn');
+  if (wcBtn && mainBtn) {
+    wcBtn.textContent = mainBtn.textContent;
+    wcBtn.style.background = _cfTimerRunning ? 'var(--red)' : 'var(--cf-green)';
+  }
+
+  // Sync progress bar
+  const wcProgress = document.getElementById('wc-progress');
+  const fsProgress = document.getElementById('fs-progress-bar');
+  if (wcProgress && fsProgress) wcProgress.style.width = fsProgress.style.width;
+}
+
+// Also update fullscreen TV to show movements
+const _origCfEnterFullscreen = cfEnterFullscreen;
+function cfEnterFullscreen() {
+  _origCfEnterFullscreen();
+  // Add WOD movements to fullscreen view if not already there
+  let fsMovements = document.getElementById('fs-wod-movements');
+  if (!fsMovements) {
+    const fsEl = document.getElementById('cf-fullscreen-timer');
+    if (fsEl) {
+      fsMovements = document.createElement('div');
+      fsMovements.id = 'fs-wod-movements';
+      fsMovements.style.cssText = 'padding:16px 24px;max-width:500px;margin:0 auto;width:100%';
+      // Insert before fs-controls
+      const controls = fsEl.querySelector('.fs-controls');
+      if (controls) fsEl.insertBefore(fsMovements, controls);
+    }
+  }
+  if (fsMovements) {
+    const wtUnit = wlbGetWeightUnit();
+    let html = '';
+    if (_wlbRounds > 1) html += `<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${_wlbRounds} ROUNDS</div>`;
+    html += _wlbMovements.map(mv => {
+      if (!mv.name) return '';
+      const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
+      const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+      return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:24px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:50px">${mv.reps||''}</span>
+        <span style="font-size:18px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
+      </div>`;
+    }).join('');
+    fsMovements.innerHTML = html;
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// ALLOY — LBS / KG SETTING
+// ═══════════════════════════════════════════════════
+function alloyGetWeightUnit() {
+  return localStorage.getItem('alloy_weight_unit') || 'lbs';
+}
+function alloySetWeightUnit(unit) {
+  localStorage.setItem('alloy_weight_unit', unit);
+  // Re-render movements to update labels
+  wlbRenderMovements();
+  toast(`Weight unit set to ${unit}`);
+}
+
+// ═══════════════════════════════════════════════════
 // ALLOY — WOD LOG BUILDER
 // ═══════════════════════════════════════════════════
 
@@ -10416,7 +11056,12 @@ function cfPreFillTrack(wodName) {
   nav('cf-track');
   setTimeout(() => {
     const el = document.getElementById('cf-score-wod');
-    if (el) el.value = wodName;
+    if (el) { el.value = wodName; }
+    // Also pre-fill from library if WOD exists there
+    const wod = [...CF_BENCHMARKS, ..._cfWODs].find(w => w.name === wodName);
+    if (wod) {
+      cfLoadWODToTrack(wod);
+    }
   }, 100);
 }
 
@@ -10907,6 +11552,12 @@ function cfAdjustSetup(type, delta) {
     case 'amrap':
       _cfSetup.amrapMin = Math.max(1, Math.min(60, _cfSetup.amrapMin + delta));
       document.getElementById('cf-setup-amrap-val').textContent = _cfSetup.amrapMin;
+      // Auto-update timer display immediately
+      if (!_cfTimerRunning) {
+        const disp = document.getElementById('cf-timer-display');
+        if (disp) disp.textContent = `${_cfSetup.amrapMin}:00`;
+        _cfTimerSeconds = _cfSetup.amrapMin * 60;
+      }
       break;
     case 'emom-total':
       _cfSetup.emomTotal = Math.max(1, Math.min(60, _cfSetup.emomTotal + delta));
@@ -10922,6 +11573,12 @@ function cfAdjustSetup(type, delta) {
       _cfSetup.tabataWork = Math.max(5, Math.min(60, _cfSetup.tabataWork + delta));
       document.getElementById('cf-setup-tabata-work').textContent = _cfSetup.tabataWork;
       cfUpdateTabataSummary();
+      // Auto-update display
+      if (!_cfTimerRunning) {
+        const disp = document.getElementById('cf-timer-display');
+        if (disp) disp.textContent = String(_cfSetup.tabataWork).padStart(2,'0');
+        _cfTimerSeconds = _cfSetup.tabataWork;
+      }
       break;
     case 'tabata-rest':
       _cfSetup.tabataRest = Math.max(5, Math.min(60, _cfSetup.tabataRest + delta));
@@ -10936,6 +11593,12 @@ function cfAdjustSetup(type, delta) {
     case 'cap':
       _cfSetup.capMin = Math.max(1, Math.min(60, _cfSetup.capMin + delta));
       document.getElementById('cf-setup-cap-val').textContent = _cfSetup.capMin;
+      // Auto-update display if cap is enabled
+      if (!_cfTimerRunning && _cfSetup.capEnabled) {
+        const disp = document.getElementById('cf-timer-display');
+        if (disp) disp.textContent = `${_cfSetup.capMin}:00`;
+        _cfTimerSeconds = _cfSetup.capMin * 60;
+      }
       break;
   }
 }
@@ -11028,6 +11691,29 @@ function cfSelectFormat(format, btn) {
 }
 
 // ── Timer core ──
+let _cfRoundCount = 0;
+let _cfRepCount = 0;
+
+function cfAdjustRounds(delta) {
+  const el = document.getElementById('cf-round-display');
+  if (!el) return;
+  const current = parseInt(el.textContent) || 0;
+  const next = Math.max(0, current + delta);
+  el.textContent = next;
+  _cfRoundCount = next;
+  _cfRounds = next;
+}
+
+function cfAdjustReps(delta) {
+  const el = document.getElementById('cf-rep-display');
+  if (!el) return;
+  const current = parseInt(el.textContent) || 0;
+  const next = Math.max(0, current + delta);
+  el.textContent = next;
+  _cfRepCount = next;
+  _cfReps = next;
+}
+
 function cfToggleTimer() {
   _cfTimerRunning = !_cfTimerRunning;
   const btn = document.getElementById('cf-timer-start-btn');
@@ -11182,6 +11868,8 @@ function cfResetTimer() {
   const disp = document.getElementById('cf-timer-display');
   if (disp) { disp.textContent = displayVal; disp.style.color = ''; }
 
+  _cfRoundCount = 0;
+  _cfRepCount = 0;
   const rd = document.getElementById('cf-round-display');
   if (rd) rd.textContent = '0';
   const rpd = document.getElementById('cf-rep-display');
@@ -11680,7 +12368,73 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
 
 </script>
   <!-- ── ALLOY FULLSCREEN TIMER ── -->
-  <div id="cf-fullscreen-timer" onclick="cfFsHandleTap(event)">
+  <!-- ═══════════════════════════════════════
+     ALLOY — WOD CARD (shown when workout starts)
+═══════════════════════════════════════ -->
+<div id="cf-wod-card" style="display:none;position:fixed;inset:0;z-index:900;background:#0d0d0d;overflow-y:auto;flex-direction:column">
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid rgba(57,211,83,.2)">
+    <div>
+      <div id="wc-wod-name" style="font-size:22px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:#fff"></div>
+      <div id="wc-format-label" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--cf-green);margin-top:2px"></div>
+    </div>
+    <button onclick="wlbExitWODCard()" style="background:none;border:none;color:var(--text-muted);font-size:22px;cursor:pointer;padding:4px">✕</button>
+  </div>
+
+  <!-- Timer -->
+  <div style="text-align:center;padding:20px 18px 12px;border-bottom:1px solid rgba(57,211,83,.15)">
+    <div id="wc-timer" style="font-size:72px;font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1;letter-spacing:-2px">0:00</div>
+    <div id="wc-phase" style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--cf-green);margin-top:4px;min-height:18px"></div>
+    <div id="wc-round-info" style="font-size:14px;font-weight:700;color:var(--text-muted);margin-top:2px;min-height:20px"></div>
+    <!-- Progress bar -->
+    <div style="background:rgba(57,211,83,.15);border-radius:4px;height:4px;margin:12px 0 0;overflow:hidden">
+      <div id="wc-progress" style="height:100%;background:var(--cf-green);width:0%;transition:width .5s linear;border-radius:4px"></div>
+    </div>
+  </div>
+
+  <!-- WOD movements -->
+  <div style="flex:1;padding:16px 18px">
+    <!-- Buy-in -->
+    <div id="wc-buyin" style="display:none;margin-bottom:14px">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-muted);margin-bottom:6px">Buy-In (once)</div>
+      <div id="wc-buyin-list"></div>
+    </div>
+    <!-- Main work -->
+    <div id="wc-rounds-label" style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--cf-green);margin-bottom:8px"></div>
+    <div id="wc-movements-list"></div>
+    <!-- Buy-out -->
+    <div id="wc-buyout" style="display:none;margin-top:14px">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-muted);margin-bottom:6px">Buy-Out (once)</div>
+      <div id="wc-buyout-list"></div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div style="padding:14px 18px;border-top:1px solid rgba(57,211,83,.2);display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#0d0d0d">
+    <!-- Round counter (AMRAP/EMOM) -->
+    <div id="wc-round-counter" style="display:none;grid-column:1/-1;display:none;align-items:center;justify-content:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(57,211,83,.15);margin-bottom:4px">
+      <button class="cf-round-btn" onclick="cfAdjustRounds(-1)">−</button>
+      <div style="text-align:center">
+        <div id="wc-round-display" style="font-size:36px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">0</div>
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:700">Rounds</div>
+      </div>
+      <button class="cf-round-btn" onclick="cfAdjustRounds(1)">+</button>
+      <div id="wc-rep-section" style="display:none;align-items:center;gap:10px;margin-left:20px">
+        <button class="cf-round-btn" onclick="cfAdjustReps(-1)">−</button>
+        <div style="text-align:center">
+          <div id="wc-rep-display" style="font-size:36px;font-weight:900;font-family:var(--mono);color:var(--text-primary)">0</div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);font-weight:700">+Reps</div>
+        </div>
+        <button class="cf-round-btn" onclick="cfAdjustReps(1)">+</button>
+      </div>
+    </div>
+    <button id="wc-start-btn" class="btn btn-primary" onclick="cfToggleTimer();wlbSyncWODCard()" style="grid-column:1/-1;background:var(--cf-green);color:#0d0d0d;font-weight:900;font-size:16px;padding:14px">Start</button>
+    <button class="btn btn-white" onclick="cfResetTimer();wlbSyncWODCard()">Reset</button>
+    <button class="btn btn-ghost" onclick="wlbExitWODCard()">✕ Done</button>
+  </div>
+</div>
+
+<div id="cf-fullscreen-timer" onclick="cfFsHandleTap(event)">
     <button class="fs-exit-btn" onclick="cfExitFullscreen();event.stopPropagation()" title="Exit fullscreen">✕</button>
     <div class="fs-wod-name" id="fs-wod-name"></div>
     <div class="fs-format-label" id="fs-format-label">For Time</div>
