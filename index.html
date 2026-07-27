@@ -1226,8 +1226,6 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             <button class="wod-format-chip" onclick="cfSelectFormat('For Quality',this)">For Quality</button>
             <button class="wod-format-chip" onclick="cfSelectFormat('Heavy',this)">Heavy</button>
           </div>
-          <!-- Inline time parameters — updates based on format -->
-          <div id="wlb-inline-params"></div>
         </div>
 
         <!-- Step 2: WOD Structure -->
@@ -1375,6 +1373,17 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
               </div>
             </div>
           </div>
+          <!-- Time cap row — shown for For Time / Chipper / Partner -->
+          <div id="cf-cap-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:8px 12px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted)">Time Cap</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px" onclick="cfAdjustSetup('cap',-1);wlbSyncCapRow()">−</button>
+              <span id="wlb-cap-row-display" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:64px;text-align:center">No cap</span>
+              <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px" onclick="cfAdjustSetup('cap',1);wlbSyncCapRow()">+</button>
+              <button class="btn btn-ghost btn-sm" id="wlb-cap-row-toggle" onclick="cfToggleCap();wlbSyncCapRow()" style="font-size:11px">Add Cap</button>
+            </div>
+          </div>
+
           <!-- Active timer display -->
           <div class="cf-timer-display">
             <div class="cf-timer-label" id="cf-timer-label">For Time</div>
@@ -10253,6 +10262,13 @@ function wlbUpdateInlineParams(format) {
   }
 }
 
+function wlbSyncCapRow() {
+  const display = document.getElementById('wlb-cap-row-display');
+  const btn = document.getElementById('wlb-cap-row-toggle');
+  if (display) display.textContent = _cfSetup.capEnabled ? _cfSetup.capMin + ' min' : 'No cap';
+  if (btn) btn.textContent = _cfSetup.capEnabled ? 'Remove Cap' : 'Add Cap';
+}
+
 function wlbSyncInlineCap() {
   const el = document.getElementById('wlb-cap-inline');
   const btn = document.getElementById('wlb-cap-toggle-btn');
@@ -10294,7 +10310,10 @@ function wlbInit() {
 
   wlbRenderMovements();
   wlbUpdatePreview();
-  wlbUpdateInlineParams(_cfCurrentFormat || 'For Time');
+  // Init cap row
+  const capRow = document.getElementById('cf-cap-row');
+  if (capRow) capRow.style.display = ['For Time','Chipper','Partner'].includes(_cfCurrentFormat||'For Time') ? '' : 'none';
+  wlbSyncCapRow();
 }
 
 
@@ -12472,6 +12491,7 @@ function cfToggleCap() {
     if (disp) disp.textContent = _cfSetup.capEnabled ? `${_cfSetup.capMin}:00` : '0:00';
     _cfTimerSeconds = _cfSetup.capEnabled ? _cfSetup.capMin * 60 : 0;
   }
+  wlbSyncCapRow();
 }
 
 // ── Format selection ──
@@ -12507,6 +12527,11 @@ function cfSelectFormat(format, btn) {
     'AMRAP': 'amrap', 'EMOM': 'emom', 'Tabata': 'tabata',
     'For Time': 'fortime', 'Chipper': 'fortime', 'Partner': 'fortime'
   };
+
+  // Show/hide cap row
+  const capRow = document.getElementById('cf-cap-row');
+  if (capRow) capRow.style.display = ['For Time','Chipper','Partner'].includes(format) ? '' : 'none';
+  wlbSyncCapRow();
   const panel = setupMap[format];
   if (panel) {
     const el = document.getElementById('cf-setup-'+panel);
@@ -12808,7 +12833,6 @@ function cfSelectFormat(format, btn) {
   };
   hint.textContent = hintMap[format] || '';
   input.value = ''; // clear on format change
-  wlbUpdateInlineParams(format);
 }
 
 function cfSetFeel(feel, btn) {
