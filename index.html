@@ -10637,6 +10637,11 @@ function wlbStartWOD() {
     || (_wlbIsHeavy && _wlbHeavyMovement);
   if (!hasMovements) { toast('Add at least one movement first'); return; }
 
+  // Prime AudioContext on user gesture (required for sound on iOS)
+  cfGetAudioCtx();
+  // Brief silent beep to unlock audio
+  cfBeepTone(440, 0.001, 0.001);
+
   // Show the WOD card overlay
   const card = document.getElementById('cf-wod-card');
   if (card) card.style.display = 'flex';
@@ -13275,17 +13280,17 @@ let _cfSetup = {
 // Audio beep using Web Audio API
 function cfBeep(frequency=880, duration=0.15, volume=0.6) {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    if (!_cfAudioCtx) _cfAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_cfAudioCtx.state === 'suspended') _cfAudioCtx.resume();
+    const osc = _cfAudioCtx.createOscillator();
+    const gain = _cfAudioCtx.createGain();
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(_cfAudioCtx.destination);
     osc.frequency.value = frequency;
-    osc.type = 'sine';
-    gain.gain.setValueAtTime(volume, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + duration);
+    gain.gain.setValueAtTime(volume, _cfAudioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, _cfAudioCtx.currentTime + duration);
+    osc.start(_cfAudioCtx.currentTime);
+    osc.stop(_cfAudioCtx.currentTime + duration);
   } catch(e) {}
 }
 
@@ -13503,13 +13508,41 @@ function cfSetLeadin(seconds) {
   });
 }
 
+// AudioContext for beeps (works without user gesture after first interaction)
+let _cfAudioCtx = null;
+function cfGetAudioCtx() {
+  if (!_cfAudioCtx) _cfAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (_cfAudioCtx.state === 'suspended') _cfAudioCtx.resume();
+  return _cfAudioCtx;
+}
+
+function cfBeepTone(freq, duration, volume) {
+  cfBeep(freq, duration, volume || 0.5);
+}
+
+function cfBeepCountdown(n) {
+  // High beep for 3-2-1, double beep for GO
+  if (n === 0) {
+    cfBeepTone(880, 0.15, 0.7);
+    setTimeout(() => cfBeepTone(1100, 0.3, 0.8), 180);
+  } else {
+    cfBeepTone(660, 0.12, 0.6);
+  }
+}
+
 function cfSpeak(text) {
+  // Use AudioContext beeps for numbers (reliable cross-platform)
+  if (text === '3' || text === '2' || text === '1') { cfBeepCountdown(1); return; }
+  if (text === 'Go!' || text === 'GO!') { cfBeepCountdown(0); return; }
+  // For words (station names, "Rest", etc.) try speech synthesis
   if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.rate = 0.9;
-  utt.volume = 1.0;
-  window.speechSynthesis.speak(utt);
+  try {
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = 0.9;
+    utt.volume = 1.0;
+    window.speechSynthesis.speak(utt);
+  } catch(e) {}
 }
 
 function cfStartWithCountdown() {
@@ -13525,13 +13558,16 @@ function cfStartWithCountdown() {
   numEl.style.transform = 'scale(1)';
   overlay.style.display = 'flex';
 
-  // Also show countdown on WOD card if open
+  // Show WOD card countdown overlay if card is open
   const wcOverlay = document.getElementById('wc-countdown-overlay');
   const wcNum = document.getElementById('wc-countdown-number');
-  if (wcOverlay && document.getElementById('cf-wod-card')?.style.display !== 'none') {
-    wcOverlay.style.display = 'flex';
-    if (wcNum) wcNum.textContent = count;
+  const wodCardOpen = document.getElementById('cf-wod-card')?.style.display !== 'none';
+  if (wcOverlay) {
+    wcOverlay.style.display = wodCardOpen ? 'flex' : 'none';
+    if (wcNum) { wcNum.textContent = count; wcNum.style.color = 'rgba(255,255,255,.5)'; wcNum.style.fontSize = '120px'; }
   }
+  // Hide the behind-scenes overlay if WOD card is covering it
+  if (overlay && wodCardOpen) overlay.style.display = 'none';
 
   if (_cfCountdownInterval) clearInterval(_cfCountdownInterval);
 
@@ -14523,7 +14559,7 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
   </div>
 
   <!-- Countdown overlay inside WOD card -->
-  <div id="wc-countdown-overlay" style="display:none;position:absolute;inset:0;background:#0d0d0d;z-index:10;flex-direction:column;align-items:center;justify-content:center;gap:8px;border-radius:var(--radius-lg)">
+  <div id="wc-countdown-overlay" style="display:none;position:fixed;inset:0;background:#0d0d0d;z-index:1000;flex-direction:column;align-items:center;justify-content:center;gap:8px">
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted)">Starting in</div>
     <div id="wc-countdown-number" style="font-size:96px;font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1">3</div>
     <button class="btn btn-ghost btn-sm" onclick="cfCancelCountdown()" style="margin-top:8px">Cancel</button>
