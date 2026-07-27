@@ -1214,7 +1214,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
 
         <!-- WOD LOG BUILDER -->
         <!-- Step 1: Format + Time Parameters -->
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:10px">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:10px;position:relative;z-index:1">
           <div class="section-label" style="margin-bottom:10px">Format</div>
           <div class="wod-format-chips" style="margin-bottom:12px">
             <button class="wod-format-chip active" onclick="cfSelectFormat('For Time',this)">For Time</button>
@@ -12261,6 +12261,8 @@ function nav(view, btn) {
       if (prevPanel) prevPanel.style.display = 'none';
       _wlbPrevAttempts = [];
       _wlbPrevExpanded = false;
+      // Ensure no stale suggestion dropdown is blocking clicks
+      wlbHideSuggestions();
     }
     if (view === 'cf-assign')    cfRenderAssignWOD();
     if (view === 'cf-builder')   cfRenderWODBuilder();
@@ -12496,73 +12498,76 @@ function cfToggleCap() {
 
 // ── Format selection ──
 function cfSelectFormat(format, btn) {
-  _cfCurrentFormat = format;
-  document.querySelectorAll('.wod-format-chip').forEach(b=>b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-
-  const noTimer = ['For Quality','Heavy'].includes(format);
-  const timerBlock = document.getElementById('cf-timer-block');
-  const noTimerMsg = document.getElementById('cf-no-timer-msg');
-  if (timerBlock) timerBlock.style.display = noTimer ? 'none' : '';
-  if (noTimerMsg) noTimerMsg.style.display = noTimer ? '' : 'none';
-
-  if (noTimer) {
+  try {
+    _cfCurrentFormat = format;
+    document.querySelectorAll('.wod-format-chip').forEach(b=>b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+  
+    const noTimer = ['For Quality','Heavy'].includes(format);
+    const timerBlock = document.getElementById('cf-timer-block');
+    const noTimerMsg = document.getElementById('cf-no-timer-msg');
+    if (timerBlock) timerBlock.style.display = noTimer ? 'none' : '';
+    if (noTimerMsg) noTimerMsg.style.display = noTimer ? '' : 'none';
+  
+    if (noTimer) {
+      const sv = document.getElementById('cf-score-value');
+      if (sv) sv.placeholder = format === 'Heavy' ? 'e.g. 275 lb x3 or 5RM: 225 lb' : 'e.g. Complete or Sets: 3x10';
+      return;
+    }
+  
+    // Hide all setup panels
+    ['amrap','emom','tabata','fortime'].forEach(t => {
+      const el = document.getElementById('cf-setup-'+t);
+      if (el) el.style.display = 'none';
+    });
+  
+    // Hide all active-only indicators
+    const tabataPhaseEl = document.getElementById('cf-tabata-phase');
+    if (tabataPhaseEl) tabataPhaseEl.style.display = 'none';
+    const emomIndEl = document.getElementById('cf-emom-indicator');
+    if (emomIndEl) emomIndEl.style.display = 'none';
+  
+    // Show setup panel for this format
+    const setupMap = {
+      'AMRAP': 'amrap', 'EMOM': 'emom', 'Tabata': 'tabata',
+      'For Time': 'fortime', 'Chipper': 'fortime', 'Partner': 'fortime'
+    };
+  
+    // Show/hide cap row
+    const capRow = document.getElementById('cf-cap-row');
+    if (capRow) capRow.style.display = ['For Time','Chipper','Partner'].includes(format) ? '' : 'none';
+    wlbSyncCapRow();
+    const panel = setupMap[format];
+    if (panel) {
+      const el = document.getElementById('cf-setup-'+panel);
+      if (el) el.style.display = '';
+    }
+  
+    // Show/hide round counter and rep counter
+    const showRounds = ['AMRAP','EMOM'].includes(format);
+    const showReps   = format === 'AMRAP';
+    const lapBtn     = document.getElementById('cf-lap-btn');
+    const roundCounterEl = document.getElementById('cf-round-counter');
+    if (roundCounterEl) roundCounterEl.style.display = showRounds ? 'flex' : 'none';
+    const repCounterEl = document.getElementById('cf-rep-counter');
+    if (repCounterEl) repCounterEl.style.display = showReps ? 'block' : 'none';
+    if (lapBtn) lapBtn.style.display = ['For Time','Chipper','Partner'].includes(format) ? '' : 'none';
+  
+    // Update timer label
+    const labelEl = document.getElementById('cf-timer-label');
+    if (labelEl) labelEl.textContent = format;
+  
+    // Update score placeholder
     const sv = document.getElementById('cf-score-value');
-    if (sv) sv.placeholder = format === 'Heavy' ? 'e.g. 275 lb x3 or 5RM: 225 lb' : 'e.g. Complete or Sets: 3x10';
-    return;
-  }
-
-  // Hide all setup panels
-  ['amrap','emom','tabata','fortime'].forEach(t => {
-    const el = document.getElementById('cf-setup-'+t);
-    if (el) el.style.display = 'none';
-  });
-
-  // Hide all active-only indicators
-  const tabataPhaseEl = document.getElementById('cf-tabata-phase');
-  if (tabataPhaseEl) tabataPhaseEl.style.display = 'none';
-  const emomIndEl = document.getElementById('cf-emom-indicator');
-  if (emomIndEl) emomIndEl.style.display = 'none';
-
-  // Show setup panel for this format
-  const setupMap = {
-    'AMRAP': 'amrap', 'EMOM': 'emom', 'Tabata': 'tabata',
-    'For Time': 'fortime', 'Chipper': 'fortime', 'Partner': 'fortime'
-  };
-
-  // Show/hide cap row
-  const capRow = document.getElementById('cf-cap-row');
-  if (capRow) capRow.style.display = ['For Time','Chipper','Partner'].includes(format) ? '' : 'none';
-  wlbSyncCapRow();
-  const panel = setupMap[format];
-  if (panel) {
-    const el = document.getElementById('cf-setup-'+panel);
-    if (el) el.style.display = '';
-  }
-
-  // Show/hide round counter and rep counter
-  const showRounds = ['AMRAP','EMOM'].includes(format);
-  const showReps   = format === 'AMRAP';
-  const lapBtn     = document.getElementById('cf-lap-btn');
-  const roundCounterEl = document.getElementById('cf-round-counter');
-  if (roundCounterEl) roundCounterEl.style.display = showRounds ? 'flex' : 'none';
-  const repCounterEl = document.getElementById('cf-rep-counter');
-  if (repCounterEl) repCounterEl.style.display = showReps ? 'block' : 'none';
-  if (lapBtn) lapBtn.style.display = ['For Time','Chipper','Partner'].includes(format) ? '' : 'none';
-
-  // Update timer label
-  const labelEl = document.getElementById('cf-timer-label');
-  if (labelEl) labelEl.textContent = format;
-
-  // Update score placeholder
-  const sv = document.getElementById('cf-score-value');
-  if (sv) sv.placeholder = format === 'AMRAP' ? 'e.g. 9+4' : 'e.g. 24:38';
-
-  // Update EMOM/Tabata summaries
-  if (format === 'EMOM') cfUpdateEmomSummary();
-  if (format === 'Tabata') cfUpdateTabataSummary();
-
-  cfResetTimer();
+    if (sv) sv.placeholder = format === 'AMRAP' ? 'e.g. 9+4' : 'e.g. 24:38';
+  
+    // Update EMOM/Tabata summaries
+    if (format === 'EMOM') cfUpdateEmomSummary();
+    if (format === 'Tabata') cfUpdateTabataSummary();
+  
+    cfResetTimer();
+  
+  } catch(e) { console.error("cfSelectFormat ERROR:", e.message, e.stack); }
 }
 
 // ── Timer core ──
