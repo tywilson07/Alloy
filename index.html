@@ -872,6 +872,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
       <button class="nav-item" onclick="nav('cf-track',this)"><span class="icon">⏱</span>Track WOD</button>
       <button class="nav-item" onclick="nav('cf-library',this)"><span class="icon">📋</span>WOD Library</button>
       <button class="nav-item" onclick="nav('cf-history',this)"><span class="icon">📊</span>WOD History</button>
+      <button class="nav-item" onclick="nav('cf-movement-library',this)"><span class="icon">🏃</span>Movement Library</button>
       <button class="nav-item" onclick="nav('cf-builder',this)"><span class="icon">⚡</span>WOD Builder</button>
       <div id="cf-coach-nav" style="display:none">
         <div class="sidebar-section">WOD Coaching</div>
@@ -1493,6 +1494,33 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
       </div>
     </div>
 
+    <!-- CF: MOVEMENT LIBRARY -->
+    <div class="view" id="view-cf-movement-library">
+      <div class="view-header">
+        <div class="view-title">Movement Library</div>
+        <button class="btn btn-primary btn-sm" onclick="cfOpenAddMovementModal()">+ Add</button>
+      </div>
+      <div class="view-body pad-bottom">
+        <!-- Search + filter -->
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <input id="cf-mvlib-search" placeholder="Search movements..." oninput="cfRenderMovementLibrary()" style="flex:1">
+        </div>
+        <!-- Category filter chips -->
+        <div class="wod-format-chips" id="cf-mvlib-cat-chips" style="margin-bottom:12px">
+          <button class="wod-format-chip active" onclick="cfSetMvLibFilter('All',this)">All</button>
+          <button class="wod-format-chip" onclick="cfSetMvLibFilter('Barbell',this)">🏋️ Barbell</button>
+          <button class="wod-format-chip" onclick="cfSetMvLibFilter('Dumbbell',this)">💪 Dumbbell</button>
+          <button class="wod-format-chip" onclick="cfSetMvLibFilter('Kettlebell',this)">🔔 Kettlebell</button>
+          <button class="wod-format-chip" onclick="cfSetMvLibFilter('Gymnastics',this)">🤸 Gymnastics</button>
+          <button class="wod-format-chip" onclick="cfSetMvLibFilter('Mono-Structural',this)">🏃 Mono-Structural</button>
+          <button class="wod-format-chip" onclick="cfSetMvLibFilter('Carry/Distance',this)">🚶 Carry</button>
+          <button class="wod-format-chip" onclick="cfSetMvLibFilter('Odd Object',this)">🪨 Odd Object</button>
+          <button class="wod-format-chip" onclick="cfSetMvLibFilter('Bodyweight',this)">⚡ Bodyweight</button>
+        </div>
+        <div id="cf-mvlib-body"><div class="loading">Loading...</div></div>
+      </div>
+    </div>
+
     <!-- CF: ATHLETES -->
     <div class="view" id="view-cf-athletes">
       <div class="view-header">
@@ -1556,6 +1584,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
         <button class="more-menu-item" onclick="nav('cf-library');closeMoreMenu()"><span>📋</span>WOD Library</button>
         <button class="more-menu-item" onclick="nav('cf-builder');closeMoreMenu()"><span>⚡</span>WOD Builder</button>
         <button class="more-menu-item" onclick="nav('cf-history');closeMoreMenu()"><span>📊</span>WOD History</button>
+        <button class="more-menu-item" onclick="nav('cf-movement-library');closeMoreMenu()"><span>🏃</span>Movement Library</button>
         <div id="cf-more-coach" style="display:none">
           <button class="more-menu-item" onclick="nav('cf-athletes');closeMoreMenu()"><span>👥</span>WOD Athletes</button>
           <button class="more-menu-item" onclick="nav('cf-assign');closeMoreMenu()"><span>📤</span>Assign WOD</button>
@@ -9940,7 +9969,10 @@ function wlbRenderSection(section) {
     const unitOpts = wlbUnitOptions(type);
     const presets = wlbGetPresets(type, unit);
     const wtUnit = wlbGetWeightUnit();
-    const showWeight = type === 'reps' || type === 'carry';
+    // Show weight if library says reps_weight or dist_carry_wt
+    const libMeasurement = mv._measurement || '';
+    const showWeight = libMeasurement === 'reps_weight' || libMeasurement === 'dist_carry_wt' ||
+      (!libMeasurement && (type === 'reps' || type === 'carry'));
     const repsLabel = unit === 'reps' ? 'Reps' : unit.toUpperCase();
     const repsPh = presets[Math.floor(presets.length/2)];
 
@@ -10289,252 +10321,6 @@ function alloySetWeightUnit(unit) {
   toast(`Weight unit set to ${unit}`);
 }
 
-// ═══════════════════════════════════════════════════
-// ALLOY — WOD LOG BUILDER
-// ═══════════════════════════════════════════════════
-
-// Movement types for smart field detection
-const WLB_DISTANCE_MILES = ['run','sprint','jog','walk'];
-const WLB_DISTANCE_METERS = ['row','ski erg','bike erg','swim','farmers carry','sled','carry','push'];
-const WLB_CALORIES = ['air bike','assault bike','echo bike','bike','rower','ski'];
-
-let _wlbMovements = []; // [{name, reps, unit, weight, notes}]
-
-function wlbInit() {
-  _wlbMovements = [];
-  wlbRenderMovements();
-  wlbUpdateTimeParams(_cfCurrentFormat || 'For Time');
-}
-
-function wlbAddMovement(prefill) {
-  const emptyMsg = document.getElementById('wlb-movements-empty');
-  if (emptyMsg) emptyMsg.style.display = 'none';
-
-  const mv = prefill || { name:'', reps:'', unit:'reps', weight:'', notes:'' };
-  _wlbMovements.push(mv);
-  wlbRenderMovements();
-
-  // Focus the new name input
-  setTimeout(() => {
-    const inputs = document.querySelectorAll('.wlb-mv-name');
-    const last = inputs[inputs.length - 1];
-    if (last) last.focus();
-  }, 50);
-}
-
-function wlbRemoveMovement(idx) {
-  _wlbMovements.splice(idx, 1);
-  wlbRenderMovements();
-  if (_wlbMovements.length === 0) {
-    const emptyMsg = document.getElementById('wlb-movements-empty');
-    if (emptyMsg) emptyMsg.style.display = '';
-  }
-}
-
-function wlbGetMovementType(name) {
-  const n = (name || '').toLowerCase();
-  if (WLB_DISTANCE_MILES.some(k => n.includes(k))) return 'miles';
-  if (WLB_DISTANCE_METERS.some(k => n.includes(k))) return 'meters';
-  if (WLB_CALORIES.some(k => n.includes(k))) return 'calories';
-  return 'reps';
-}
-
-function wlbRenderMovements() {
-  const container = document.getElementById('wlb-movements');
-  if (!container) return;
-
-  container.innerHTML = _wlbMovements.map((mv, idx) => {
-    const type = wlbGetMovementType(mv.name);
-    const unitLabel = type === 'miles' ? 'mi' : type === 'meters' ? 'm' : type === 'calories' ? 'cal' : 'reps';
-    const repPlaceholder = type === 'miles' ? '0.25' : type === 'meters' ? '200' : type === 'calories' ? '15' : '10';
-    const showWeight = type === 'reps' || type === 'meters';
-
-    return `<div class="wlb-movement-row" id="wlb-mv-${idx}" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <input class="wlb-mv-name" placeholder="Movement name..." value="${mv.name}"
-          oninput="_wlbMovements[${idx}].name=this.value;wlbUpdateMovementFields(${idx})"
-          style="flex:1;font-size:13px;font-weight:700">
-        <button onclick="wlbRemoveMovement(${idx})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0;flex-shrink:0">✕</button>
-      </div>
-      <div class="row" style="gap:8px" id="wlb-mv-fields-${idx}">
-        <div class="field" style="flex:1">
-          <label style="font-size:10px">${type === 'reps' ? 'Reps' : unitLabel.toUpperCase()}</label>
-          <input type="${type === 'miles' ? 'number' : 'text'}" placeholder="${repPlaceholder}"
-            value="${mv.reps}"
-            oninput="_wlbMovements[${idx}].reps=this.value"
-            style="font-family:var(--mono);font-size:15px;font-weight:700">
-        </div>
-        ${showWeight ? `<div class="field" style="flex:1">
-          <label style="font-size:10px">Weight (optional)</label>
-          <input placeholder="e.g. 135/95 lb" value="${mv.weight}"
-            oninput="_wlbMovements[${idx}].weight=this.value"
-            style="font-size:13px">
-        </div>` : ''}
-      </div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px" id="wlb-mv-presets-${idx}">
-        ${wlbGetPresets(type, idx)}
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function wlbGetPresets(type, idx) {
-  if (type === 'miles') {
-    return ['0.25 mi','0.5 mi','1 mi'].map(v =>
-      `<button class="wod-format-chip" style="padding:2px 8px;font-size:10px" onclick="_wlbMovements[${idx}].reps='${v.split(' ')[0]}';wlbRenderMovements()">${v}</button>`
-    ).join('');
-  }
-  if (type === 'meters') {
-    return ['50m','100m','200m','400m','500m','1000m'].map(v =>
-      `<button class="wod-format-chip" style="padding:2px 8px;font-size:10px" onclick="_wlbMovements[${idx}].reps='${v}';wlbRenderMovements()">${v}</button>`
-    ).join('');
-  }
-  if (type === 'calories') {
-    return ['10','12','15','18','20','25'].map(v =>
-      `<button class="wod-format-chip" style="padding:2px 8px;font-size:10px" onclick="_wlbMovements[${idx}].reps='${v}';wlbRenderMovements()">${v} cal</button>`
-    ).join('');
-  }
-  return ['5','10','15','20','21'].map(v =>
-    `<button class="wod-format-chip" style="padding:2px 8px;font-size:10px" onclick="_wlbMovements[${idx}].reps='${v}';wlbRenderMovements()">${v}</button>`
-  ).join('');
-}
-
-function wlbUpdateMovementFields(idx) {
-  // Re-render just this movement's fields when name changes
-  const mv = _wlbMovements[idx];
-  if (!mv) return;
-  const type = wlbGetMovementType(mv.name);
-  const fieldsEl = document.getElementById(`wlb-mv-fields-${idx}`);
-  const presetsEl = document.getElementById(`wlb-mv-presets-${idx}`);
-  if (!fieldsEl || !presetsEl) return;
-
-  const unitLabel = type === 'miles' ? 'mi' : type === 'meters' ? 'm' : type === 'calories' ? 'cal' : 'reps';
-  const repPlaceholder = type === 'miles' ? '0.25' : type === 'meters' ? '200' : type === 'calories' ? '15' : '10';
-  const showWeight = type === 'reps' || type === 'meters';
-
-  fieldsEl.innerHTML = `
-    <div class="field" style="flex:1">
-      <label style="font-size:10px">${type === 'reps' ? 'Reps' : unitLabel.toUpperCase()}</label>
-      <input type="${type === 'miles' ? 'number' : 'text'}" placeholder="${repPlaceholder}"
-        value="${mv.reps}"
-        oninput="_wlbMovements[${idx}].reps=this.value"
-        style="font-family:var(--mono);font-size:15px;font-weight:700">
-    </div>
-    ${showWeight ? `<div class="field" style="flex:1">
-      <label style="font-size:10px">Weight (optional)</label>
-      <input placeholder="e.g. 135/95 lb" value="${mv.weight}"
-        oninput="_wlbMovements[${idx}].weight=this.value"
-        style="font-size:13px">
-    </div>` : ''}`;
-
-  presetsEl.innerHTML = wlbGetPresets(type, idx);
-}
-
-function wlbUpdateTimeParams(format) {
-  const container = document.getElementById('wlb-time-params');
-  if (!container) return;
-
-  if (['For Quality','Heavy'].includes(format)) {
-    container.innerHTML = '';
-    return;
-  }
-
-  if (format === 'AMRAP') {
-    container.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted)">Duration</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('amrap',-1);document.getElementById('wlb-amrap-display').textContent=_cfSetup.amrapMin+' min'">−</button>
-          <span id="wlb-amrap-display" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:60px;text-align:center">${_cfSetup?.amrapMin||18} min</span>
-          <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('amrap',1);document.getElementById('wlb-amrap-display').textContent=_cfSetup.amrapMin+' min'">+</button>
-        </div>
-      </div>`;
-  } else if (format === 'EMOM') {
-    container.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div style="text-align:center">
-          <div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px">Total (min)</div>
-          <div style="display:flex;align-items:center;justify-content:center;gap:6px">
-            <button class="cf-round-btn" style="width:28px;height:28px;font-size:13px" onclick="cfAdjustSetup('emom-total',-1);wlbSyncEmom()">−</button>
-            <span id="wlb-emom-total" style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:36px;text-align:center">${_cfSetup?.emomTotal||20}</span>
-            <button class="cf-round-btn" style="width:28px;height:28px;font-size:13px" onclick="cfAdjustSetup('emom-total',1);wlbSyncEmom()">+</button>
-          </div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:4px">Interval (min)</div>
-          <div style="display:flex;align-items:center;justify-content:center;gap:6px">
-            <button class="cf-round-btn" style="width:28px;height:28px;font-size:13px" onclick="cfAdjustSetup('emom-interval',-1);wlbSyncEmom()">−</button>
-            <span id="wlb-emom-interval" style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:36px;text-align:center">${_cfSetup?.emomInterval||1}</span>
-            <button class="cf-round-btn" style="width:28px;height:28px;font-size:13px" onclick="cfAdjustSetup('emom-interval',1);wlbSyncEmom()">+</button>
-          </div>
-        </div>
-      </div>
-      <div id="wlb-emom-summary" style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:6px">${Math.floor((_cfSetup?.emomTotal||20)/(_cfSetup?.emomInterval||1))} rounds · every ${_cfSetup?.emomInterval||1} min</div>`;
-  } else if (['For Time','Chipper','Partner'].includes(format)) {
-    container.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted)">Time Cap</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('cap',-1);wlbSyncCap()">−</button>
-          <span id="wlb-cap-display" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:70px;text-align:center">${(_cfSetup?.capEnabled?(_cfSetup?.capMin||20)+' min':'No cap')}</span>
-          <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('cap',1);wlbSyncCap()">+</button>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="cfToggleCap();wlbSyncCap()">${_cfSetup?.capEnabled?'Remove Cap':'Add Cap'}</button>
-      </div>`;
-  } else if (format === 'Tabata') {
-    container.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center">
-        <div>
-          <div style="font-size:9px;font-weight:700;color:var(--cf-green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Work</div>
-          <div style="display:flex;align-items:center;justify-content:center;gap:4px">
-            <button class="cf-round-btn" style="width:26px;height:26px;font-size:12px" onclick="cfAdjustSetup('tabata-work',-5);wlbSyncTabata()">−</button>
-            <span id="wlb-tab-work" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:32px;text-align:center">${_cfSetup?.tabataWork||20}s</span>
-            <button class="cf-round-btn" style="width:26px;height:26px;font-size:12px" onclick="cfAdjustSetup('tabata-work',5);wlbSyncTabata()">+</button>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Rest</div>
-          <div style="display:flex;align-items:center;justify-content:center;gap:4px">
-            <button class="cf-round-btn" style="width:26px;height:26px;font-size:12px" onclick="cfAdjustSetup('tabata-rest',-5);wlbSyncTabata()">−</button>
-            <span id="wlb-tab-rest" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--text-muted);min-width:32px;text-align:center">${_cfSetup?.tabataRest||10}s</span>
-            <button class="cf-round-btn" style="width:26px;height:26px;font-size:12px" onclick="cfAdjustSetup('tabata-rest',5);wlbSyncTabata()">+</button>
-          </div>
-        </div>
-        <div>
-          <div style="font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Rounds</div>
-          <div style="display:flex;align-items:center;justify-content:center;gap:4px">
-            <button class="cf-round-btn" style="width:26px;height:26px;font-size:12px" onclick="cfAdjustSetup('tabata-rounds',-1);wlbSyncTabata()">−</button>
-            <span id="wlb-tab-rounds" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--text-primary);min-width:32px;text-align:center">${_cfSetup?.tabataRounds||8}</span>
-            <button class="cf-round-btn" style="width:26px;height:26px;font-size:12px" onclick="cfAdjustSetup('tabata-rounds',1);wlbSyncTabata()">+</button>
-          </div>
-        </div>
-      </div>`;
-  }
-}
-
-function wlbSyncEmom() {
-  const total = _cfSetup?.emomTotal||20, interval = _cfSetup?.emomInterval||1;
-  const totalEl = document.getElementById('wlb-emom-total');
-  const intEl = document.getElementById('wlb-emom-interval');
-  const sumEl = document.getElementById('wlb-emom-summary');
-  if (totalEl) totalEl.textContent = total;
-  if (intEl) intEl.textContent = interval;
-  if (sumEl) sumEl.textContent = `${Math.floor(total/interval)} rounds · every ${interval} min`;
-}
-function wlbSyncCap() {
-  const el = document.getElementById('wlb-cap-display');
-  const btn = el?.nextElementSibling;
-  if (el) el.textContent = _cfSetup?.capEnabled ? (_cfSetup?.capMin||20)+' min' : 'No cap';
-  if (btn) btn.textContent = _cfSetup?.capEnabled ? 'Remove Cap' : 'Add Cap';
-}
-function wlbSyncTabata() {
-  const w = document.getElementById('wlb-tab-work');
-  const r = document.getElementById('wlb-tab-rest');
-  const rn = document.getElementById('wlb-tab-rounds');
-  if (w) w.textContent = (_cfSetup?.tabataWork||20)+'s';
-  if (r) r.textContent = (_cfSetup?.tabataRest||10)+'s';
-  if (rn) rn.textContent = _cfSetup?.tabataRounds||8;
-}
 
 // cfSelectFormat handles timer setup panels directly (see timer JS above)
 
@@ -10751,6 +10537,420 @@ async function cfDeleteScoreFromHist(id, wodName) {
 
 // Auto-init WOD log builder when Track view opens
 const _origNavCFTrack = nav;
+
+// ═══════════════════════════════════════════════════
+// ALLOY — CF MOVEMENT LIBRARY
+// ═══════════════════════════════════════════════════
+
+// Measurement types with field definitions
+const CF_MEASUREMENT_TYPES = [
+  { id: 'reps',           label: 'Reps only',                  fields: ['reps'],                    example: 'Pull-Ups, Air Squats, Sit-Ups' },
+  { id: 'reps_weight',    label: 'Reps + Weight',              fields: ['reps','weight'],            example: 'Deadlift, Thruster, KB Swing' },
+  { id: 'dist_run',       label: 'Distance (miles/meters)',     fields: ['distance_run'],             example: 'Run, Swim' },
+  { id: 'dist_carry',     label: 'Distance (meters/feet)',      fields: ['distance_carry'],           example: 'Sled Push, Yoke Walk, Lunges' },
+  { id: 'dist_carry_wt',  label: 'Distance + Weight',          fields: ['distance_carry','weight'],  example: 'Farmers Carry, Sandbag Carry, Yoke' },
+  { id: 'machine',        label: 'Machine (calories/meters)',   fields: ['machine'],                  example: 'Bike, Row, Ski Erg' },
+  { id: 'time',           label: 'Time (seconds)',              fields: ['time'],                     example: 'Plank, L-Sit, Handstand Hold' },
+];
+
+const CF_MOVEMENT_CATEGORIES = [
+  'Barbell','Dumbbell','Kettlebell','Gymnastics',
+  'Mono-Structural','Carry/Distance','Odd Object','Bodyweight'
+];
+
+// Built-in movements (always available, can't be deleted)
+const CF_BUILTIN_MOVEMENTS = [
+  // Barbell
+  { name:'Back Squat',            category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Front Squat',           category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Overhead Squat',        category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Deadlift',              category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Power Clean',           category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Hang Power Clean',      category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Squat Clean',           category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Power Snatch',          category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Hang Power Snatch',     category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Thruster',              category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Push Press',            category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Push Jerk',             category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Strict Press',          category:'Barbell',          measurement:'reps_weight',   gym_wide:true },
+  { name:'Sumo Deadlift High Pull', category:'Barbell',        measurement:'reps_weight',   gym_wide:true },
+  // Dumbbell
+  { name:'Dumbbell Snatch',       category:'Dumbbell',         measurement:'reps_weight',   gym_wide:true },
+  { name:'Dumbbell Thruster',     category:'Dumbbell',         measurement:'reps_weight',   gym_wide:true },
+  { name:'Dumbbell Clean',        category:'Dumbbell',         measurement:'reps_weight',   gym_wide:true },
+  { name:'Dumbbell Deadlift',     category:'Dumbbell',         measurement:'reps_weight',   gym_wide:true },
+  { name:'Dumbbell Walking Lunges', category:'Dumbbell',       measurement:'reps_weight',   gym_wide:true },
+  // Kettlebell
+  { name:'Kettlebell Swing',      category:'Kettlebell',       measurement:'reps_weight',   gym_wide:true },
+  { name:'Goblet Squat',          category:'Kettlebell',       measurement:'reps_weight',   gym_wide:true },
+  { name:'Turkish Get-Up',        category:'Kettlebell',       measurement:'reps_weight',   gym_wide:true },
+  // Gymnastics
+  { name:'Pull-Ups',              category:'Gymnastics',       measurement:'reps',          gym_wide:true },
+  { name:'Chest-to-Bar Pull-Ups', category:'Gymnastics',       measurement:'reps',          gym_wide:true },
+  { name:'Muscle-Ups',            category:'Gymnastics',       measurement:'reps',          gym_wide:true },
+  { name:'Bar Muscle-Ups',        category:'Gymnastics',       measurement:'reps',          gym_wide:true },
+  { name:'Ring Muscle-Ups',       category:'Gymnastics',       measurement:'reps',          gym_wide:true },
+  { name:'Toes-to-Bar',           category:'Gymnastics',       measurement:'reps',          gym_wide:true },
+  { name:'Knees-to-Elbows',       category:'Gymnastics',       measurement:'reps',          gym_wide:true },
+  { name:'Handstand Push-Ups',    category:'Gymnastics',       measurement:'reps',          gym_wide:true },
+  { name:'Handstand Walk',        category:'Gymnastics',       measurement:'dist_carry',    gym_wide:true },
+  { name:'Ring Dips',             category:'Gymnastics',       measurement:'reps',          gym_wide:true },
+  { name:'Rope Climbs',           category:'Gymnastics',       measurement:'reps',          gym_wide:true },
+  { name:'GHD Sit-Ups',           category:'Gymnastics',       measurement:'reps',          gym_wide:true },
+  // Mono-Structural
+  { name:'Run',                   category:'Mono-Structural',  measurement:'dist_run',      gym_wide:true },
+  { name:'Row',                   category:'Mono-Structural',  measurement:'machine',       gym_wide:true },
+  { name:'Air Bike',              category:'Mono-Structural',  measurement:'machine',       gym_wide:true },
+  { name:'Assault Bike',          category:'Mono-Structural',  measurement:'machine',       gym_wide:true },
+  { name:'Ski Erg',               category:'Mono-Structural',  measurement:'machine',       gym_wide:true },
+  { name:'Swim',                  category:'Mono-Structural',  measurement:'dist_run',      gym_wide:true },
+  { name:'Double-Unders',         category:'Mono-Structural',  measurement:'reps',          gym_wide:true },
+  { name:'Single-Unders',         category:'Mono-Structural',  measurement:'reps',          gym_wide:true },
+  { name:'Box Jumps',             category:'Mono-Structural',  measurement:'reps',          gym_wide:true },
+  { name:'Broad Jumps',           category:'Mono-Structural',  measurement:'dist_carry',    gym_wide:true },
+  { name:'Shuttle Run',           category:'Mono-Structural',  measurement:'dist_carry',    gym_wide:true },
+  // Carry/Distance
+  { name:'Farmers Carry',         category:'Carry/Distance',   measurement:'dist_carry_wt', gym_wide:true },
+  { name:'Suitcase Carry',        category:'Carry/Distance',   measurement:'dist_carry_wt', gym_wide:true },
+  { name:'Sandbag Carry',         category:'Carry/Distance',   measurement:'dist_carry_wt', gym_wide:true },
+  { name:'Yoke Carry',            category:'Carry/Distance',   measurement:'dist_carry_wt', gym_wide:true },
+  { name:'Yoke Walk',             category:'Carry/Distance',   measurement:'dist_carry_wt', gym_wide:true },
+  { name:'Front Rack Carry',      category:'Carry/Distance',   measurement:'dist_carry_wt', gym_wide:true },
+  { name:'Overhead Carry',        category:'Carry/Distance',   measurement:'dist_carry_wt', gym_wide:true },
+  { name:'Sled Push',             category:'Carry/Distance',   measurement:'dist_carry_wt', gym_wide:true },
+  { name:'Sled Pull',             category:'Carry/Distance',   measurement:'dist_carry_wt', gym_wide:true },
+  { name:'Prowler Push',          category:'Carry/Distance',   measurement:'dist_carry_wt', gym_wide:true },
+  { name:'Walking Lunges',        category:'Carry/Distance',   measurement:'dist_carry',    gym_wide:true },
+  { name:'Bear Crawl',            category:'Carry/Distance',   measurement:'dist_carry',    gym_wide:true },
+  { name:'Crab Walk',             category:'Carry/Distance',   measurement:'dist_carry',    gym_wide:true },
+  // Odd Object
+  { name:'Tire Flip',             category:'Odd Object',       measurement:'reps',          gym_wide:true },
+  { name:'Atlas Stones',          category:'Odd Object',       measurement:'reps_weight',   gym_wide:true },
+  { name:'Log Press',             category:'Odd Object',       measurement:'reps_weight',   gym_wide:true },
+  // Bodyweight
+  { name:'Air Squats',            category:'Bodyweight',       measurement:'reps',          gym_wide:true },
+  { name:'Push-Ups',              category:'Bodyweight',       measurement:'reps',          gym_wide:true },
+  { name:'Burpees',               category:'Bodyweight',       measurement:'reps',          gym_wide:true },
+  { name:'Sit-Ups',               category:'Bodyweight',       measurement:'reps',          gym_wide:true },
+  { name:'V-Ups',                 category:'Bodyweight',       measurement:'reps',          gym_wide:true },
+  { name:'Pistol Squats',         category:'Bodyweight',       measurement:'reps',          gym_wide:true },
+  { name:'Wall Balls',            category:'Bodyweight',       measurement:'reps_weight',   gym_wide:true },
+  { name:'Plank',                 category:'Bodyweight',       measurement:'time',          gym_wide:true },
+  { name:'L-Sit',                 category:'Bodyweight',       measurement:'time',          gym_wide:true },
+];
+
+// User/gym custom movements — loaded from Supabase
+let _cfCustomMovements = [];
+let _cfMvLibFilter = 'All';
+
+// Get all movements (built-in + custom), merged and sorted
+function cfGetAllMovements() {
+  const all = [...CF_BUILTIN_MOVEMENTS, ..._cfCustomMovements];
+  return all.sort((a,b) => a.name.localeCompare(b.name));
+}
+
+// Get movement definition by name (for WOD builder field logic)
+function cfGetMovementDef(name) {
+  const n = (name||'').toLowerCase().trim();
+  const all = cfGetAllMovements();
+  return all.find(m => m.name.toLowerCase() === n) || null;
+}
+
+// Map measurement type to WOD builder field behavior
+function cfMeasurementToWlbType(measurement) {
+  const map = {
+    'reps':          'reps',
+    'reps_weight':   'reps_weight',
+    'dist_run':      'run',
+    'dist_carry':    'carry',
+    'dist_carry_wt': 'carry_weight',
+    'machine':       'machine',
+    'time':          'time',
+  };
+  return map[measurement] || 'reps';
+}
+
+async function cfLoadCustomMovements() {
+  try {
+    _cfCustomMovements = await db('cf_movements','GET',null,
+      `?user_id=eq.${currentUser.id}&select=*&order=name.asc`
+    ).catch(() => []) || [];
+    // Also load gym-wide movements (coach-promoted)
+    const gymWide = await db('cf_movements','GET',null,
+      `?gym_wide=eq.true&select=*&order=name.asc`
+    ).catch(() => []) || [];
+    // Merge, dedup by name
+    const names = new Set(_cfCustomMovements.map(m => m.name.toLowerCase()));
+    gymWide.forEach(m => {
+      if (!names.has(m.name.toLowerCase())) {
+        _cfCustomMovements.push(m);
+        names.add(m.name.toLowerCase());
+      }
+    });
+  } catch(e) {
+    _cfCustomMovements = [];
+  }
+  // Refresh autocomplete datalist
+  cfRefreshMovementDatalist();
+}
+
+function cfRefreshMovementDatalist() {
+  const datalist = document.getElementById('cf-movement-suggestions');
+  if (!datalist) return;
+  const all = cfGetAllMovements();
+  datalist.innerHTML = all.map(m => `<option value="${m.name}">`).join('');
+}
+
+let _cfMvLibFilter2 = 'All';
+function cfSetMvLibFilter(cat, btn) {
+  _cfMvLibFilter2 = cat;
+  document.querySelectorAll('#cf-mvlib-cat-chips .wod-format-chip').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  cfRenderMovementLibrary();
+}
+
+function cfRenderMovementLibrary() {
+  const body = document.getElementById('cf-mvlib-body');
+  if (!body) return;
+
+  const q = (document.getElementById('cf-mvlib-search')?.value || '').toLowerCase();
+  let all = cfGetAllMovements();
+
+  if (_cfMvLibFilter2 !== 'All') {
+    all = all.filter(m => m.category === _cfMvLibFilter2);
+  }
+  if (q) {
+    all = all.filter(m => m.name.toLowerCase().includes(q) || m.category?.toLowerCase().includes(q));
+  }
+
+  if (!all.length) {
+    body.innerHTML = `<div class="empty-state"><span class="emo">🏃</span><h3>No movements found</h3><p>Try a different search or add a new movement.</p></div>`;
+    return;
+  }
+
+  // Group by category
+  const groups = {};
+  all.forEach(m => {
+    const cat = m.category || 'Other';
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(m);
+  });
+
+  const catIcons = {
+    'Barbell':'🏋️','Dumbbell':'💪','Kettlebell':'🔔','Gymnastics':'🤸',
+    'Mono-Structural':'🏃','Carry/Distance':'🚶','Odd Object':'🪨','Bodyweight':'⚡','Other':'📋'
+  };
+
+  body.innerHTML = Object.entries(groups).map(([cat, mvs]) => `
+    <div style="margin-bottom:16px">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px">
+        <span>${catIcons[cat]||'📋'}</span>${cat}
+        <span style="color:var(--border)">(${mvs.length})</span>
+      </div>
+      ${mvs.map(m => {
+        const mtDef = CF_MEASUREMENT_TYPES.find(t => t.id === m.measurement);
+        const isCustom = !m.gym_wide || m.user_id;
+        const isCoach = currentUser?.role === 'admin';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:5px">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text-primary)">${m.name}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:1px">${mtDef?.label||m.measurement||'Reps'}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            ${m.gym_wide && !m.user_id ? '<span class="pill" style="font-size:9px;background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3)">Built-in</span>' : ''}
+            ${isCustom ? `<span class="pill" style="font-size:9px">Custom</span>` : ''}
+            ${isCustom || isCoach ? `<button class="btn btn-ghost btn-xs" onclick="cfEditMovement('${m.id||m.name}')">Edit</button>` : ''}
+            ${isCustom ? `<button class="btn btn-danger btn-xs" onclick="cfDeleteMovement('${m.id||''}','${m.name}')">✕</button>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  `).join('');
+}
+
+function cfOpenAddMovementModal(editData) {
+  const isEdit = !!editData;
+  const title = isEdit ? 'Edit Movement' : 'Add Movement';
+  const isCoach = currentUser?.role === 'admin';
+
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="field">
+      <label>Movement Name</label>
+      <input id="cfmv-name" placeholder="e.g. Cali Carry, Log Press..." value="${editData?.name||''}">
+    </div>
+    <div class="field">
+      <label>Category</label>
+      <select id="cfmv-category">
+        <option value="">-- Select --</option>
+        ${CF_MOVEMENT_CATEGORIES.map(c => `<option value="${c}" ${editData?.category===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Measurement Type</label>
+      <select id="cfmv-measurement" onchange="cfMvPreviewFields()">
+        <option value="">-- Select --</option>
+        ${CF_MEASUREMENT_TYPES.map(t => `<option value="${t.id}" ${editData?.measurement===t.id?'selected':''}>${t.label}</option>`).join('')}
+      </select>
+      <div id="cfmv-measurement-example" style="font-size:11px;color:var(--text-muted);margin-top:4px"></div>
+    </div>
+    <!-- Fields preview -->
+    <div id="cfmv-fields-preview" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px;margin-top:4px">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:6px">Fields in WOD Builder</div>
+      <div id="cfmv-fields-list" style="font-size:12.5px;color:var(--text-muted);font-style:italic">Select a measurement type to preview</div>
+    </div>
+    ${isCoach ? `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">
+      <div>
+        <div style="font-size:13px;font-weight:700">Gym-Wide</div>
+        <div style="font-size:11px;color:var(--text-muted)">Show for all athletes in your gym</div>
+      </div>
+      <input type="checkbox" id="cfmv-gym-wide" ${editData?.gym_wide?'checked':''} style="width:18px;height:18px;accent-color:var(--cf-green)">
+    </div>` : ''}
+    ${editData?.id ? `<input type="hidden" id="cfmv-id" value="${editData.id}">` : ''}
+  `;
+
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="cfSaveMovement(${isEdit})">
+      ${isEdit ? 'Save Changes' : 'Add Movement'}
+    </button>
+  `;
+
+  if (editData?.measurement) cfMvPreviewFields();
+  showModal();
+}
+
+function cfMvPreviewFields() {
+  const sel = document.getElementById('cfmv-measurement')?.value;
+  const mt = CF_MEASUREMENT_TYPES.find(t => t.id === sel);
+  const exEl = document.getElementById('cfmv-measurement-example');
+  const listEl = document.getElementById('cfmv-fields-list');
+
+  if (exEl) exEl.textContent = mt ? `e.g. ${mt.example}` : '';
+
+  if (!mt || !listEl) return;
+
+  const fieldLabels = {
+    'reps':           '• Reps (number input)',
+    'weight':         '• Weight (lbs or kg)',
+    'distance_run':   '• Distance with miles ↔ meters toggle',
+    'distance_carry': '• Distance with meters ↔ feet toggle',
+    'machine':        '• Amount with calories ↔ meters toggle',
+    'time':           '• Duration in seconds',
+  };
+
+  listEl.innerHTML = mt.fields.map(f =>
+    `<div style="color:var(--text-primary);margin-bottom:3px">${fieldLabels[f]||f}</div>`
+  ).join('');
+}
+
+async function cfSaveMovement(isEdit) {
+  const name = document.getElementById('cfmv-name')?.value?.trim();
+  const category = document.getElementById('cfmv-category')?.value;
+  const measurement = document.getElementById('cfmv-measurement')?.value;
+  const gymWide = document.getElementById('cfmv-gym-wide')?.checked || false;
+  const editId = document.getElementById('cfmv-id')?.value;
+
+  if (!name) { toast('Movement name required'); return; }
+  if (!category) { toast('Select a category'); return; }
+  if (!measurement) { toast('Select a measurement type'); return; }
+
+  const payload = {
+    user_id: currentUser.id,
+    name,
+    category,
+    measurement,
+    gym_wide: gymWide,
+  };
+
+  try {
+    if (isEdit && editId) {
+      await db('cf_movements','PATCH',payload,`?id=eq.${editId}`);
+      const idx = _cfCustomMovements.findIndex(m => m.id === editId);
+      if (idx > -1) _cfCustomMovements[idx] = {..._cfCustomMovements[idx], ...payload};
+    } else {
+      const saved = await db('cf_movements','POST',payload);
+      if (saved?.[0]) _cfCustomMovements.push(saved[0]);
+      else _cfCustomMovements.push({...payload, id: Date.now().toString()});
+    }
+    closeModal();
+    cfRefreshMovementDatalist();
+    cfRenderMovementLibrary();
+    toast(`"${name}" ${isEdit?'updated':'added'} ✓`);
+  } catch(e) {
+    // Save locally if DB fails
+    _cfCustomMovements.push({...payload, id: Date.now().toString(), _local: true});
+    closeModal();
+    cfRefreshMovementDatalist();
+    cfRenderMovementLibrary();
+    toast(`"${name}" saved locally ✓`);
+  }
+}
+
+function cfEditMovement(idOrName) {
+  const mv = _cfCustomMovements.find(m => m.id === idOrName || m.name === idOrName);
+  if (!mv) { toast('Movement not found'); return; }
+  cfOpenAddMovementModal(mv);
+}
+
+async function cfDeleteMovement(id, name) {
+  if (!confirm(`Delete "${name}"?`)) return;
+  try {
+    if (id) await db('cf_movements','DELETE',null,`?id=eq.${id}`).catch(()=>{});
+    _cfCustomMovements = _cfCustomMovements.filter(m => m.id !== id && m.name !== name);
+    cfRefreshMovementDatalist();
+    cfRenderMovementLibrary();
+    toast('Deleted');
+  } catch(e) { toast('Delete failed'); }
+}
+
+// ── WIRE INTO WOD BUILDER ──────────────────────────────
+// Override wlbRerenderRow to use library definition when available
+const _origWlbRerenderRow = wlbRerenderRow;
+function wlbRerenderRow(section, idx) {
+  const list = wlbMvList(section);
+  const mv = list[idx];
+  if (!mv) return;
+
+  // Check library first
+  const def = cfGetMovementDef(mv.name);
+  if (def) {
+    // Use library-defined measurement type
+    const wlbType = cfMeasurementToWlbType(def.measurement);
+    mv._libType = wlbType;
+    mv._measurement = def.measurement;
+    // Set default unit based on type
+    if (def.measurement === 'dist_run') mv.unit = 'miles';
+    else if (def.measurement === 'dist_carry' || def.measurement === 'dist_carry_wt') mv.unit = 'meters';
+    else if (def.measurement === 'machine') mv.unit = 'calories';
+    else if (def.measurement === 'time') mv.unit = 'seconds';
+    else mv.unit = 'reps';
+  } else {
+    // Fall back to keyword detection
+    const type = wlbGetMovementType(mv.name || '');
+    mv.unit = wlbDefaultUnit(type);
+    mv._libType = null;
+  }
+
+  wlbRenderSection(section);
+  wlbUpdatePreview();
+
+  // Re-focus
+  setTimeout(() => {
+    const container = document.getElementById(wlbMvContainerId(section));
+    const inputs = container?.querySelectorAll('.wlb-mv-name');
+    if (inputs?.[idx]) {
+      inputs[idx].focus();
+      const len = inputs[idx].value.length;
+      inputs[idx].setSelectionRange(len, len);
+    }
+  }, 30);
+}
+
+// Also update wlbRenderSection to use library measurement for field display
+// and to show weight field for dist_carry_wt
 
 // ═══════════════════════════════════════════════════
 // ALLOY — CF CALENDAR
@@ -11404,7 +11604,7 @@ function alloySwitchMode(mode) {
 
 // ── Extend nav() to handle CF views ──
 function nav(view, btn) {
-  const cfViews = ['cf-dashboard','cf-track','cf-library','cf-athletes','cf-assign','cf-builder','cf-history'];
+  const cfViews = ['cf-dashboard','cf-track','cf-library','cf-athletes','cf-assign','cf-builder','cf-history','cf-movement-library'];
   if (cfViews.includes(view)) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     const el = document.getElementById('view-' + view);
@@ -11421,6 +11621,7 @@ function nav(view, btn) {
     if (view === 'cf-assign')    cfRenderAssignWOD();
     if (view === 'cf-builder')   cfRenderWODBuilder();
     if (view === 'cf-history')   cfRenderHistory();
+    if (view === 'cf-movement-library') cfRenderMovementLibrary();
     return;
   }
   // Lift-side views + shared views (settings, help, builder, etc.)
@@ -11451,6 +11652,8 @@ async function cfLoadData() {
       _cfScores = JSON.parse(localStorage.getItem('cf_scores_local')||'[]');
     } catch(le) {}
   }
+  // Load custom movements (non-blocking)
+  cfLoadCustomMovements();
 }
 
 // ── Dashboard ──
