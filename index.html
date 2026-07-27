@@ -1226,6 +1226,8 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             <button class="wod-format-chip" onclick="cfSelectFormat('For Quality',this)">For Quality</button>
             <button class="wod-format-chip" onclick="cfSelectFormat('Heavy',this)">Heavy</button>
           </div>
+          <!-- Inline time parameters — updates based on format -->
+          <div id="wlb-inline-params"></div>
         </div>
 
         <!-- Step 2: WOD Structure -->
@@ -10034,60 +10036,60 @@ function wlbRenderSection(section) {
     emptyMsg.style.display = list.length === 0 ? '' : 'none';
   }
 
+  const wtUnit = wlbGetWeightUnit();
+
   container.innerHTML = list.map((mv, idx) => {
-    const type = wlbGetMovementType(mv.name);
+    const type = wlbGetMovementType(mv.name || '');
     const unit = mv.unit || wlbDefaultUnit(type);
     const unitOpts = wlbUnitOptions(type);
     const presets = wlbGetPresets(type, unit);
-    const wtUnit = wlbGetWeightUnit();
-    // Show weight if library says reps_weight or dist_carry_wt
-    const libMeasurement = mv._measurement || '';
-    const showWeight = libMeasurement === 'reps_weight' || libMeasurement === 'dist_carry_wt' ||
-      (!libMeasurement && (type === 'reps' || type === 'carry'));
+    const showWeight = mv._measurement === 'reps_weight' || mv._measurement === 'dist_carry_wt' ||
+      (!mv._measurement && (type === 'reps' || type === 'carry'));
     const repsLabel = unit === 'reps' ? 'Reps' : unit.toUpperCase();
-    const repsPh = presets[Math.floor(presets.length/2)];
+    const repsPh = presets[Math.floor(presets.length / 2)] || '10';
 
-    // Unit toggle (only if multiple unit options)
     const unitToggle = unitOpts.length > 1
-      ? `<div style="display:flex;gap:3px;margin-left:auto">
-          ${unitOpts.map(u => `<button class="wod-format-chip${unit===u?' active':''}"
-            style="padding:2px 7px;font-size:10px;border-radius:4px"
-            onclick="wlbUpdateMovementUnit('${section}',${idx},'${u}')">${u}</button>`).join('')}
-        </div>`
+      ? '<div style="display:flex;gap:3px;margin-left:auto">' +
+        unitOpts.map(u => '<button class="wod-format-chip' + (unit === u ? ' active' : '') + '" ' +
+          'style="padding:2px 7px;font-size:10px;border-radius:4px" ' +
+          'onclick="wlbUpdateMovementUnit(\'' + section + '\',' + idx + ',\'' + u + '\')">' + u + '</button>'
+        ).join('') + '</div>'
       : '';
 
-    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <input class="wlb-mv-name" placeholder="Movement name..." value="${mv.name||''}"
-          autocomplete="off"
-          oninput="wlbMvList('${section}')[${idx}].name=this.value;wlbRerenderRow('${section}',${idx});wlbShowSuggestions(this,'${section}',${idx})"
-          style="flex:1;font-size:13px;font-weight:700">
-        ${unitToggle}
-        <button onclick="wlbRemoveMovement('${section}',${idx})"
-          style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0;flex-shrink:0">✕</button>
-      </div>
-      <div style="display:flex;gap:8px;align-items:flex-end">
-        <div class="field" style="flex:1;margin:0">
-          <label style="font-size:10px">${repsLabel}</label>
-          <input placeholder="${repsPh}" value="${mv.reps||''}"
-            oninput="wlbMvList('${section}')[${idx}].reps=this.value;wlbUpdatePreview()"
-            style="font-family:var(--mono);font-size:15px;font-weight:700">
-        </div>
-        ${showWeight ? `<div class="field" style="flex:1;margin:0">
-          <label style="font-size:10px">Weight (${wtUnit})</label>
-          <input placeholder="e.g. 135/95" value="${mv.weight||''}"
-            oninput="wlbMvList('${section}')[${idx}].weight=this.value;wlbUpdatePreview()"
-            style="font-size:13px">
-        </div>` : ''}
-      </div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:7px">
-        ${presets.map(v => `<button class="wod-format-chip"
-          style="padding:2px 8px;font-size:10px"
-          onclick="wlbMvList('${section}')[${idx}].reps='${v}';wlbRenderSection('${section}');wlbUpdatePreview()">${v}${unit!=='reps'?' '+unit:''}</button>`).join('')}
-      </div>
-    </div>`;
+    return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+      '<input class="wlb-mv-name" placeholder="Movement name..." value="' + (mv.name || '') + '" ' +
+      'autocomplete="off" ' +
+      'oninput="wlbMvList(\'' + section + '\')[' + idx + '].name=this.value;wlbShowSuggestions(this,\'' + section + '\',' + idx + ')" ' +
+      'style="flex:1;font-size:13px;font-weight:700">' +
+      unitToggle +
+      '<button onclick="wlbRemoveMovement(\'' + section + '\',' + idx + ')" ' +
+      'style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0;flex-shrink:0">✕</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;align-items:flex-end">' +
+      '<div class="field" style="flex:1;margin:0">' +
+      '<label style="font-size:10px">' + repsLabel + '</label>' +
+      '<input placeholder="' + repsPh + '" value="' + (mv.reps || '') + '" ' +
+      'oninput="wlbMvList(\'' + section + '\')[' + idx + '].reps=this.value;wlbUpdatePreview()" ' +
+      'style="font-family:var(--mono);font-size:15px;font-weight:700">' +
+      '</div>' +
+      (showWeight ? '<div class="field" style="flex:1;margin:0">' +
+        '<label style="font-size:10px">Weight (' + wtUnit + ')</label>' +
+        '<input placeholder="e.g. 135/95" value="' + (mv.weight || '') + '" ' +
+        'oninput="wlbMvList(\'' + section + '\')[' + idx + '].weight=this.value;wlbUpdatePreview()" ' +
+        'style="font-size:13px">' +
+        '</div>' : '') +
+      '</div>' +
+      '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:7px">' +
+      presets.map(v => '<button class="wod-format-chip" style="padding:2px 8px;font-size:10px" ' +
+        'onclick="wlbMvList(\'' + section + '\')[' + idx + '].reps=\'' + v + '\';wlbRenderSection(\'' + section + '\');wlbUpdatePreview()">' +
+        v + (unit !== 'reps' ? ' ' + unit : '') + '</button>'
+      ).join('') +
+      '</div>' +
+      '</div>';
   }).join('');
 }
+
 
 function wlbRerenderRow(section, idx) {
   const list = wlbMvList(section);
@@ -10194,6 +10196,77 @@ function wlbUpdatePreview() {
   preview.innerHTML = html;
 }
 
+// Update inline time parameters in the Format card
+function wlbUpdateInlineParams(format) {
+  const container = document.getElementById('wlb-inline-params');
+  if (!container) return;
+
+  if (['For Time','Chipper','Partner'].includes(format)) {
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--border);margin-top:4px">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);white-space:nowrap">Time Cap</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
+            onclick="cfAdjustSetup('cap',-1);wlbSyncInlineCap()">−</button>
+          <span id="wlb-cap-inline" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:60px;text-align:center">${_cfSetup.capEnabled ? _cfSetup.capMin+' min' : 'No cap'}</span>
+          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
+            onclick="cfAdjustSetup('cap',1);wlbSyncInlineCap()">+</button>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="cfToggleCap();wlbSyncInlineCap()" id="wlb-cap-toggle-btn">
+          ${_cfSetup.capEnabled ? 'Remove Cap' : 'Add Cap'}
+        </button>
+      </div>`;
+  } else if (format === 'AMRAP') {
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--border);margin-top:4px">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);white-space:nowrap">Duration</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
+            onclick="cfAdjustSetup('amrap',-1);document.getElementById('wlb-amrap-inline').textContent=_cfSetup.amrapMin+' min'">−</button>
+          <span id="wlb-amrap-inline" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:60px;text-align:center">${_cfSetup.amrapMin} min</span>
+          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
+            onclick="cfAdjustSetup('amrap',1);document.getElementById('wlb-amrap-inline').textContent=_cfSetup.amrapMin+' min'">+</button>
+        </div>
+      </div>`;
+  } else if (format === 'EMOM') {
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);white-space:nowrap">Total</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
+            onclick="cfAdjustSetup('emom-total',-1);wlbSyncInlineEmom()">−</button>
+          <span id="wlb-emom-total-inline" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:40px;text-align:center">${_cfSetup.emomTotal} min</span>
+          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
+            onclick="cfAdjustSetup('emom-total',1);wlbSyncInlineEmom()">+</button>
+        </div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);white-space:nowrap;margin-left:8px">Every</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
+            onclick="cfAdjustSetup('emom-interval',-1);wlbSyncInlineEmom()">−</button>
+          <span id="wlb-emom-int-inline" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:40px;text-align:center">${_cfSetup.emomInterval} min</span>
+          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
+            onclick="cfAdjustSetup('emom-interval',1);wlbSyncInlineEmom()">+</button>
+        </div>
+      </div>`;
+  } else {
+    container.innerHTML = '';
+  }
+}
+
+function wlbSyncInlineCap() {
+  const el = document.getElementById('wlb-cap-inline');
+  const btn = document.getElementById('wlb-cap-toggle-btn');
+  if (el) el.textContent = _cfSetup.capEnabled ? _cfSetup.capMin + ' min' : 'No cap';
+  if (btn) btn.textContent = _cfSetup.capEnabled ? 'Remove Cap' : 'Add Cap';
+}
+
+function wlbSyncInlineEmom() {
+  const t = document.getElementById('wlb-emom-total-inline');
+  const i = document.getElementById('wlb-emom-int-inline');
+  if (t) t.textContent = _cfSetup.emomTotal + ' min';
+  if (i) i.textContent = _cfSetup.emomInterval + ' min';
+}
+
 function wlbInit() {
   _wlbMovements = [];
   _wlbBuyinMovements = [];
@@ -10221,6 +10294,7 @@ function wlbInit() {
 
   wlbRenderMovements();
   wlbUpdatePreview();
+  wlbUpdateInlineParams(_cfCurrentFormat || 'For Time');
 }
 
 
@@ -12734,6 +12808,7 @@ function cfSelectFormat(format, btn) {
   };
   hint.textContent = hintMap[format] || '';
   input.value = ''; // clear on format change
+  wlbUpdateInlineParams(format);
 }
 
 function cfSetFeel(feel, btn) {
