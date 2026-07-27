@@ -13252,19 +13252,30 @@ function cfSelectFormat(format, btn) {
     const emomIndEl = document.getElementById('cf-emom-indicator');
     if (emomIndEl) emomIndEl.style.display = 'none';
   
-    // Show setup panel for this format
-    const setupMap = {
-      'AMRAP': 'amrap', 'EMOM': 'emom', 'Tabata': 'tabata',
-      'For Time': 'fortime', 'Chipper': 'fortime', 'Partner': 'fortime'
-    };
-  
+    // Hide ALL setup panels first
+    ['amrap','emom','tabata','fortime'].forEach(p => {
+      const el = document.getElementById('cf-setup-' + p);
+      if (el) el.style.display = 'none';
+    });
+
     // Show/hide cap row
     const capRow = document.getElementById('cf-cap-row');
     if (capRow) capRow.style.display = ['For Time','Chipper','Partner'].includes(format) ? '' : 'none';
     wlbSyncCapRow();
+
+    // Show/hide no-timer message (uses existing noTimerMsg + timerBlock refs above)
+    const noTimerFormats = ['For Quality','Heavy'];
+    if (noTimerMsg) noTimerMsg.style.display = noTimerFormats.includes(format) ? '' : 'none';
+    if (timerBlock) timerBlock.style.display = noTimerFormats.includes(format) ? 'none' : '';
+
+    // Show relevant setup panel
+    const setupMap = {
+      'AMRAP': 'amrap', 'EMOM': 'emom', 'Tabata': 'tabata',
+      'For Time': 'fortime', 'Chipper': 'fortime', 'Partner': 'fortime'
+    };
     const panel = setupMap[format];
     if (panel) {
-      const el = document.getElementById('cf-setup-'+panel);
+      const el = document.getElementById('cf-setup-' + panel);
       if (el) el.style.display = '';
     }
   
@@ -13290,6 +13301,10 @@ function cfSelectFormat(format, btn) {
     if (format === 'EMOM') cfUpdateEmomSummary();
     if (format === 'Tabata') cfUpdateTabataSummary();
   
+    // Show/hide lead-in row
+    const leadinRow = document.getElementById('cf-leadin-row');
+    if (leadinRow) leadinRow.style.display = ['For Quality','Heavy'].includes(format) ? 'none' : '';
+
     // Switch structure builder mode
     _wlbIsEmomStation = (format === 'EMOM');
     _wlbIsIntervals   = (format === 'Intervals');
