@@ -1444,7 +1444,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
           </div>
 
           <!-- Countdown lead-in overlay -->
-          <div id="cf-countdown-overlay" style="display:none;position:absolute;inset:0;background:var(--surface);border-radius:var(--radius-lg);z-index:10;display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+          <div id="cf-countdown-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9998;flex-direction:column;align-items:center;justify-content:center;gap:8px">
             <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted)">Starting in</div>
             <div id="cf-countdown-number" style="font-size:96px;font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1;transition:transform .1s">3</div>
             <button class="btn btn-ghost btn-sm" onclick="cfCancelCountdown()" style="margin-top:8px">Cancel</button>
@@ -1474,7 +1474,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
           </div>
           <!-- Controls -->
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
-            <button class="btn btn-primary" id="cf-timer-start-btn" onclick="cfTimerStartOrPause()" style="grid-column:1/-1">Start</button>
+            <button class="btn btn-primary" id="cf-timer-start-btn" onclick="cfGetAudioCtx();cfTimerStartOrPause()" style="grid-column:1/-1">Start</button>
             <button class="btn btn-white" onclick="cfResetTimer()">Reset</button>
             <button class="btn btn-ghost" onclick="cfLapTimer()" id="cf-lap-btn">Lap / Split</button>
             <button class="btn btn-primary" id="cf-next-interval-btn" onclick="cfEndIntervalWork()" style="display:none;grid-column:1/-1;background:#ff9f4a;border-color:#ff9f4a;color:#0d0d0d;font-weight:900">✓ Done — Start Rest</button>
@@ -10946,32 +10946,74 @@ function cfSaveLoggedWODToLibrary() {
   const name = document.getElementById('cf-score-wod')?.value?.trim();
   if (!name) { toast('Name the WOD first in the Log Score section'); return; }
 
-  // Build WOD object from current state
-  const movements = _wlbMovements.map(mv => ({
-    name: mv.name,
-    reps: mv.reps,
-    detail: mv.weight || ''
-  })).filter(mv => mv.name);
+  // Build movements from whichever builder mode is active
+  let movements = [];
+  if (_wlbIsIntervals && _wlbIntervals.length > 0) {
+    // Store intervals as structured movements with interval index
+    _wlbIntervals.forEach((interval, iIdx) => {
+      interval.movements.filter(m => m.name).forEach(mv => {
+        movements.push({
+          name: mv.name, reps: mv.reps,
+          detail: mv.weight || '', unit: mv.unit || 'reps',
+          interval: iIdx, _measurement: mv._measurement || ''
+        });
+      });
+    });
+  } else if (_wlbIsEmomStation && _wlbEmomStations.length > 0) {
+    _wlbEmomStations.forEach((station, sIdx) => {
+      station.movements.filter(m => m.name).forEach(mv => {
+        movements.push({
+          name: mv.name, reps: mv.reps,
+          detail: mv.weight || '', unit: mv.unit || 'reps',
+          station: sIdx, stationLabel: station.label || ('Station '+(sIdx+1)),
+          isRest: station.isRest || false
+        });
+      });
+    });
+  } else if (_wlbIsHeavy) {
+    movements = [{ name: _wlbHeavyMovement, reps: '', detail: '' }];
+  } else {
+    movements = _wlbMovements.map(mv => ({
+      name: mv.name, reps: mv.reps, detail: mv.weight || '',
+      unit: mv.unit || 'reps', _measurement: mv._measurement || ''
+    })).filter(mv => mv.name);
+  }
 
   let description = '';
-  if (_cfCurrentFormat === 'AMRAP') description = `${_cfSetup?.amrapMin||18} min AMRAP`;
-  else if (_cfCurrentFormat === 'EMOM') description = `${_cfSetup?.emomTotal||20} min EMOM every ${_cfSetup?.emomInterval||1} min`;
+  if (_cfCurrentFormat === 'AMRAP') description = (_cfSetup?.amrapMin||18) + ' min AMRAP';
+  else if (_cfCurrentFormat === 'EMOM') description = (_cfSetup?.emomTotal||20) + ' min EMOM every ' + (_cfSetup?.emomInterval||1) + ' min';
+  else if (_cfCurrentFormat === 'Intervals') description = _wlbIntervals.length + ' Intervals · ' + (_wlbIntervalRestSecs/60) + ' min rest';
+  else if (_cfCurrentFormat === 'Heavy') description = 'Heavy · ' + _wlbHeavySets.length + ' sets';
   else if (['For Time','Chipper','Partner'].includes(_cfCurrentFormat)) {
-    description = _cfSetup?.capEnabled ? `${_cfSetup?.capMin} min cap` : 'For Time';
+    description = _cfSetup?.capEnabled ? (_cfSetup?.capMin) + ' min cap' : 'For Time';
   } else description = _cfCurrentFormat;
 
-  let cap = '';
-  if (_cfSetup?.capEnabled && ['For Time','Chipper','Partner'].includes(_cfCurrentFormat)) {
-    cap = `${_cfSetup.capMin} min cap`;
-  }
+  // Store full builder state for restoration
+  const builderState = {
+    isIntervals: _wlbIsIntervals,
+    isEmomStation: _wlbIsEmomStation,
+    isHeavy: _wlbIsHeavy,
+    intervals: _wlbIsIntervals ? JSON.parse(JSON.stringify(_wlbIntervals)) : [],
+    intervalRestSecs: _wlbIntervalRestSecs,
+    emomStations: _wlbIsEmomStation ? JSON.parse(JSON.stringify(_wlbEmomStations)) : [],
+    heavySets: _wlbIsHeavy ? JSON.parse(JSON.stringify(_wlbHeavySets)) : [],
+    heavyMovement: _wlbHeavyMovement || '',
+    rounds: _wlbRounds,
+    showBuyin: _wlbShowBuyin,
+    buyinMovements: JSON.parse(JSON.stringify(_wlbBuyinMovements)),
+    showBuyout: _wlbShowBuyout,
+    buyoutMovements: JSON.parse(JSON.stringify(_wlbBuyoutMovements)),
+    setup: { ..._cfSetup },
+  };
 
   const wod = {
     user_id: currentUser.id,
     name,
     format: _cfCurrentFormat,
-    cap,
+    cap: _cfSetup?.capEnabled ? (_cfSetup?.capMin + ' min cap') : '',
     description,
     movements,
+    builder_state: builderState,
     notes: document.getElementById('cf-score-notes')?.value?.trim() || '',
     created_at: new Date().toISOString()
   };
@@ -10979,10 +11021,10 @@ function cfSaveLoggedWODToLibrary() {
   db('cf_wods','POST',wod).then(saved => {
     if (saved?.[0]) _cfWODs.unshift(saved[0]);
     else _cfWODs.unshift({...wod, id: Date.now().toString()});
-    toast(`"${name}" saved to WOD Library ✓`);
+    toast('"' + name + '" saved to WOD Library ✓');
   }).catch(() => {
     _cfWODs.unshift({...wod, id: Date.now().toString(), _local: true});
-    toast(`"${name}" saved locally ✓`);
+    toast('"' + name + '" saved locally ✓');
   });
 }
 
@@ -13558,16 +13600,13 @@ function cfStartWithCountdown() {
   numEl.style.transform = 'scale(1)';
   overlay.style.display = 'flex';
 
-  // Show WOD card countdown overlay if card is open
+  // Also sync WOD card countdown overlay
   const wcOverlay = document.getElementById('wc-countdown-overlay');
   const wcNum = document.getElementById('wc-countdown-number');
-  const wodCardOpen = document.getElementById('cf-wod-card')?.style.display !== 'none';
   if (wcOverlay) {
-    wcOverlay.style.display = wodCardOpen ? 'flex' : 'none';
+    wcOverlay.style.display = 'flex';
     if (wcNum) { wcNum.textContent = count; wcNum.style.color = 'rgba(255,255,255,.5)'; wcNum.style.fontSize = '120px'; }
   }
-  // Hide the behind-scenes overlay if WOD card is covering it
-  if (overlay && wodCardOpen) overlay.style.display = 'none';
 
   if (_cfCountdownInterval) clearInterval(_cfCountdownInterval);
 
@@ -13637,11 +13676,14 @@ function cfTimerStartOrPause() {
     // Countdown running — cancel it
     cfCancelCountdown();
   } else {
-    const isFresh = _cfTimerSeconds === 0 ||
+    // Fresh start = timer hasn't been running yet
+    const isFresh = !_cfTimerRunning && (
+      _cfTimerSeconds === 0 ||
       (_cfCurrentFormat === 'AMRAP' && _cfTimerSeconds === _cfSetup.amrapMin * 60) ||
       (_cfCurrentFormat === 'Tabata' && _cfTimerSeconds === _cfSetup.tabataWork) ||
       (['For Time','Chipper','Partner'].includes(_cfCurrentFormat) && _cfSetup.capEnabled && _cfTimerSeconds === _cfSetup.capMin * 60) ||
-      (_cfCurrentFormat === 'Intervals' && _wlbCurrentInterval === 0 && _wlbIntervalPhase === 'work');
+      (_cfCurrentFormat === 'Intervals' && _wlbCurrentInterval === 0 && _wlbIntervalPhase === 'work')
+    );
     if (isFresh && _cfLeadinSeconds > 0) {
       cfStartWithCountdown();
     } else {
@@ -14308,8 +14350,51 @@ function cfLoadWODToTrack(wod) {
   const timerMsg = mins ? ` · ${fmt === 'AMRAP' ? mins+' min' : fmt === 'EMOM' ? mins+' min EMOM' : mins+' min cap'} loaded` : '';
   toast(`${wod.name} loaded${timerMsg} — hit Start when ready`);
 
+  // Restore builder state if saved
+  setTimeout(() => {
+    const bs = wod.builder_state;
+    if (bs) {
+      _wlbIsIntervals   = bs.isIntervals   || false;
+      _wlbIsEmomStation = bs.isEmomStation || false;
+      _wlbIsHeavy       = bs.isHeavy       || false;
+
+      if (bs.isIntervals && bs.intervals?.length > 0) {
+        _wlbIntervals = bs.intervals;
+        _wlbIntervalRestSecs = bs.intervalRestSecs || 240;
+        // Update rest chip UI
+        [0,60,120,240,300,600].forEach(s => {
+          const btn = document.getElementById('rest-' + s);
+          if (btn) btn.classList.toggle('active', s === _wlbIntervalRestSecs);
+        });
+      }
+      if (bs.isEmomStation && bs.emomStations?.length > 0) {
+        _wlbEmomStations = bs.emomStations;
+      }
+      if (bs.isHeavy) {
+        _wlbHeavySets    = bs.heavySets || [];
+        _wlbHeavyMovement = bs.heavyMovement || '';
+        const heavyInput = document.getElementById('wlb-heavy-movement');
+        if (heavyInput) heavyInput.value = _wlbHeavyMovement;
+      }
+      if (bs.rounds) _wlbRounds = bs.rounds;
+      if (bs.buyinMovements) { _wlbBuyinMovements = bs.buyinMovements; _wlbShowBuyin = bs.showBuyin; }
+      if (bs.buyoutMovements) { _wlbBuyoutMovements = bs.buyoutMovements; _wlbShowBuyout = bs.showBuyout; }
+
+      wlbUpdateStructureUI();
+    } else if (wod.movements?.length > 0) {
+      // Legacy: restore flat movements
+      _wlbMovements = wod.movements.map(m => ({
+        name: m.name || '', reps: m.reps || '',
+        unit: m.unit || 'reps', weight: m.detail || '',
+        _measurement: m._measurement || ''
+      }));
+      wlbRenderSection('main');
+    }
+    wlbUpdatePreview();
+  }, 200);
+
   // Load previous attempts for this WOD
-  setTimeout(() => wlbLoadPreviousAttempts(wod.name), 150);
+  setTimeout(() => wlbLoadPreviousAttempts(wod.name), 400);
 }
 
 // ── WOD Builder ──
@@ -14553,7 +14638,7 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
     </div>
     <!-- Next/Rest button — shown during Intervals work phase -->
     <button id="wc-next-interval-btn" onclick="cfEndIntervalWork()" style="display:none;grid-column:1/-1;background:#ff9f4a;border:none;border-radius:var(--radius);color:#0d0d0d;font-weight:900;font-size:15px;padding:14px;cursor:pointer">✓ Done — Start Rest</button>
-    <button id="wc-start-btn" class="btn btn-primary" onclick="cfTimerStartOrPause()" style="grid-column:1/-1;background:var(--cf-green);color:#0d0d0d;font-weight:900;font-size:16px;padding:14px">▶ Start</button>
+    <button id="wc-start-btn" class="btn btn-primary" onclick="cfGetAudioCtx();cfTimerStartOrPause()" style="grid-column:1/-1;background:var(--cf-green);color:#0d0d0d;font-weight:900;font-size:16px;padding:14px">▶ Start</button>
     <button class="btn btn-white" onclick="cfResetTimer();wlbSyncWODCard()">Reset</button>
     <button class="btn btn-ghost" onclick="wlbExitWODCard()">✕ Done</button>
   </div>
