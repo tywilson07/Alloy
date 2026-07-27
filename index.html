@@ -12519,8 +12519,10 @@ function cfSelectFormat(format, btn) {
   });
 
   // Hide all active-only indicators
-  document.getElementById('cf-tabata-phase').style.display = 'none';
-  document.getElementById('cf-emom-indicator').style.display = 'none';
+  const tabataPhaseEl = document.getElementById('cf-tabata-phase');
+  if (tabataPhaseEl) tabataPhaseEl.style.display = 'none';
+  const emomIndEl = document.getElementById('cf-emom-indicator');
+  if (emomIndEl) emomIndEl.style.display = 'none';
 
   // Show setup panel for this format
   const setupMap = {
@@ -12542,8 +12544,10 @@ function cfSelectFormat(format, btn) {
   const showRounds = ['AMRAP','EMOM'].includes(format);
   const showReps   = format === 'AMRAP';
   const lapBtn     = document.getElementById('cf-lap-btn');
-  document.getElementById('cf-round-counter').style.display = showRounds ? 'flex' : 'none';
-  document.getElementById('cf-rep-counter').style.display   = showReps   ? 'block' : 'none';
+  const roundCounterEl = document.getElementById('cf-round-counter');
+  if (roundCounterEl) roundCounterEl.style.display = showRounds ? 'flex' : 'none';
+  const repCounterEl = document.getElementById('cf-rep-counter');
+  if (repCounterEl) repCounterEl.style.display = showReps ? 'block' : 'none';
   if (lapBtn) lapBtn.style.display = ['For Time','Chipper','Partner'].includes(format) ? '' : 'none';
 
   // Update timer label
