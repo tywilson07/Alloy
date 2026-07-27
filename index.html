@@ -1231,6 +1231,18 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
         <!-- Step 2: WOD Structure -->
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:10px">
 
+          <!-- EMOM Station Builder -->
+          <div id="wlb-emom-station-builder" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div class="section-label" style="margin:0;color:var(--cf-green)">EMOM Stations</div>
+              <button class="btn btn-ghost btn-sm" onclick="wlbAddEmomStation()">+ Add Station</button>
+            </div>
+            <div id="wlb-emom-stations" style="display:flex;flex-direction:column;gap:8px"></div>
+            <div id="wlb-emom-stations-empty" style="font-size:12.5px;color:var(--text-muted);padding:8px 0;text-align:center">Add stations — each station is one minute of work</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:8px;padding:8px;background:var(--surface2);border-radius:var(--radius)">💡 Stations cycle in order. e.g. 20 min EMOM with 4 stations = 5 rounds through each.</div>
+          </div>
+          <!-- Regular structure (hidden in EMOM) -->
+          <div id="wlb-regular-builder">
           <!-- Rounds row -->
           <div id="wlb-rounds-row" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)">
             <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);white-space:nowrap">Rounds</div>
@@ -1271,6 +1283,8 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             <div id="wlb-buyout-movements" style="display:none;flex-direction:column;gap:6px"></div>
           </div>
         </div>
+
+          </div><!-- end wlb-regular-builder -->
 
         <!-- Step 3: Preview + Start -->
         <div style="background:var(--surface);border:1.5px solid var(--cf-green);border-radius:var(--radius-lg);padding:14px;margin-bottom:10px">
@@ -9865,6 +9879,8 @@ let _wlbRounds = 3;
 let _wlbIsChipper = false;
 let _wlbBuyinMovements = [];
 let _wlbBuyoutMovements = [];
+let _wlbEmomStations = []; // [{label, movements:[]}]
+let _wlbIsEmomStation = false;
 let _wlbShowBuyin = false;
 let _wlbShowBuyout = false;
 
@@ -10296,6 +10312,8 @@ function wlbInit() {
   _wlbMovements = [];
   _wlbBuyinMovements = [];
   _wlbBuyoutMovements = [];
+  _wlbEmomStations = [];
+  _wlbIsEmomStation = (_cfCurrentFormat === 'EMOM');
   _wlbRounds = 3;
   _wlbIsChipper = false;
   _wlbShowBuyin = false;
@@ -10318,6 +10336,7 @@ function wlbInit() {
   if (rl) rl.textContent = 'rounds';
 
   wlbRenderMovements();
+  wlbUpdateStructureUI();
   wlbUpdatePreview();
   // Init cap row
   const capRow = document.getElementById('cf-cap-row');
@@ -10549,17 +10568,41 @@ function wlbPopulateWODCard() {
     if (buyinEl) buyinEl.style.display = 'none';
   }
 
-  // Main rounds label
+  // Main rounds label + EMOM station display
   const rlEl = document.getElementById('wc-rounds-label');
-  if (rlEl) {
-    if (fmt === 'AMRAP') rlEl.textContent = 'Complete as many rounds as possible';
-    else if (_wlbRounds > 1) rlEl.textContent = `${_wlbRounds} Rounds`;
-    else rlEl.textContent = '';
-  }
-
-  // Main movements
   const mvList = document.getElementById('wc-movements-list');
-  if (mvList) mvList.innerHTML = _wlbMovements.map(mv => mvToCardRow(mv,'var(--cf-green)')).join('');
+
+  if (fmt === 'EMOM' && _wlbIsEmomStation && _wlbEmomStations.length > 0) {
+    if (rlEl) rlEl.textContent = '';
+    // Build station cards — highlight current station
+    const currentStation = _wlbEmomStations[(_cfSetup.emomCurrentRound - 1) % _wlbEmomStations.length];
+    const stationColors = ['var(--cf-green)', '#4a9eff', '#ff9f4a', '#c84aff', '#ff4a7a', '#4affea'];
+    if (mvList) {
+      mvList.innerHTML = _wlbEmomStations.map((station, sIdx) => {
+        const isCurrent = sIdx === ((_cfSetup.emomCurrentRound - 1) % _wlbEmomStations.length);
+        const color = station.isRest ? 'var(--text-muted)' : stationColors[sIdx % stationColors.length];
+        const movLines = station.isRest
+          ? '<div style="font-size:14px;color:var(--text-muted);font-style:italic">Rest</div>'
+          : station.movements.map(mv => mv.name
+              ? '<div style="display:flex;align-items:baseline;gap:10px;padding:4px 0">'
+                + '<span style="font-size:' + (isCurrent ? '28' : '20') + 'px;font-weight:900;font-family:var(--mono);color:' + color + ';min-width:48px">' + (mv.reps||'') + '</span>'
+                + '<span style="font-size:' + (isCurrent ? '16' : '13') + 'px;font-weight:800;color:' + (isCurrent ? '#fff' : 'rgba(255,255,255,.5)') + '">' + mv.name + (mv.weight ? ' @ ' + mv.weight : '') + '</span>'
+                + '</div>' : ''
+            ).join('');
+        return '<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.07);opacity:' + (isCurrent ? '1' : '0.4') + '">'
+          + '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:' + color + ';margin-bottom:4px">'
+          + (station.label || 'Station ' + (sIdx+1)) + (isCurrent ? ' ← NOW' : '') + '</div>'
+          + movLines + '</div>';
+      }).join('');
+    }
+  } else {
+    if (rlEl) {
+      if (fmt === 'AMRAP') rlEl.textContent = 'Complete as many rounds as possible';
+      else if (_wlbRounds > 1) rlEl.textContent = _wlbRounds + ' Rounds';
+      else rlEl.textContent = '';
+    }
+    if (mvList) mvList.innerHTML = _wlbMovements.map(mv => mvToCardRow(mv,'var(--cf-green)')).join('');
+  }
 
   // Buy-out
   const buyoutEl = document.getElementById('wc-buyout');
@@ -10578,6 +10621,13 @@ function wlbPopulateWODCard() {
   const wcRepSection = document.getElementById('wc-rep-section');
   if (wcCounter) wcCounter.style.display = showRounds ? 'flex' : 'none';
   if (wcRepSection) wcRepSection.style.display = fmt2 === 'AMRAP' ? 'flex' : 'none';
+
+  // For EMOM: show round label inside counter
+  if (fmt2 === 'EMOM') {
+    const totalRounds = Math.floor((_cfSetup?.emomTotal||20) / (_cfSetup?.emomInterval||1));
+    const wcRoundLabel = document.getElementById('wc-round-label-text');
+    if (wcRoundLabel) wcRoundLabel.textContent = 'Round of ' + totalRounds;
+  }
 
   // Set ghost target from previous best
   const ghostEl = document.getElementById('wc-ghost-target');
@@ -10607,6 +10657,25 @@ function wlbSyncWODCard() {
   const roundInfoEl = document.getElementById('wc-round-info');
   const mainEmom = document.getElementById('cf-emom-indicator');
   if (roundInfoEl) roundInfoEl.textContent = mainEmom?.style.display !== 'none' ? mainEmom?.textContent || '' : '';
+
+  // For EMOM with stations — update highlighted station every tick
+  if (_cfCurrentFormat === 'EMOM' && _wlbIsEmomStation && _wlbEmomStations.length > 0) {
+    const stationColors = ['var(--cf-green)','#4a9eff','#ff9f4a','#c84aff','#ff4a7a','#4affea'];
+    const mvList = document.getElementById('wc-movements-list');
+    if (mvList) {
+      const currentIdx = (_cfSetup.emomCurrentRound - 1) % _wlbEmomStations.length;
+      mvList.querySelectorAll('div[style*="padding:10px 0"]').forEach((el, i) => {
+        el.style.opacity = i === currentIdx ? '1' : '0.4';
+        const label = el.querySelector('div[style*="letter-spacing"]');
+        if (label) {
+          const station = _wlbEmomStations[i];
+          const color = station?.isRest ? 'var(--text-muted)' : stationColors[i % stationColors.length];
+          label.style.color = color;
+          label.textContent = (station?.label || 'Station '+(i+1)) + (i === currentIdx ? ' ← NOW' : '');
+        }
+      });
+    }
+  }
 
   // Sync round counter displays
   const wcRd = document.getElementById('wc-round-display');
@@ -11604,6 +11673,164 @@ function wlbRerenderRow(section, idx) {
 
 // Also update wlbRenderSection to use library measurement for field display
 // and to show weight field for dist_carry_wt
+
+// ═══════════════════════════════════════════════════
+// ALLOY — EMOM STATION BUILDER
+// ═══════════════════════════════════════════════════
+
+function wlbUpdateStructureUI() {
+  const stationBuilder = document.getElementById('wlb-emom-station-builder');
+  const regularBuilder = document.getElementById('wlb-regular-builder');
+  if (!stationBuilder || !regularBuilder) return;
+
+  if (_wlbIsEmomStation) {
+    stationBuilder.style.display = 'block';
+    regularBuilder.style.display = 'none';
+    // Init with 2 stations if empty
+    if (_wlbEmomStations.length === 0) {
+      _wlbEmomStations = [
+        { label: 'Station 1', movements: [{ name:'', reps:'', unit:'reps', weight:'' }] },
+        { label: 'Station 2', movements: [{ name:'', reps:'', unit:'reps', weight:'' }] },
+      ];
+    }
+    wlbRenderEmomStations();
+  } else {
+    stationBuilder.style.display = 'none';
+    regularBuilder.style.display = 'block';
+  }
+  wlbUpdatePreview();
+}
+
+function wlbAddEmomStation() {
+  const n = _wlbEmomStations.length + 1;
+  const isRest = false;
+  _wlbEmomStations.push({ label: 'Station ' + n, movements: [{ name:'', reps:'', unit:'reps', weight:'' }] });
+  wlbRenderEmomStations();
+  wlbUpdatePreview();
+}
+
+function wlbRemoveEmomStation(idx) {
+  _wlbEmomStations.splice(idx, 1);
+  wlbRenderEmomStations();
+  wlbUpdatePreview();
+}
+
+function wlbAddEmomStationMove(sIdx) {
+  _wlbEmomStations[sIdx].movements.push({ name:'', reps:'', unit:'reps', weight:'' });
+  wlbRenderEmomStations();
+}
+
+function wlbRemoveEmomStationMove(sIdx, mIdx) {
+  _wlbEmomStations[sIdx].movements.splice(mIdx, 1);
+  if (_wlbEmomStations[sIdx].movements.length === 0) {
+    _wlbEmomStations[sIdx].movements = [{ name:'', reps:'', unit:'reps', weight:'' }];
+  }
+  wlbRenderEmomStations();
+  wlbUpdatePreview();
+}
+
+function wlbToggleEmomRest(sIdx) {
+  const station = _wlbEmomStations[sIdx];
+  station.isRest = !station.isRest;
+  if (station.isRest) station.label = 'REST';
+  else station.label = 'Station ' + (sIdx + 1);
+  wlbRenderEmomStations();
+  wlbUpdatePreview();
+}
+
+function wlbRenderEmomStations() {
+  const container = document.getElementById('wlb-emom-stations');
+  const emptyMsg = document.getElementById('wlb-emom-stations-empty');
+  if (!container) return;
+  if (emptyMsg) emptyMsg.style.display = _wlbEmomStations.length === 0 ? '' : 'none';
+
+  const minuteLabels = ['Odd', 'Even', 'Min 3', 'Min 4', 'Min 5', 'Min 6'];
+  const stationColors = ['var(--cf-green)', '#4a9eff', '#ff9f4a', '#c84aff', '#ff4a7a', '#4affea'];
+
+  container.innerHTML = _wlbEmomStations.map((station, sIdx) => {
+    const color = station.isRest ? 'var(--text-muted)' : stationColors[sIdx % stationColors.length];
+    const label = _wlbEmomStations.length === 2
+      ? (sIdx === 0 ? 'Odd Minutes' : 'Even Minutes')
+      : 'Minute ' + (sIdx + 1) + (sIdx + 1 < _wlbEmomStations.length ? ', ' + (sIdx + 1 + _wlbEmomStations.length) + '...' : '');
+
+    const movHtml = station.isRest ? '' : station.movements.map((mv, mIdx) => {
+      const type = wlbGetMovementType(mv.name || '');
+      const unit = mv.unit || wlbDefaultUnit(type);
+      const wtUnit = wlbGetWeightUnit();
+      const showWeight = type === 'reps' || type === 'carry';
+      const ph = wlbGetPresets(type, unit)[2] || '10';
+      return '<div style="display:flex;gap:6px;align-items:center;margin-top:5px">'
+        + '<input placeholder="Movement..." value="' + (mv.name||'') + '" autocomplete="off"'
+        + ' oninput="_wlbEmomStations[' + sIdx + '].movements[' + mIdx + '].name=this.value;wlbUpdatePreview()"'
+        + ' style="flex:2;font-size:12px;font-weight:700">'
+        + '<input placeholder="' + ph + '" value="' + (mv.reps||'') + '"'
+        + ' oninput="_wlbEmomStations[' + sIdx + '].movements[' + mIdx + '].reps=this.value;wlbUpdatePreview()"'
+        + ' style="flex:1;font-family:var(--mono);font-size:13px;font-weight:700">'
+        + (showWeight ? '<input placeholder="wt" value="' + (mv.weight||'') + '"'
+          + ' oninput="_wlbEmomStations[' + sIdx + '].movements[' + mIdx + '].weight=this.value;wlbUpdatePreview()"'
+          + ' style="flex:1;font-size:12px">' : '')
+        + '<button onclick="wlbRemoveEmomStationMove(' + sIdx + ',' + mIdx + ')"'
+        + ' style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;flex-shrink:0">✕</button>'
+        + '</div>';
+    }).join('');
+
+    return '<div style="background:var(--surface2);border:1.5px solid ' + color + '30;border-left:3px solid ' + color + ';border-radius:var(--radius);padding:10px 12px">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+      + '<div>'
+      + '<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:' + color + '">' + (station.label || ('Station ' + (sIdx+1))) + '</div>'
+      + '<div style="font-size:10px;color:var(--text-muted);margin-top:1px">' + label + '</div>'
+      + '</div>'
+      + '<div style="display:flex;gap:4px">'
+      + '<button class="btn btn-ghost btn-xs" onclick="wlbToggleEmomRest(' + sIdx + ')">' + (station.isRest ? '+ Add Work' : 'Mark REST') + '</button>'
+      + '<button class="btn btn-ghost btn-xs" onclick="wlbRemoveEmomStation(' + sIdx + ')">✕</button>'
+      + '</div>'
+      + '</div>'
+      + (station.isRest
+        ? '<div style="font-size:13px;font-weight:700;color:var(--text-muted);padding:6px 0">— Rest —</div>'
+        : movHtml + '<button class="btn btn-ghost btn-xs" onclick="wlbAddEmomStationMove(' + sIdx + ')" style="margin-top:6px">+ Add movement</button>')
+      + '</div>';
+  }).join('');
+}
+
+// Update wlbUpdatePreview to include EMOM stations
+const _origWlbUpdatePreview = wlbUpdatePreview;
+function wlbUpdatePreview() {
+  if (!_wlbIsEmomStation) { _origWlbUpdatePreview(); return; }
+  const preview = document.getElementById('wlb-preview');
+  if (!preview) return;
+  const wtUnit = wlbGetWeightUnit();
+  const fmt = _cfCurrentFormat || 'EMOM';
+  const total = _cfSetup?.emomTotal || 20;
+  const interval = _cfSetup?.emomInterval || 1;
+  const totalRounds = Math.floor(total / interval);
+  const stationCount = _wlbEmomStations.length;
+
+  let html = '<div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green);margin-bottom:8px">'
+    + total + ' Min EMOM · ' + stationCount + ' Stations · ' + (stationCount > 0 ? Math.floor(totalRounds / stationCount) : 0) + ' rounds each</div>';
+
+  const stationColors = ['var(--cf-green)', '#4a9eff', '#ff9f4a', '#c84aff', '#ff4a7a', '#4affea'];
+
+  html += _wlbEmomStations.map((station, sIdx) => {
+    const color = station.isRest ? 'var(--text-muted)' : stationColors[sIdx % stationColors.length];
+    const movLines = station.isRest
+      ? '<div style="font-size:12px;color:var(--text-muted);font-style:italic">Rest</div>'
+      : station.movements.map(mv => {
+          if (!mv.name && !mv.reps) return '';
+          const wt = mv.weight ? ' @ ' + mv.weight + ' ' + wtUnit : '';
+          const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+          return '<div style="display:flex;align-items:baseline;gap:5px;padding:2px 0">'
+            + '<span style="font-size:16px;font-weight:900;font-family:var(--mono);color:' + color + ';min-width:28px">' + (mv.reps||'—') + '</span>'
+            + '<span style="font-size:12px;font-weight:700;color:#fff">' + (mv.name||'Movement') + unit + wt + '</span>'
+            + '</div>';
+        }).filter(Boolean).join('');
+
+    return '<div style="border-left:3px solid ' + color + ';padding-left:8px;margin-bottom:6px">'
+      + '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:' + color + ';margin-bottom:3px">' + (station.label||'Station '+(sIdx+1)) + '</div>'
+      + movLines + '</div>';
+  }).join('');
+
+  preview.innerHTML = html || '<div style="color:var(--text-muted);font-style:italic;font-size:12.5px">Add stations above</div>';
+}
 
 // ═══════════════════════════════════════════════════
 // ALLOY — CF CALENDAR
@@ -12826,7 +13053,21 @@ function cfTimerTick() {
       const roundNumEl = document.getElementById('cf-emom-round-num');
       if (roundNumEl) roundNumEl.textContent = _cfSetup.emomCurrentRound;
       if (_cfSetup.emomCurrentRound > totalRounds) { cfTimerDone(); return; }
+      // Announce next station if in station mode
+      if (_wlbIsEmomStation && _wlbEmomStations.length > 0) {
+        const nextStation = _wlbEmomStations[(_cfSetup.emomCurrentRound - 1) % _wlbEmomStations.length];
+        const label = nextStation?.label || ('Station ' + ((_cfSetup.emomCurrentRound - 1) % _wlbEmomStations.length + 1));
+        cfSpeak(nextStation?.isRest ? 'Rest' : label);
+      }
+      // Refresh WOD card station display
+      if (document.getElementById('cf-wod-card')?.style.display !== 'none') {
+        wlbPopulateWODCard();
+      }
     }
+    // 3-2-1 countdown before interval
+    if (secsLeft === 3) cfSpeak('3');
+    else if (secsLeft === 2) cfSpeak('2');
+    else if (secsLeft === 1) cfSpeak('1');
 
   } else if (_cfCurrentFormat === 'Tabata') {
     _cfTimerSeconds--;
