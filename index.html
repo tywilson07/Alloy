@@ -9888,7 +9888,8 @@ function wlbMvContainerId(section) {
 function wlbAddMovement(section) {
   section = section || 'main';
   const list = wlbMvList(section);
-  list.push({ name:'', reps:'', unit:'reps', weight:'', notes:'', section });
+  const defMv = { name:'', reps:'', unit:'reps', weight:'', notes:'', section: section };
+  list.push(defMv);
   wlbRenderSection(section);
   // Focus last name input
   setTimeout(() => {
@@ -9954,9 +9955,10 @@ function wlbRenderSection(section) {
 
     return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <input class="wlb-mv-name" placeholder="Movement name..." value="${mv.name}"
+        <input class="wlb-mv-name" placeholder="Movement name..." value="${mv.name||''}"
           list="cf-movement-suggestions"
           oninput="wlbMvList('${section}')[${idx}].name=this.value;wlbRerenderRow('${section}',${idx})"
+          onchange="wlbMvList('${section}')[${idx}].name=this.value;wlbRerenderRow('${section}',${idx})"
           style="flex:1;font-size:13px;font-weight:700">
         ${unitToggle}
         <button onclick="wlbRemoveMovement('${section}',${idx})"
@@ -9965,13 +9967,13 @@ function wlbRenderSection(section) {
       <div style="display:flex;gap:8px;align-items:flex-end">
         <div class="field" style="flex:1;margin:0">
           <label style="font-size:10px">${repsLabel}</label>
-          <input placeholder="${repsPh}" value="${mv.reps}"
+          <input placeholder="${repsPh}" value="${mv.reps||''}"
             oninput="wlbMvList('${section}')[${idx}].reps=this.value;wlbUpdatePreview()"
             style="font-family:var(--mono);font-size:15px;font-weight:700">
         </div>
         ${showWeight ? `<div class="field" style="flex:1;margin:0">
           <label style="font-size:10px">Weight (${wtUnit})</label>
-          <input placeholder="e.g. 135/95" value="${mv.weight}"
+          <input placeholder="e.g. 135/95" value="${mv.weight||''}"
             oninput="wlbMvList('${section}')[${idx}].weight=this.value;wlbUpdatePreview()"
             style="font-size:13px">
         </div>` : ''}
@@ -9986,18 +9988,27 @@ function wlbRenderSection(section) {
 }
 
 function wlbRerenderRow(section, idx) {
-  // Re-render the section when movement name changes (to update unit toggle/presets)
   const list = wlbMvList(section);
   const mv = list[idx];
   if (!mv) return;
-  const type = wlbGetMovementType(mv.name);
+  const type = wlbGetMovementType(mv.name || '');
   const newUnit = wlbDefaultUnit(type);
-  // Only update unit if the name-derived type changed
-  if (mv.unit === 'reps' && newUnit !== 'reps') {
-    mv.unit = newUnit;
-  }
+  // Always update unit to match detected movement type
+  // (user can still override with the toggle buttons)
+  mv.unit = newUnit;
   wlbRenderSection(section);
   wlbUpdatePreview();
+  // Re-focus the name input so typing can continue
+  setTimeout(() => {
+    const container = document.getElementById(wlbMvContainerId(section));
+    const inputs = container?.querySelectorAll('.wlb-mv-name');
+    if (inputs?.[idx]) {
+      inputs[idx].focus();
+      // Move cursor to end
+      const len = inputs[idx].value.length;
+      inputs[idx].setSelectionRange(len, len);
+    }
+  }, 30);
 }
 
 function wlbRenderMovements() {
