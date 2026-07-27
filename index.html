@@ -10709,7 +10709,28 @@ function wlbPopulateWODCard() {
   const rlEl = document.getElementById('wc-rounds-label');
   const mvList = document.getElementById('wc-movements-list');
 
-  if (fmt === 'EMOM' && _wlbIsEmomStation && _wlbEmomStations.length > 0) {
+  if (fmt === 'Intervals' && _wlbIsIntervals && _wlbIntervals.length > 0) {
+    // Show current interval's movements prominently
+    if (rlEl) rlEl.textContent = 'Interval ' + (_wlbCurrentInterval + 1) + ' of ' + _wlbIntervals.length;
+    if (mvList) {
+      const wtUnit = wlbGetWeightUnit();
+      mvList.innerHTML = _wlbIntervals.map((interval, iIdx) => {
+        const isCurrent = iIdx === _wlbCurrentInterval;
+        const movLines = interval.movements.map(mv => {
+          if (!mv.name) return '';
+          const wt = mv.weight ? ' @ ' + mv.weight + ' ' + wtUnit : '';
+          const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+          return '<div style="display:flex;align-items:baseline;gap:10px;padding:4px 0">'
+            + '<span style="font-size:' + (isCurrent?'28':'18') + 'px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:48px">' + (mv.reps||'') + '</span>'
+            + '<span style="font-size:' + (isCurrent?'16':'13') + 'px;font-weight:800;color:' + (isCurrent?'#fff':'rgba(255,255,255,.4)') + '">' + mv.name + unit + wt + '</span>'
+            + '</div>';
+        }).filter(Boolean).join('');
+        return '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07);opacity:' + (isCurrent?'1':'0.4') + '">'
+          + '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--cf-green);margin-bottom:4px">Interval ' + (iIdx+1) + (isCurrent?' ← NOW':'') + '</div>'
+          + movLines + '</div>';
+      }).join('');
+    }
+  } else if (fmt === 'EMOM' && _wlbIsEmomStation && _wlbEmomStations.length > 0) {
     if (rlEl) rlEl.textContent = '';
     // Build station cards — highlight current station
     const currentStation = _wlbEmomStations[(_cfSetup.emomCurrentRound - 1) % _wlbEmomStations.length];
@@ -10783,7 +10804,13 @@ function wlbSyncWODCard() {
   // Sync timer display
   const timerEl = document.getElementById('wc-timer');
   const mainTimer = document.getElementById('cf-timer-display');
-  if (timerEl && mainTimer) timerEl.textContent = mainTimer.textContent;
+  if (timerEl && mainTimer) {
+    timerEl.textContent = mainTimer.textContent;
+    // Color: green for work, muted for rest
+    if (_cfCurrentFormat === 'Intervals') {
+      timerEl.style.color = _wlbIntervalPhase === 'rest' ? 'rgba(255,255,255,.4)' : 'var(--cf-green)';
+    }
+  }
 
   // Sync phase
   const phaseEl = document.getElementById('wc-phase');
@@ -10793,7 +10820,23 @@ function wlbSyncWODCard() {
   // Sync round info
   const roundInfoEl = document.getElementById('wc-round-info');
   const mainEmom = document.getElementById('cf-emom-indicator');
-  if (roundInfoEl) roundInfoEl.textContent = mainEmom?.style.display !== 'none' ? mainEmom?.textContent || '' : '';
+  if (roundInfoEl) {
+    if (_cfCurrentFormat === 'Intervals') {
+      const phase = _wlbIntervalPhase === 'rest' ? 'REST' : 'Interval ' + (_wlbCurrentInterval + 1) + ' of ' + _wlbIntervals.length;
+      roundInfoEl.textContent = phase;
+      roundInfoEl.style.color = _wlbIntervalPhase === 'rest' ? 'var(--text-muted)' : 'var(--cf-green)';
+    } else {
+      roundInfoEl.textContent = mainEmom?.style.display !== 'none' ? mainEmom?.textContent || '' : '';
+    }
+  }
+
+  // Sync WOD card label for Intervals
+  const rlEl2 = document.getElementById('wc-rounds-label');
+  if (rlEl2 && _cfCurrentFormat === 'Intervals') {
+    rlEl2.textContent = _wlbIntervalPhase === 'rest'
+      ? 'Resting — next: Interval ' + (_wlbCurrentInterval + 2)
+      : 'Interval ' + (_wlbCurrentInterval + 1) + ' of ' + _wlbIntervals.length;
+  }
 
   // For EMOM with stations — update highlighted station every tick
   if (_cfCurrentFormat === 'EMOM' && _wlbIsEmomStation && _wlbEmomStations.length > 0) {
@@ -13495,7 +13538,8 @@ function cfTimerStartOrPause() {
     const isFresh = _cfTimerSeconds === 0 ||
       (_cfCurrentFormat === 'AMRAP' && _cfTimerSeconds === _cfSetup.amrapMin * 60) ||
       (_cfCurrentFormat === 'Tabata' && _cfTimerSeconds === _cfSetup.tabataWork) ||
-      (['For Time','Chipper','Partner'].includes(_cfCurrentFormat) && _cfSetup.capEnabled && _cfTimerSeconds === _cfSetup.capMin * 60);
+      (['For Time','Chipper','Partner'].includes(_cfCurrentFormat) && _cfSetup.capEnabled && _cfTimerSeconds === _cfSetup.capMin * 60) ||
+      (_cfCurrentFormat === 'Intervals' && _wlbCurrentInterval === 0 && _wlbIntervalPhase === 'work');
     if (isFresh && _cfLeadinSeconds > 0) {
       cfStartWithCountdown();
     } else {
