@@ -10419,8 +10419,6 @@ function wlbInit() {
   _wlbIntervalPhase = 'work';
   _wlbWorkoutStarted = false;
   _wlbIntervalSplits = [];
-  _wlbWorkoutStarted = false;
-  _wlbIntervalSplits = [];
   _wlbRounds = 3;
   _wlbIsChipper = false;
   _wlbShowBuyin = false;
@@ -12441,91 +12439,6 @@ function cfIntervalTimerTick() {
 function cfStartIntervals() {
   _wlbCurrentInterval = 0;
   _wlbIntervalPhase = 'work';
-  _wlbIntervalSplits = [];
-  _cfTimerSeconds = 0;
-  var label = document.getElementById('cf-timer-label');
-  if (label) label.textContent = 'Interval 1 of ' + _wlbIntervals.length;
-  var disp = document.getElementById('cf-timer-display');
-  if (disp) { disp.textContent = '0:00'; disp.style.color = 'var(--cf-green)'; }
-  cfBeepStart();
-}
-
-function cfEndIntervalWork() {
-  if (!_wlbIntervalSplits) _wlbIntervalSplits = [];
-  var workSecs = _cfTimerSeconds;
-  _wlbIntervalSplits[_wlbCurrentInterval] = workSecs;
-  var fmt = function(s){return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
-  var splitStr = 'I'+(_wlbCurrentInterval+1)+': '+fmt(workSecs);
-  _wlbIntervalPhase = 'rest';
-  _cfTimerSeconds = _wlbIntervalRestSecs;
-  var restStr = fmt(_wlbIntervalRestSecs);
-  var disp=document.getElementById('cf-timer-display');
-  if(disp){disp.textContent=restStr;disp.style.color='var(--text-muted)';}
-  var wcTimer=document.getElementById('wc-timer');
-  if(wcTimer){wcTimer.textContent=restStr;wcTimer.style.color='rgba(255,255,255,.4)';}
-  var wcPhase=document.getElementById('wc-phase');
-  if(wcPhase){wcPhase.textContent='REST';wcPhase.style.color='rgba(255,255,255,.4)';}
-  var wcInfo=document.getElementById('wc-round-info');
-  if(wcInfo)wcInfo.textContent='REST';
-  var wcRL=document.getElementById('wc-rounds-label');
-  if(wcRL)wcRL.textContent=splitStr+' ✓';
-  var lbl=document.getElementById('cf-timer-label');
-  if(lbl)lbl.textContent='REST';
-  ['wc-next-interval-btn','cf-next-interval-btn'].forEach(function(id){
-    var b=document.getElementById(id);if(b)b.style.display='none';
-  });
-  cfBeepRest();
-  if(_wlbIntervalRestSecs===0){_wlbCurrentInterval++;_wlbIntervalPhase='work';_cfTimerSeconds=0;}
-}
-
-function cfIntervalTimerTick() {
-  var fmt=function(s){return Math.floor(s/60)+':'+String(Math.max(0,s)%60).padStart(2,'0');};
-  if (_wlbIntervalPhase==='work') {
-    _cfTimerSeconds++;
-    var d=document.getElementById('cf-timer-display');
-    if(d){d.textContent=fmt(_cfTimerSeconds);d.style.color='var(--cf-green)';}
-    wlbSyncWODCard();
-  } else {
-    _cfTimerSeconds--;
-    var d2=document.getElementById('cf-timer-display');
-    if(d2){d2.textContent=fmt(Math.max(0,_cfTimerSeconds));d2.style.color='var(--text-muted)';}
-    var wt=document.getElementById('wc-timer');
-    if(wt){wt.textContent=fmt(Math.max(0,_cfTimerSeconds));wt.style.color='rgba(255,255,255,.4)';}
-    if(_cfTimerSeconds===3||_cfTimerSeconds===2||_cfTimerSeconds===1) cfBeep(660,0.1,0.5);
-    else if(_cfTimerSeconds<=0){
-      _wlbCurrentInterval++;
-      if(_wlbCurrentInterval>=_wlbIntervals.length){
-        var sc=document.getElementById('cf-score-value');
-        if(sc&&!sc.value&&_wlbIntervalSplits&&_wlbIntervalSplits.length){
-          var f2=function(s){return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
-          sc.value=_wlbIntervalSplits.map(function(s,i){return 'I'+(i+1)+': '+f2(s);}).join(' / ');
-        }
-        cfTimerDone(); cfBeepDone(); return;
-      }
-      _wlbIntervalPhase='work'; _cfTimerSeconds=0;
-      var d3=document.getElementById('cf-timer-display');
-      if(d3){d3.textContent='0:00';d3.style.color='var(--cf-green)';}
-      var wt2=document.getElementById('wc-timer');
-      if(wt2){wt2.textContent='0:00';wt2.style.color='var(--cf-green)';}
-      var lbl=document.getElementById('cf-timer-label');
-      if(lbl)lbl.textContent='Interval '+(_wlbCurrentInterval+1)+' of '+_wlbIntervals.length;
-      var rl=document.getElementById('wc-rounds-label');
-      if(rl)rl.textContent='Interval '+(_wlbCurrentInterval+1)+' of '+_wlbIntervals.length;
-      ['wc-next-interval-btn','cf-next-interval-btn'].forEach(function(id){
-        var b=document.getElementById(id);
-        if(b){b.style.display='';b.textContent='✓ Done — Start Rest';}
-      });
-      cfBeepInterval();
-      if(document.getElementById('cf-wod-card')?.style.display!=='none') wlbPopulateWODCard();
-    }
-    wlbSyncWODCard();
-  }
-}
-
-
-function cfStartIntervals() {
-  _wlbCurrentInterval = 0;
-  _wlbIntervalPhase = 'work';
   _wlbWorkoutStarted = false;
   _wlbIntervalSplits = [];
   _wlbIntervalSplits = [];
@@ -13406,10 +13319,9 @@ function cfBeep(frequency, duration, volume) {
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (duration || 0.15));
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + (duration || 0.15) + 0.05);
-    osc.onended = function(){ try{ctx.close();}catch(e){} };
+    osc.onended = function() { try { ctx.close(); } catch(e) {} };
   } catch(e) {}
 }
-
 
 function cfBeepStart()    { cfBeep(880, 0.2, 0.7); }
 function cfBeepInterval() { cfBeep(660, 0.15, 0.6); setTimeout(()=>cfBeep(880,0.15,0.6), 200); }
@@ -13652,15 +13564,17 @@ function cfSpeak(text) {
   try {
     window.speechSynthesis.cancel();
     var utt = new SpeechSynthesisUtterance(text);
-    utt.rate = 0.9; utt.volume = 1.0; utt.pitch = 1.0;
+    utt.rate = 0.85; utt.pitch = 1.0; utt.volume = 1.0;
     var voices = window.speechSynthesis.getVoices();
-    var v = voices.find(function(v){return v.name==='Samantha'||v.name==='Karen'||v.name==='Daniel'||v.name.indexOf('Google US')>-1;})
-          || voices.find(function(v){return v.lang==='en-US'&&v.name.toLowerCase().indexOf('compact')===-1;});
-    if (v) utt.voice = v;
+    var preferred = voices.find(function(v){
+      return v.name.includes('Samantha')||v.name.includes('Karen')||
+             v.name.includes('Daniel')||v.name.includes('Google US English')||
+             (!v.name.toLowerCase().includes('compact')&&v.lang==='en-US');
+    });
+    if (preferred) utt.voice = preferred;
     window.speechSynthesis.speak(utt);
   } catch(e) {}
 }
-
 
 function cfStartWithCountdown() {
   const overlay = document.getElementById('cf-countdown-overlay');
@@ -13742,38 +13656,55 @@ function cfCancelCountdown() {
 
 
 // Single entry point for starting timer from WOD card or timer block
+
 function cfWODCardStart() {
+  try { var AC=window.AudioContext||window.webkitAudioContext; if(AC){var uc=new AC();var ub=uc.createBuffer(1,1,22050);var us=uc.createBufferSource();us.buffer=ub;us.connect(uc.destination);us.start(0);setTimeout(function(){try{uc.close();}catch(e){}},200);} } catch(e) {}
   try {
-    var AC=window.AudioContext||window.webkitAudioContext;
-    if(AC){var uc=new AC();var ub=uc.createBuffer(1,1,22050);var us=uc.createBufferSource();us.buffer=ub;us.connect(uc.destination);us.start(0);setTimeout(function(){try{uc.close();}catch(e){}},200);}
+    if (!_cfAudioCtx) _cfAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_cfAudioCtx.state === 'suspended') _cfAudioCtx.resume();
   } catch(e) {}
   if (_cfTimerRunning) { cfToggleTimer(); return; }
   if (_cfCountdownInterval) { cfCancelCountdown(); return; }
   if (_wlbWorkoutStarted) { cfToggleTimer(); return; }
   if (_cfLeadinSeconds > 0) {
-    var ov=document.getElementById('cf-countdown-overlay'); if(ov)ov.style.display='flex';
-    var wov=document.getElementById('wc-countdown-overlay'); if(wov)wov.style.display='flex';
+    var ov=document.getElementById('cf-countdown-overlay');
+    var wov=document.getElementById('wc-countdown-overlay');
+    if (ov) ov.style.display='flex';
+    if (wov) wov.style.display='flex';
     var count=_cfLeadinSeconds;
-    function setNum(n,color){
-      var c=color||'rgba(255,255,255,.5)';
-      var el=document.getElementById('cf-countdown-number'); if(el){el.textContent=n;el.style.color=c;el.style.fontSize=n==='GO!'?'72px':'120px';}
-      var wel=document.getElementById('wc-countdown-number'); if(wel){wel.textContent=n;wel.style.color=c;}
-      var wt=document.getElementById('wc-timer'); if(wt){wt.textContent=n;wt.style.color=c;}
-      var wl=document.getElementById('wc-countdown-display'); if(wl){wl.style.display='';wl.textContent=n==='GO!'?'GO!':'STARTING IN';}
-    }
+    var setNum=function(n,color){
+      var el=document.getElementById('cf-countdown-number');
+      var wel=document.getElementById('wc-countdown-number');
+      var wt=document.getElementById('wc-timer');
+      var wl=document.getElementById('wc-countdown-display');
+      if(el){el.textContent=n;el.style.color=color||'rgba(255,255,255,.5)';el.style.fontSize=n==='GO!'?'72px':'120px';}
+      if(wel){wel.textContent=n;wel.style.color=color||'rgba(255,255,255,.5)';}
+      if(wt){wt.textContent=n;wt.style.color=color||'rgba(255,255,255,.3)';}
+      if(wl){wl.style.display='';wl.textContent=n==='GO!'?'GO!':'STARTING IN';}
+    };
     setNum(count);
     _cfCountdownInterval=setInterval(function(){
       count--;
       if(count>3){setNum(count);}
-      else if(count===3){setNum('3','var(--cf-green)');cfBeep(880,0.12,0.7);}
-      else if(count===2){setNum('2','var(--cf-green)');cfBeep(880,0.12,0.7);}
-      else if(count===1){setNum('1','var(--cf-green)');cfBeep(880,0.12,0.7);}
-      else if(count===0){setNum('GO!','#fff');cfBeep(880,0.1,0.8);setTimeout(function(){cfBeep(1100,0.25,0.8);},150);}
-      else{clearInterval(_cfCountdownInterval);_cfCountdownInterval=null;cfCancelCountdown();_wlbWorkoutStarted=true;cfToggleTimer();}
+      else if(count===3){setNum('3','var(--cf-green)');cfBeep(880,0.15,0.7);}
+      else if(count===2){setNum('2','var(--cf-green)');cfBeep(880,0.15,0.7);}
+      else if(count===1){setNum('1','var(--cf-green)');cfBeep(880,0.15,0.7);}
+      else if(count===0){setNum('GO!','#fff');cfBeep(880,0.15,0.7);setTimeout(function(){cfBeep(1100,0.3,0.8);},180);}
+      else{
+        clearInterval(_cfCountdownInterval);_cfCountdownInterval=null;
+        var o2=document.getElementById('cf-countdown-overlay');if(o2)o2.style.display='none';
+        var w2=document.getElementById('wc-countdown-overlay');if(w2)w2.style.display='none';
+        var wl2=document.getElementById('wc-countdown-display');if(wl2)wl2.style.display='none';
+        var wt2=document.getElementById('wc-timer');if(wt2)wt2.style.color='var(--cf-green)';
+        _wlbWorkoutStarted=true;
+        cfToggleTimer();
+      }
     },1000);
-  } else { _wlbWorkoutStarted=true; cfToggleTimer(); }
+  } else {
+    _wlbWorkoutStarted=true;
+    cfToggleTimer();
+  }
 }
-
 
 function cfTimerStartOrPause() {
   if (_cfTimerRunning) {
@@ -13929,7 +13860,6 @@ function cfToggleTimer() {
     if (_cfCurrentFormat === 'Intervals' && _cfTimerSeconds === 0 && _wlbIntervalPhase === 'work') {
       cfStartIntervals();
     }
-    if(_cfCurrentFormat==='Intervals'&&_cfTimerSeconds===0&&_wlbIntervalPhase==='work'){cfStartIntervals();}
     _cfTimerInterval = setInterval(cfTimerTick, 1000);
   } else {
     if (btn) btn.textContent = 'Resume';
