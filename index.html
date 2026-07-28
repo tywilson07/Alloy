@@ -10616,6 +10616,17 @@ function wlbStartWOD() {
   // Brief silent beep to unlock audio
   cfBeepTone(440, 0.001, 0.001);
 
+  // Unlock audio on this user gesture (iOS requires it)
+  try {
+    var unlockCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var buf = unlockCtx.createBuffer(1,1,22050);
+    var src2 = unlockCtx.createBufferSource();
+    src2.buffer = buf;
+    src2.connect(unlockCtx.destination);
+    src2.start(0);
+    setTimeout(function(){unlockCtx.close();}, 100);
+  } catch(e) {}
+
   // Show the WOD card overlay
   const card = document.getElementById('cf-wod-card');
   if (card) card.style.display = 'flex';
@@ -13305,19 +13316,25 @@ let _cfSetup = {
 };
 
 // Audio beep using Web Audio API
-function cfBeep(frequency=880, duration=0.15, volume=0.6) {
+function cfBeep(frequency, duration, volume) {
+  frequency = frequency || 880;
+  duration = duration || 0.15;
+  volume = volume || 0.6;
   try {
-    if (!_cfAudioCtx) _cfAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (_cfAudioCtx.state === 'suspended') _cfAudioCtx.resume();
-    const osc = _cfAudioCtx.createOscillator();
-    const gain = _cfAudioCtx.createGain();
+    // Always create fresh context — iOS requires it to be active
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
     osc.connect(gain);
-    gain.connect(_cfAudioCtx.destination);
+    gain.connect(ctx.destination);
     osc.frequency.value = frequency;
-    gain.gain.setValueAtTime(volume, _cfAudioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, _cfAudioCtx.currentTime + duration);
-    osc.start(_cfAudioCtx.currentTime);
-    osc.stop(_cfAudioCtx.currentTime + duration);
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(volume, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+    // Close context after beep to free resources
+    osc.onended = function() { ctx.close(); };
   } catch(e) {}
 }
 
@@ -13935,6 +13952,9 @@ function cfTimerTick() {
     _cfTimerSeconds--;
     if (_cfTimerSeconds <= 10 && _cfTimerSeconds > 0) cfBeepWarning();
     if (_cfTimerSeconds <= 0) { cfTimerDone(); return; }
+  } else if (_cfCurrentFormat === 'Intervals') {
+    cfIntervalTimerTick();
+    return;
   } else {
     _cfTimerSeconds++;
   }
