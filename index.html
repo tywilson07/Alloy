@@ -1362,7 +1362,8 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
         </div>
 
         <div id="cf-timer-block" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px;position:relative">
-               <!-- Timer setup -->
+          <button class="cf-fullscreen-btn" onclick="cfEnterFullscreen()" title="Fullscreen timer">⛶</button>
+          <!-- Timer setup -->
           <div id="cf-timer-setup">
             <div id="cf-setup-amrap" style="display:none;margin-bottom:12px">
               <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px">AMRAP Duration</div>
@@ -12454,35 +12455,24 @@ function cfEndIntervalWork() {
   _wlbIntervalSplits[_wlbCurrentInterval] = workSecs;
   _wlbIntervalPhase = 'rest';
   _cfTimerSeconds = _wlbIntervalRestSecs;
-
-  const fmt = function(s) { return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); };
+  const fmt = function(s){return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
   const restStr = fmt(_wlbIntervalRestSecs);
-
-  // Update ALL displays immediately
-  const disp = document.getElementById('cf-timer-display');
-  if (disp) { disp.textContent = restStr; disp.style.color = 'var(--text-muted)'; }
-  const wcTimer = document.getElementById('wc-timer');
-  if (wcTimer) { wcTimer.textContent = restStr; wcTimer.style.color = 'rgba(255,255,255,.4)'; }
-  const wcPhase = document.getElementById('wc-phase');
-  if (wcPhase) { wcPhase.textContent = 'REST'; wcPhase.style.color = 'rgba(255,255,255,.4)'; }
-  const wcInfo = document.getElementById('wc-round-info');
-  if (wcInfo) wcInfo.textContent = 'REST · Next: Interval ' + (_wlbCurrentInterval + 2);
-
-  // Show split time for completed interval
-  const wcRoundsLabel = document.getElementById('wc-rounds-label');
-  if (wcRoundsLabel) wcRoundsLabel.textContent = 'I' + (_wlbCurrentInterval+1) + ': ' + fmt(workSecs) + ' ✓';
-
-  // Hide Done button during rest
-  ['wc-next-interval-btn','cf-next-interval-btn'].forEach(function(id) {
-    var b = document.getElementById(id); if (b) b.style.display = 'none';
+  const splitStr = 'I'+(_wlbCurrentInterval+1)+': '+fmt(workSecs)+' ✓';
+  const disp=document.getElementById('cf-timer-display');
+  if(disp){disp.textContent=restStr;disp.style.color='var(--text-muted)';}
+  const wcTimer=document.getElementById('wc-timer');
+  if(wcTimer){wcTimer.textContent=restStr;wcTimer.style.color='rgba(255,255,255,.4)';}
+  const wcPhase=document.getElementById('wc-phase');
+  if(wcPhase){wcPhase.textContent='REST';wcPhase.style.color='rgba(255,255,255,.4)';}
+  const wcInfo=document.getElementById('wc-round-info');
+  if(wcInfo)wcInfo.textContent='REST · Next: Interval '+(_wlbCurrentInterval+2);
+  const wcRL=document.getElementById('wc-rounds-label');
+  if(wcRL)wcRL.textContent=splitStr;
+  ['wc-next-interval-btn','cf-next-interval-btn'].forEach(function(id){
+    var b=document.getElementById(id);if(b)b.style.display='none';
   });
-
   cfBeepRest();
-  if (_wlbIntervalRestSecs === 0) {
-    _wlbCurrentInterval++;
-    _wlbIntervalPhase = 'work';
-    _cfTimerSeconds = 0;
-  }
+  if(_wlbIntervalRestSecs===0){_wlbCurrentInterval++;_wlbIntervalPhase='work';_cfTimerSeconds=0;}
 }
 
 // ═══════════════════════════════════════════════════
@@ -13572,19 +13562,18 @@ function cfSpeak(text) {
   try {
     window.speechSynthesis.cancel();
     var utt = new SpeechSynthesisUtterance(text);
-    utt.rate = 0.85;
-    utt.pitch = 1.0;
-    utt.volume = 1.0;
+    utt.rate = 0.85; utt.pitch = 1.0; utt.volume = 1.0;
     var voices = window.speechSynthesis.getVoices();
-    var preferred = voices.find(function(v) {
-      return v.name.includes('Samantha') || v.name.includes('Karen') ||
-             v.name.includes('Daniel') || v.name.includes('Google US English') ||
-             (!v.name.toLowerCase().includes('compact') && v.lang === 'en-US');
+    var preferred = voices.find(function(v){
+      return v.name.includes('Samantha')||v.name.includes('Karen')||
+             v.name.includes('Daniel')||v.name.includes('Google US English')||
+             (!v.name.toLowerCase().includes('compact')&&v.lang==='en-US');
     });
     if (preferred) utt.voice = preferred;
     window.speechSynthesis.speak(utt);
   } catch(e) {}
 }
+
 function cfStartWithCountdown() {
   const overlay = document.getElementById('cf-countdown-overlay');
   const numEl = document.getElementById('cf-countdown-number');
@@ -13670,50 +13659,49 @@ function cfWODCardStart() {
     if (!_cfAudioCtx) _cfAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (_cfAudioCtx.state === 'suspended') _cfAudioCtx.resume();
   } catch(e) {}
-
   if (_cfTimerRunning) { cfToggleTimer(); return; }
   if (_cfCountdownInterval) { cfCancelCountdown(); return; }
   if (_wlbWorkoutStarted) { cfToggleTimer(); return; }
-
   if (_cfLeadinSeconds > 0) {
-    var ov = document.getElementById('cf-countdown-overlay');
-    var wov = document.getElementById('wc-countdown-overlay');
-    if (ov) ov.style.display = 'flex';
-    if (wov) wov.style.display = 'flex';
-    var count = _cfLeadinSeconds;
-    var setNum = function(n, color) {
-      var el = document.getElementById('cf-countdown-number');
-      var wel = document.getElementById('wc-countdown-number');
-      var wt = document.getElementById('wc-timer');
-      var wl = document.getElementById('wc-countdown-display');
-      if (el) { el.textContent = n; el.style.color = color || 'rgba(255,255,255,.5)'; el.style.fontSize = n==='GO!'?'72px':'120px'; }
-      if (wel) { wel.textContent = n; wel.style.color = color || 'rgba(255,255,255,.5)'; }
-      if (wt) { wt.textContent = n; wt.style.color = color || 'rgba(255,255,255,.3)'; }
-      if (wl) { wl.style.display = ''; wl.textContent = n==='GO!'?'GO!':'STARTING IN'; }
+    var ov=document.getElementById('cf-countdown-overlay');
+    var wov=document.getElementById('wc-countdown-overlay');
+    if (ov) ov.style.display='flex';
+    if (wov) wov.style.display='flex';
+    var count=_cfLeadinSeconds;
+    var setNum=function(n,color){
+      var el=document.getElementById('cf-countdown-number');
+      var wel=document.getElementById('wc-countdown-number');
+      var wt=document.getElementById('wc-timer');
+      var wl=document.getElementById('wc-countdown-display');
+      if(el){el.textContent=n;el.style.color=color||'rgba(255,255,255,.5)';el.style.fontSize=n==='GO!'?'72px':'120px';}
+      if(wel){wel.textContent=n;wel.style.color=color||'rgba(255,255,255,.5)';}
+      if(wt){wt.textContent=n;wt.style.color=color||'rgba(255,255,255,.3)';}
+      if(wl){wl.style.display='';wl.textContent=n==='GO!'?'GO!':'STARTING IN';}
     };
     setNum(count);
-    _cfCountdownInterval = setInterval(function() {
+    _cfCountdownInterval=setInterval(function(){
       count--;
-      if (count > 3) { setNum(count); }
-      else if (count===3) { setNum('3','var(--cf-green)'); cfBeep(880,0.15,0.7); }
-      else if (count===2) { setNum('2','var(--cf-green)'); cfBeep(880,0.15,0.7); }
-      else if (count===1) { setNum('1','var(--cf-green)'); cfBeep(880,0.15,0.7); }
-      else if (count===0) { setNum('GO!','#fff'); cfBeep(880,0.15,0.7); setTimeout(function(){cfBeep(1100,0.3,0.8);},180); }
-      else {
-        clearInterval(_cfCountdownInterval); _cfCountdownInterval = null;
-        var o2=document.getElementById('cf-countdown-overlay'); if(o2) o2.style.display='none';
-        var w2=document.getElementById('wc-countdown-overlay'); if(w2) w2.style.display='none';
-        var wl2=document.getElementById('wc-countdown-display'); if(wl2) wl2.style.display='none';
-        var wt2=document.getElementById('wc-timer'); if(wt2) wt2.style.color='var(--cf-green)';
-        _wlbWorkoutStarted = true;
+      if(count>3){setNum(count);}
+      else if(count===3){setNum('3','var(--cf-green)');cfBeep(880,0.15,0.7);}
+      else if(count===2){setNum('2','var(--cf-green)');cfBeep(880,0.15,0.7);}
+      else if(count===1){setNum('1','var(--cf-green)');cfBeep(880,0.15,0.7);}
+      else if(count===0){setNum('GO!','#fff');cfBeep(880,0.15,0.7);setTimeout(function(){cfBeep(1100,0.3,0.8);},180);}
+      else{
+        clearInterval(_cfCountdownInterval);_cfCountdownInterval=null;
+        var o2=document.getElementById('cf-countdown-overlay');if(o2)o2.style.display='none';
+        var w2=document.getElementById('wc-countdown-overlay');if(w2)w2.style.display='none';
+        var wl2=document.getElementById('wc-countdown-display');if(wl2)wl2.style.display='none';
+        var wt2=document.getElementById('wc-timer');if(wt2)wt2.style.color='var(--cf-green)';
+        _wlbWorkoutStarted=true;
         cfToggleTimer();
       }
-    }, 1000);
+    },1000);
   } else {
-    _wlbWorkoutStarted = true;
+    _wlbWorkoutStarted=true;
     cfToggleTimer();
   }
 }
+
 function cfTimerStartOrPause() {
   if (_cfTimerRunning) {
     // Pause — cancel any speech in progress
@@ -13947,9 +13935,6 @@ function cfTimerTick() {
     _cfTimerSeconds--;
     if (_cfTimerSeconds <= 10 && _cfTimerSeconds > 0) cfBeepWarning();
     if (_cfTimerSeconds <= 0) { cfTimerDone(); return; }
-  } else if (_cfCurrentFormat === 'Intervals') {
-    cfIntervalTimerTick();
-    return;
   } else {
     _cfTimerSeconds++;
   }
@@ -14640,7 +14625,6 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
 
   <!-- Timer -->
   <div style="text-align:center;padding:20px 18px 12px;border-bottom:1px solid rgba(57,211,83,.15)">
-    <div id="wc-countdown-display" style="display:none;font-size:12px;font-weight:800;letter-spacing:2px;color:var(--cf-green);text-align:center;margin-bottom:4px">STARTING IN</div>
     <!-- Ghost target from previous best -->
     <div id="wc-ghost-target" style="display:none;font-size:11px;font-weight:700;color:rgba(57,211,83,.5);margin-bottom:6px;letter-spacing:.5px"></div>
     <div id="wc-timer" style="font-size:72px;font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1;letter-spacing:-2px">0:00</div>
