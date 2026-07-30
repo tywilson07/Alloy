@@ -13762,14 +13762,18 @@ function cfWODCardStart() {
       if(wt){wt.textContent=n;wt.style.color=color||'rgba(255,255,255,.3)';}
       if(wl){wl.style.display='';wl.textContent=n==='GO!'?'GO!':'STARTING IN';}
     };
+    var sayCount=function(n,fallbackFreq){
+      if (window.speechSynthesis) cfSpeak(n);
+      else cfBeep(fallbackFreq || 880, 0.15, 0.7);
+    };
     setNum(count);
     _cfCountdownInterval=setInterval(function(){
       count--;
       if(count>3){setNum(count);}
-      else if(count===3){setNum('3','var(--cf-green)');cfBeep(880,0.15,0.7);}
-      else if(count===2){setNum('2','var(--cf-green)');cfBeep(880,0.15,0.7);}
-      else if(count===1){setNum('1','var(--cf-green)');cfBeep(880,0.15,0.7);}
-      else if(count===0){setNum('GO!','#fff');cfBeep(880,0.15,0.7);setTimeout(function(){cfBeep(1100,0.3,0.8);},180);}
+      else if(count===3){setNum('3','var(--cf-green)');sayCount('3');}
+      else if(count===2){setNum('2','var(--cf-green)');sayCount('2');}
+      else if(count===1){setNum('1','var(--cf-green)');sayCount('1');}
+      else if(count===0){setNum('GO!','#fff');sayCount('Go!',1100);}
       else{
         clearInterval(_cfCountdownInterval);_cfCountdownInterval=null;
         var o2=document.getElementById('cf-countdown-overlay');if(o2)o2.style.display='none';
