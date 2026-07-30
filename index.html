@@ -10802,7 +10802,9 @@ function wlbSyncWODCard() {
   const mainEmom = document.getElementById('cf-emom-indicator');
   if (roundInfoEl) {
     if (_cfCurrentFormat === 'Intervals') {
-      const phase = _wlbIntervalPhase === 'rest' ? 'REST' : 'Interval ' + (_wlbCurrentInterval + 1) + ' of ' + _wlbIntervals.length;
+      const phase = _wlbIntervalPhase === 'rest'
+        ? 'REST · Next: Interval ' + (_wlbCurrentInterval + 2)
+        : 'Interval ' + (_wlbCurrentInterval + 1) + ' of ' + _wlbIntervals.length;
       roundInfoEl.textContent = phase;
       roundInfoEl.style.color = _wlbIntervalPhase === 'rest' ? 'var(--text-muted)' : 'var(--cf-green)';
     } else {
@@ -10810,12 +10812,20 @@ function wlbSyncWODCard() {
     }
   }
 
-  // Sync WOD card label for Intervals
+  // Sync WOD card label for Intervals — during rest, keep showing the split
+  // just logged instead of clobbering it with a generic "resting" message
+  // (this polls every 250ms via _wcSyncInterval, so it must re-show the same split each tick).
   const rlEl2 = document.getElementById('wc-rounds-label');
   if (rlEl2 && _cfCurrentFormat === 'Intervals') {
-    rlEl2.textContent = _wlbIntervalPhase === 'rest'
-      ? 'Resting — next: Interval ' + (_wlbCurrentInterval + 2)
-      : 'Interval ' + (_wlbCurrentInterval + 1) + ' of ' + _wlbIntervals.length;
+    if (_wlbIntervalPhase === 'rest') {
+      const lastSplit = _wlbIntervalSplits[_wlbCurrentInterval];
+      const fmtSplit = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+      rlEl2.textContent = (lastSplit != null)
+        ? 'I' + (_wlbCurrentInterval + 1) + ': ' + fmtSplit(lastSplit) + ' ✓'
+        : 'Resting — next: Interval ' + (_wlbCurrentInterval + 2);
+    } else {
+      rlEl2.textContent = 'Interval ' + (_wlbCurrentInterval + 1) + ' of ' + _wlbIntervals.length;
+    }
   }
 
   // For EMOM with stations — update highlighted station every tick
@@ -10857,6 +10867,12 @@ function wlbSyncWODCard() {
   if (wcNextBtn2) {
     const showN = _cfCurrentFormat === 'Intervals' && _wlbIntervalPhase === 'work' && _cfTimerRunning;
     wcNextBtn2.style.display = showN ? '' : 'none';
+  }
+  // Sync Skip Rest button on WOD card
+  const wcSkipBtn = document.getElementById('wc-skip-rest-btn');
+  if (wcSkipBtn) {
+    const showSkip = _cfCurrentFormat === 'Intervals' && _wlbIntervalPhase === 'rest' && _cfTimerRunning;
+    wcSkipBtn.style.display = showSkip ? '' : 'none';
   }
 
   // Sync progress bar
@@ -12407,33 +12423,45 @@ function cfIntervalTimerTick() {
     else if (_cfTimerSeconds === 2) cfSpeak('2');
     else if (_cfTimerSeconds === 1) cfSpeak('1');
     else if (_cfTimerSeconds <= 0) {
-      // Rest done — move to next interval
-      _wlbCurrentInterval++;
-      if (_wlbCurrentInterval >= _wlbIntervals.length) {
-        // All intervals done — auto-fill score with splits
-        const scoreElFin = document.getElementById('cf-score-value');
-        if (scoreElFin && !scoreElFin.value && _wlbIntervalSplits.length > 0) {
-          const fmtFin = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
-          scoreElFin.value = _wlbIntervalSplits.map((s,i) => 'I'+(i+1)+': '+fmtFin(s)).join(' / ');
-        }
-        cfTimerDone();
-        cfSpeak('Workout complete!');
-        return;
-      }
-      // Start next work phase
-      _wlbIntervalPhase = 'work';
-      _cfTimerSeconds = 0;
-      cfBeepInterval();
-      cfSpeak('Interval ' + (_wlbCurrentInterval + 1));
-      const labelEl = document.getElementById('cf-timer-label');
-      if (labelEl) labelEl.textContent = 'Interval ' + (_wlbCurrentInterval + 1) + ' of ' + _wlbIntervals.length;
-      const disp2 = document.getElementById('cf-timer-display');
-      if (disp2) { disp2.textContent = '0:00'; disp2.style.color = 'var(--cf-green)'; }
-      // Refresh WOD card
-      if (document.getElementById('cf-wod-card')?.style.display !== 'none') wlbPopulateWODCard();
+      if (cfAdvanceFromRest()) return; // workout finished — cfTimerDone() already handled cleanup
     }
     wlbSyncWODCard();
   }
+}
+
+// Shared by the natural rest-countdown-to-zero path and the "Skip Rest" button.
+// Returns true if that was the last interval (workout is now complete).
+function cfAdvanceFromRest() {
+  _wlbCurrentInterval++;
+  if (_wlbCurrentInterval >= _wlbIntervals.length) {
+    // All intervals done — auto-fill score with splits
+    const scoreElFin = document.getElementById('cf-score-value');
+    if (scoreElFin && !scoreElFin.value && _wlbIntervalSplits.length > 0) {
+      const fmtFin = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+      scoreElFin.value = _wlbIntervalSplits.map((s,i) => 'I'+(i+1)+': '+fmtFin(s)).join(' / ');
+    }
+    cfTimerDone();
+    cfSpeak('Workout complete!');
+    return true;
+  }
+  // Start next work phase
+  _wlbIntervalPhase = 'work';
+  _cfTimerSeconds = 0;
+  cfBeepInterval();
+  cfSpeak('Interval ' + (_wlbCurrentInterval + 1));
+  const labelEl = document.getElementById('cf-timer-label');
+  if (labelEl) labelEl.textContent = 'Interval ' + (_wlbCurrentInterval + 1) + ' of ' + _wlbIntervals.length;
+  const disp2 = document.getElementById('cf-timer-display');
+  if (disp2) { disp2.textContent = '0:00'; disp2.style.color = 'var(--cf-green)'; }
+  // Refresh WOD card
+  if (document.getElementById('cf-wod-card')?.style.display !== 'none') wlbPopulateWODCard();
+  return false;
+}
+
+function cfSkipRest() {
+  if (_cfCurrentFormat !== 'Intervals' || _wlbIntervalPhase !== 'rest') return;
+  if (cfAdvanceFromRest()) return;
+  wlbSyncWODCard();
 }
 
 function cfStartIntervals() {
@@ -13549,6 +13577,35 @@ function cfGetAudioCtx() {
   return _cfAudioCtx;
 }
 
+// iOS Safari silences Web Audio API oscillators (and speechSynthesis) whenever the
+// hardware ringer/mute switch is flipped to silent — this is separate from the
+// gesture-unlock issue cfGetAudioCtx solves. An <audio>/<video> element is exempt
+// from that switch; keeping one playing (even silently, looped) puts the page's
+// whole audio session into "playback" mode, which makes iOS ignore the mute switch
+// for Web Audio and speech synthesis too. Must be started inside a user gesture.
+let _cfSilentAudioEl = null;
+function cfUnlockIOSAudioSession() {
+  if (_cfSilentAudioEl) { _cfSilentAudioEl.play().catch(function(){}); return; }
+  try {
+    var sampleRate = 8000, seconds = 0.5;
+    var numSamples = Math.floor(sampleRate * seconds);
+    var buf = new ArrayBuffer(44 + numSamples);
+    var view = new DataView(buf);
+    var writeStr = function(offset, str) { for (var i=0;i<str.length;i++) view.setUint8(offset+i, str.charCodeAt(i)); };
+    writeStr(0, 'RIFF'); view.setUint32(4, 36 + numSamples, true); writeStr(8, 'WAVE');
+    writeStr(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate, true); view.setUint16(32, 1, true); view.setUint16(34, 8, true);
+    writeStr(36, 'data'); view.setUint32(40, numSamples, true);
+    for (var i=0;i<numSamples;i++) view.setUint8(44+i, 128); // silence (8-bit PCM midpoint)
+    var blob = new Blob([buf], { type: 'audio/wav' });
+    _cfSilentAudioEl = new Audio(URL.createObjectURL(blob));
+    _cfSilentAudioEl.loop = true;
+    _cfSilentAudioEl.volume = 0.01;
+    _cfSilentAudioEl.play().catch(function(){});
+  } catch(e) {}
+}
+
 function cfBeepTone(freq, duration, volume) {
   cfBeep(freq, duration, volume || 0.5);
 }
@@ -13665,6 +13722,7 @@ function cfWODCardStart() {
   // Unlock the SHARED context (the one cfBeep actually plays through) synchronously
   // within this tap's gesture — a throwaway context unlocked here would do nothing
   // for beeps fired later from setInterval, since iOS unlock is per-context-instance.
+  cfUnlockIOSAudioSession();
   try {
     var ctx = cfGetAudioCtx();
     if (ctx) {
@@ -14693,6 +14751,8 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
     </div>
     <!-- Next/Rest button — shown during Intervals work phase -->
     <button id="wc-next-interval-btn" onclick="cfEndIntervalWork()" style="display:none;grid-column:1/-1;background:#ff9f4a;border:none;border-radius:var(--radius);color:#0d0d0d;font-weight:900;font-size:15px;padding:14px;cursor:pointer">✓ Done — Start Rest</button>
+    <!-- Skip Rest button — shown during Intervals rest phase -->
+    <button id="wc-skip-rest-btn" onclick="cfSkipRest()" style="display:none;grid-column:1/-1;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:var(--radius);color:#fff;font-weight:900;font-size:15px;padding:14px;cursor:pointer">⏭ Skip Rest</button>
     <button id="wc-start-btn" class="btn btn-primary" onclick="cfWODCardStart()" style="grid-column:1/-1;background:var(--cf-green);color:#0d0d0d;font-weight:900;font-size:16px;padding:14px">▶ Start</button>
     <button class="btn btn-white" onclick="cfResetTimer();wlbSyncWODCard()">Reset</button>
     <button class="btn btn-ghost" onclick="wlbExitWODCard()">✕ Done</button>
