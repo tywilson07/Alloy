@@ -13305,11 +13305,13 @@ let _cfSetup = {
 };
 
 // Audio beep using Web Audio API
+// Reuses the single shared, gesture-unlocked AudioContext (see cfGetAudioCtx) —
+// iOS Safari only allows playback on a context that was resumed inside a user
+// gesture, so creating a fresh AudioContext per beep (as this used to do) is silent on iOS.
 function cfBeep(frequency, duration, volume) {
   try {
-    var AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    var ctx = new AC();
+    var ctx = cfGetAudioCtx();
+    if (!ctx) return;
     var osc = ctx.createOscillator();
     var gain = ctx.createGain();
     osc.connect(gain); gain.connect(ctx.destination);
@@ -13319,7 +13321,6 @@ function cfBeep(frequency, duration, volume) {
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (duration || 0.15));
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + (duration || 0.15) + 0.05);
-    osc.onended = function() { try { ctx.close(); } catch(e) {} };
   } catch(e) {}
 }
 
@@ -13537,10 +13538,13 @@ function cfSetLeadin(seconds) {
   });
 }
 
-// AudioContext for beeps (works without user gesture after first interaction)
+// Shared AudioContext for beeps — must be created/unlocked inside a user gesture
+// (see cfWODCardStart) for iOS Safari to allow playback from later setInterval callbacks.
 let _cfAudioCtx = null;
 function cfGetAudioCtx() {
-  if (!_cfAudioCtx) _cfAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  if (!_cfAudioCtx) _cfAudioCtx = new AC();
   if (_cfAudioCtx.state === 'suspended') _cfAudioCtx.resume();
   return _cfAudioCtx;
 }
@@ -13658,10 +13662,18 @@ function cfCancelCountdown() {
 // Single entry point for starting timer from WOD card or timer block
 
 function cfWODCardStart() {
-  try { var AC=window.AudioContext||window.webkitAudioContext; if(AC){var uc=new AC();var ub=uc.createBuffer(1,1,22050);var us=uc.createBufferSource();us.buffer=ub;us.connect(uc.destination);us.start(0);setTimeout(function(){try{uc.close();}catch(e){}},200);} } catch(e) {}
+  // Unlock the SHARED context (the one cfBeep actually plays through) synchronously
+  // within this tap's gesture — a throwaway context unlocked here would do nothing
+  // for beeps fired later from setInterval, since iOS unlock is per-context-instance.
   try {
-    if (!_cfAudioCtx) _cfAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (_cfAudioCtx.state === 'suspended') _cfAudioCtx.resume();
+    var ctx = cfGetAudioCtx();
+    if (ctx) {
+      var buf = ctx.createBuffer(1, 1, 22050);
+      var src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+    }
   } catch(e) {}
   if (_cfTimerRunning) { cfToggleTimer(); return; }
   if (_cfCountdownInterval) { cfCancelCountdown(); return; }
