@@ -11137,10 +11137,18 @@ function cfRenderHistByDate(body, scores) {
   body.innerHTML = scores.map(s => {
     const d = new Date(s.logged_at);
     const dateLabel = d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
-    return `<div class="cf-score-item" style="flex-direction:column;align-items:stretch;gap:6px;margin-bottom:8px">
+    const hasSplits = Array.isArray(s.interval_splits) && s.interval_splits.length > 0;
+    const splitsId = 'cf-splits-date-' + s.id;
+    const fmtSplit = sec => Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
+    const splitsDetail = hasSplits
+      ? `<div id="${splitsId}" style="display:none;font-size:11px;color:var(--text-muted);font-family:var(--mono)">`
+        + s.interval_splits.map((sec,idx2) => 'I'+(idx2+1)+': '+fmtSplit(sec)).join('&nbsp;&nbsp;·&nbsp;&nbsp;')
+        + `</div>`
+      : '';
+    return `<div class="cf-score-item" style="flex-direction:column;align-items:stretch;gap:6px;margin-bottom:8px;${hasSplits?'cursor:pointer':''}"${hasSplits?` onclick="cfToggleSplitsDetail('${splitsId}')"`:''}>
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div class="cf-score-wod">${s.wod_name}</div>
+          <div class="cf-score-wod">${s.wod_name}${hasSplits?' <span style="color:var(--cf-green);font-size:11px;font-weight:700">▾ splits</span>':''}</div>
           <div class="cf-score-meta">${dateLabel} · ${s.format||'WOD'}</div>
         </div>
         <div style="text-align:right">
@@ -11149,8 +11157,14 @@ function cfRenderHistByDate(body, scores) {
         </div>
       </div>
       ${s.notes?`<div style="font-size:11.5px;color:var(--text-muted);font-style:italic">"${s.notes}"</div>`:''}
+      ${splitsDetail}
     </div>`;
   }).join('');
+}
+
+function cfToggleSplitsDetail(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
 function cfRenderHistByWOD(body, scores) {
@@ -11207,16 +11221,28 @@ function cfRenderHistByWOD(body, scores) {
         ? `<span style="color:var(--red);font-size:11px;font-weight:700">▼</span>`
         : '';
 
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)">
-        <div>
-          <div style="font-size:12px;color:var(--text-muted)">${dateLabel} ${s.feel||''}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${s.rx_scaled||'RX'}${s.notes?` · "${s.notes.slice(0,30)}"`:''}</div>
+      const hasSplits = Array.isArray(s.interval_splits) && s.interval_splits.length > 0;
+      const splitsId = 'cf-splits-' + s.id;
+      const fmtSplit = sec => Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
+      const splitsDetail = hasSplits
+        ? `<div id="${splitsId}" style="display:none;padding:0 0 8px;font-size:11px;color:var(--text-muted);font-family:var(--mono)">`
+          + s.interval_splits.map((sec,idx2) => 'I'+(idx2+1)+': '+fmtSplit(sec)).join('&nbsp;&nbsp;·&nbsp;&nbsp;')
+          + `</div>`
+        : '';
+
+      return `<div style="border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;${hasSplits?'cursor:pointer':''}"${hasSplits?` onclick="cfToggleSplitsDetail('${splitsId}')"`:''}>
+          <div>
+            <div style="font-size:12px;color:var(--text-muted)">${dateLabel} ${s.feel||''}${hasSplits?' <span style="color:var(--cf-green);font-weight:700">▾ splits</span>':''}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${s.rx_scaled||'RX'}${s.notes?` · "${s.notes.slice(0,30)}"`:''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            ${improveBadge}
+            <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">${s.score}</div>
+            <button class="btn btn-danger btn-xs" onclick="event.stopPropagation();cfDeleteScoreFromHist('${s.id}','${wodName}')">✕</button>
+          </div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          ${improveBadge}
-          <div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">${s.score}</div>
-          <button class="btn btn-danger btn-xs" onclick="cfDeleteScoreFromHist('${s.id}','${wodName}')">✕</button>
-        </div>
+        ${splitsDetail}
       </div>`;
     }).join('');
 
@@ -14383,6 +14409,9 @@ async function cfLogScore() {
   const rx = document.getElementById('cf-score-rx')?.value || 'RX';
   const notes = document.getElementById('cf-score-notes')?.value?.trim() || '';
   const feel = document.getElementById('cf-score-feel')?.value || '';
+  const intervalSplits = (_cfCurrentFormat === 'Intervals' && _wlbIntervalSplits.length > 0)
+    ? _wlbIntervalSplits.slice()
+    : null;
   const payload = {
     user_id: currentUser.id,
     wod_name: wodName,
@@ -14391,6 +14420,7 @@ async function cfLogScore() {
     rx_scaled: rx,
     notes,
     feel,
+    interval_splits: intervalSplits,
     logged_at: new Date().toISOString()
   };
   try {
