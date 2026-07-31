@@ -787,9 +787,6 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
 #fixed-mode-pill .fp-btn.lift-on { background: var(--orange); color: #fff; }
 #fixed-mode-pill .fp-btn.cf-on   { background: #39d353; color: #0d0d0d; }
 
-.cf-fullscreen-btn{position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;z-index:1}
-.cf-fullscreen-btn:hover{color:var(--cf-green);border-color:var(--cf-green)}
-
 
 /* ── Custom movement autocomplete ── */
 .wlb-suggestions {
@@ -1362,7 +1359,6 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
         </div>
 
         <div id="cf-timer-block" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px;position:relative">
-          <button class="cf-fullscreen-btn" onclick="cfEnterFullscreen()" title="Fullscreen timer">⛶</button>
           <!-- Timer setup -->
           <div id="cf-timer-setup">
             <div id="cf-setup-amrap" style="display:none;margin-bottom:12px">
@@ -10645,6 +10641,7 @@ function wlbExitWODCard() {
   document.body.style.overflow = '';
   cfReleaseWakeLock(); // WOD card closed — screen can sleep
   if (_wcSyncInterval) clearInterval(_wcSyncInterval);
+  if (_cfFsActive) cfExitFullscreen(); // leave the TV timer too
   // Pause timer if running
   if (_cfTimerRunning) cfToggleTimer();
   // Scroll to score section
@@ -13760,6 +13757,9 @@ function cfWODCardStart() {
   // within this tap's gesture — a throwaway context unlocked here would do nothing
   // for beeps fired later from setInterval, since iOS unlock is per-context-instance.
   cfUnlockIOSAudioSession();
+  // Hitting Start also puts up the big-format TV timer (see ALLOY — FULLSCREEN TV TIMER)
+  // so mirroring the phone to a TV shows a clean display automatically — no separate toggle needed.
+  cfEnterFullscreen();
   try {
     var ctx = cfGetAudioCtx();
     if (ctx) {
