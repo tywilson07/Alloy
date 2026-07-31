@@ -12520,10 +12520,11 @@ function cfIntervalTimerTick() {
       disp.textContent = m + ':' + String(s).padStart(2,'0');
       disp.style.color = 'var(--text-muted)';
     }
-    // Announce end of rest
-    if (_cfTimerSeconds === 3) cfSpeak('3');
-    else if (_cfTimerSeconds === 2) cfSpeak('2');
-    else if (_cfTimerSeconds === 1) cfSpeak('1');
+    // Announce end of rest — beep alongside speaking so TV viewers (speechSynthesis
+    // stays on-device on iOS) still hear the countdown, not just phone users.
+    if (_cfTimerSeconds === 3) { cfBeepWarning(); cfSpeak('3'); }
+    else if (_cfTimerSeconds === 2) { cfBeepWarning(); cfSpeak('2'); }
+    else if (_cfTimerSeconds === 1) { cfBeepWarning(); cfSpeak('1'); }
     else if (_cfTimerSeconds <= 0) {
       if (cfAdvanceFromRest()) return; // workout finished — cfTimerDone() already handled cleanup
     }
@@ -14000,9 +14001,11 @@ function cfWODCardStart() {
       if(wt){wt.textContent=n;wt.style.color=color||'rgba(255,255,255,.3)';}
       if(wl){wl.style.display='';wl.textContent=n==='GO!'?'GO!':'STARTING IN';}
     };
-    var sayCount=function(n,fallbackFreq){
-      if (window.speechSynthesis) cfSpeak(n);
-      else cfBeep(fallbackFreq || 880, 0.15, 0.7);
+    // Always beep (routes correctly to TV speakers over AirPlay mirroring) in addition to
+    // speaking (speechSynthesis stays on-device on iOS, so TV viewers would otherwise hear nothing).
+    var sayCount=function(n,freq){
+      cfBeep(freq || 880, 0.15, 0.7);
+      cfSpeak(n);
     };
     setNum(count);
     _cfCountdownInterval=setInterval(function(){
