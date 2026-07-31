@@ -1515,6 +1515,10 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
                 Workout Complete
               </label>
             </div>
+            <div class="field" id="cf-score-heavy-field" style="display:none">
+              <label>Score <span style="font-size:10px;color:var(--text-muted);font-weight:600">(auto-calculated from sets)</span></label>
+              <div id="cf-score-heavy-total" style="font-family:var(--mono);font-size:18px;font-weight:900;letter-spacing:.5px;color:var(--cf-green);padding:10px 0">—</div>
+            </div>
             <div class="field">
               <label>RX / Scaled</label>
               <select id="cf-score-rx">
@@ -10202,6 +10206,7 @@ function wlbRenderMovements() {
 }
 
 function wlbUpdatePreview() {
+  if (_cfCurrentFormat === 'Heavy') cfUpdateHeavyScoreTotal();
   const preview = document.getElementById('wlb-preview');
   if (!preview) return;
 
@@ -10889,6 +10894,13 @@ function wlbSyncWODCard() {
   if (wcNextBtn2) {
     const showN = _cfCurrentFormat === 'Intervals' && _wlbIntervalPhase === 'work' && _cfTimerRunning;
     wcNextBtn2.style.display = showN ? '' : 'none';
+  }
+  // Sync Redo Interval button on WOD card — available any time an Intervals workout is underway
+  const wcRedoBtn = document.getElementById('wc-redo-interval-btn');
+  if (wcRedoBtn) {
+    const showRedo = _cfCurrentFormat === 'Intervals' && _wlbWorkoutStarted;
+    wcRedoBtn.style.display = showRedo ? '' : 'none';
+    wcRedoBtn.textContent = _wlbIntervalPhase === 'rest' ? '↺ Redo Rest' : '↺ Redo Interval';
   }
   // Sync Skip Rest button on WOD card
   const wcSkipBtn = document.getElementById('wc-skip-rest-btn');
@@ -12529,6 +12541,25 @@ function cfSkipRest() {
   wlbSyncWODCard();
 }
 
+// Restarts the clock for whichever stage (work interval or rest) is currently
+// active, without touching prior splits or which interval you're on — for when
+// you fat-fingered Start early or want to redo the current stage from scratch.
+function cfRedoIntervalStage() {
+  if (_cfCurrentFormat !== 'Intervals') return;
+  const fmt = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+  const disp = document.getElementById('cf-timer-display');
+  if (_wlbIntervalPhase === 'work') {
+    _cfTimerSeconds = 0;
+    if (disp) { disp.textContent = '0:00'; disp.style.color = 'var(--cf-green)'; }
+    toast('Interval ' + (_wlbCurrentInterval + 1) + ' restarted');
+  } else {
+    _cfTimerSeconds = _wlbIntervalRestSecs;
+    if (disp) { disp.textContent = fmt(_wlbIntervalRestSecs); disp.style.color = 'var(--text-muted)'; }
+    toast('Rest restarted');
+  }
+  wlbSyncWODCard();
+}
+
 function cfStartIntervals() {
   _wlbCurrentInterval = 0;
   _wlbIntervalPhase = 'work';
@@ -13529,8 +13560,7 @@ function cfSelectFormat(format, btn) {
   _cfCurrentFormat = format;
     document.querySelectorAll('.wod-format-chip').forEach(b=>b.classList.remove('active'));
     if (btn) btn.classList.add('active');
-    cfSyncQualityScoreUI(format);
-  
+
     const noTimer = ['For Quality','Heavy'].includes(format);
     const timerBlock = document.getElementById('cf-timer-block');
     const noTimerMsg = document.getElementById('cf-no-timer-msg');
@@ -13556,6 +13586,7 @@ function cfSelectFormat(format, btn) {
       wlbUpdateStructureUI();
       const sv = document.getElementById('cf-score-value');
       if (sv) sv.placeholder = format === 'Heavy' ? 'e.g. 275 lb x3 or 5RM: 225 lb' : 'e.g. Complete or Sets: 3x10';
+      cfSyncQualityScoreUI(format);
       return;
     }
   
@@ -13629,6 +13660,7 @@ function cfSelectFormat(format, btn) {
     _wlbIsIntervals   = (format === 'Intervals');
     _wlbIsHeavy       = (format === 'Heavy');
     wlbUpdateStructureUI();
+    cfSyncQualityScoreUI(format);
 
     cfResetTimer();
 }
@@ -14151,6 +14183,8 @@ function cfResetTimer() {
   if (wcNextBtn3) wcNextBtn3.style.display = 'none';
   const wcSkipBtn3 = document.getElementById('wc-skip-rest-btn');
   if (wcSkipBtn3) wcSkipBtn3.style.display = 'none';
+  const wcRedoBtn3 = document.getElementById('wc-redo-interval-btn');
+  if (wcRedoBtn3) wcRedoBtn3.style.display = 'none';
   if (_cfCurrentFormat === 'Intervals' && document.getElementById('cf-wod-card')?.style.display !== 'none') {
     wlbPopulateWODCard();
   }
@@ -14250,25 +14284,55 @@ function cfFormatScoreInput(input) {
   }
 }
 
-// For Quality is scored as simple pass/fail — swap the free-text score field
-// for a checkbox instead of asking for a typed value.
+// For Quality is scored as simple pass/fail, and Heavy's score is calculated from its
+// sets — both swap the free-text score field for a different input instead of typing a value.
 function cfSyncQualityScoreUI(format) {
   const textField = document.getElementById('cf-score-value-field');
   const checkField = document.getElementById('cf-score-complete-field');
+  const heavyField = document.getElementById('cf-score-heavy-field');
   const checkbox = document.getElementById('cf-score-complete-checkbox');
   const isQuality = format === 'For Quality';
-  if (textField) textField.style.display = isQuality ? 'none' : '';
+  const isHeavy = format === 'Heavy';
+  if (textField) textField.style.display = (isQuality || isHeavy) ? 'none' : '';
   if (checkField) checkField.style.display = isQuality ? '' : 'none';
+  if (heavyField) heavyField.style.display = isHeavy ? '' : 'none';
   if (isQuality && checkbox) {
     checkbox.checked = false;
     const sv = document.getElementById('cf-score-value');
     if (sv) sv.value = '';
   }
+  if (isHeavy) cfUpdateHeavyScoreTotal();
 }
 
 function cfToggleQualityComplete(checkbox) {
   const sv = document.getElementById('cf-score-value');
   if (sv) sv.value = checkbox.checked ? 'Complete' : '';
+}
+
+// Heavy score = sum of weight×reps across all logged sets (a set with weight but no
+// reps is treated as a single rep, e.g. a 1RM attempt). Auto-fills cf-score-value so
+// saving works unchanged; the visible field is the read-only cf-score-heavy-total.
+function cfUpdateHeavyScoreTotal() {
+  const wtUnit = wlbGetWeightUnit();
+  let volume = 0, totalReps = 0, anySet = false;
+  _wlbHeavySets.forEach(set => {
+    const w = parseFloat(set.weight);
+    if (!w) return;
+    const r = parseFloat(set.reps) || 1;
+    volume += w * r;
+    totalReps += r;
+    anySet = true;
+  });
+  const totalEl = document.getElementById('cf-score-heavy-total');
+  const sv = document.getElementById('cf-score-value');
+  if (!anySet) {
+    if (totalEl) totalEl.textContent = '—';
+    if (sv) sv.value = '';
+    return;
+  }
+  const totalStr = Math.round(volume).toLocaleString() + ' ' + wtUnit + ' total (' + totalReps + ' rep' + (totalReps === 1 ? '' : 's') + ')';
+  if (totalEl) totalEl.textContent = totalStr;
+  if (sv) sv.value = totalStr;
 }
 
 // Score hint update now merged into main cfSelectFormat below
@@ -14875,6 +14939,8 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
     <!-- Skip Rest button — shown during Intervals rest phase -->
     <button id="wc-skip-rest-btn" onclick="cfSkipRest()" style="display:none;grid-column:1/-1;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:var(--radius);color:#fff;font-weight:900;font-size:15px;padding:14px;cursor:pointer">⏭ Skip Rest</button>
     <button id="wc-start-btn" class="btn btn-primary" onclick="cfWODCardStart()" style="grid-column:1/-1;background:var(--cf-green);color:#0d0d0d;font-weight:900;font-size:16px;padding:14px">▶ Start</button>
+    <!-- Redo current interval/rest — shown during an active Intervals workout, doesn't touch other splits or position -->
+    <button id="wc-redo-interval-btn" onclick="cfRedoIntervalStage()" style="display:none;grid-column:1/-1;background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-muted);font-weight:700;font-size:13px;padding:10px;cursor:pointer">↺ Redo Interval</button>
     <button class="btn btn-white" onclick="cfResetTimer();wlbSyncWODCard()">Reset</button>
     <button class="btn btn-ghost" onclick="wlbExitWODCard()">✕ Done</button>
   </div>
