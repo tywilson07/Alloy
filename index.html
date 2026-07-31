@@ -1506,11 +1506,18 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             </datalist>
           </div>
           <div class="row">
-            <div class="field">
+            <div class="field" id="cf-score-value-field">
               <label>Score <span id="cf-score-format-hint" style="font-size:10px;color:var(--cf-green);font-weight:700"></span></label>
               <input id="cf-score-value" placeholder="e.g. 24:38 or 9+4"
                 oninput="cfFormatScoreInput(this)"
                 style="font-family:var(--mono);font-size:18px;font-weight:900;letter-spacing:.5px">
+            </div>
+            <div class="field" id="cf-score-complete-field" style="display:none">
+              <label>Score</label>
+              <label style="display:flex;align-items:center;gap:8px;margin-top:6px;cursor:pointer;font-size:14px;font-weight:700;color:var(--cf-green)">
+                <input type="checkbox" id="cf-score-complete-checkbox" onchange="cfToggleQualityComplete(this)" style="width:20px;height:20px">
+                Workout Complete
+              </label>
             </div>
             <div class="field">
               <label>RX / Scaled</label>
@@ -12118,6 +12125,7 @@ function wlbRenderEmomStations() {
         + '<input placeholder="Movement..." value="' + (mv.name||'') + '" autocomplete="off"'
         + ' oninput="_wlbEmomStations[' + sIdx + '].movements[' + mIdx + '].name=this.value;wlbUpdatePreview();wlbShowEmomSuggestions(this,' + sIdx + ',' + mIdx + ')"'
         + ' style="flex:2;font-size:12px;font-weight:700">'
+        + '<input placeholder="' + ph + '" value="' + (mv.reps||'') + '"'
         + ' oninput="_wlbEmomStations[' + sIdx + '].movements[' + mIdx + '].reps=this.value;wlbUpdatePreview()"'
         + ' style="flex:1;font-family:var(--mono);font-size:13px;font-weight:700">'
         + (showWeight ? '<input placeholder="wt" value="' + (mv.weight||'') + '"'
@@ -12439,17 +12447,24 @@ function cfIntervalTimerTick() {
 
 // Shared by the natural rest-countdown-to-zero path and the "Skip Rest" button.
 // Returns true if that was the last interval (workout is now complete).
+// Score = total work time across all intervals (rest periods excluded).
+// Individual splits still live in _wlbIntervalSplits and render in the
+// per-interval movements list (see wlbPopulateWODCard) for the duration of the session.
+function cfFinishIntervalsWorkout() {
+  const scoreElFin = document.getElementById('cf-score-value');
+  if (scoreElFin && !scoreElFin.value && _wlbIntervalSplits.length > 0) {
+    const totalSecs = _wlbIntervalSplits.reduce((sum, s) => sum + (s || 0), 0);
+    const fmtFin = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+    scoreElFin.value = fmtFin(totalSecs);
+  }
+  cfTimerDone();
+  cfSpeak('Workout complete!');
+}
+
 function cfAdvanceFromRest() {
   _wlbCurrentInterval++;
   if (_wlbCurrentInterval >= _wlbIntervals.length) {
-    // All intervals done — auto-fill score with splits
-    const scoreElFin = document.getElementById('cf-score-value');
-    if (scoreElFin && !scoreElFin.value && _wlbIntervalSplits.length > 0) {
-      const fmtFin = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
-      scoreElFin.value = _wlbIntervalSplits.map((s,i) => 'I'+(i+1)+': '+fmtFin(s)).join(' / ');
-    }
-    cfTimerDone();
-    cfSpeak('Workout complete!');
+    cfFinishIntervalsWorkout();
     return true;
   }
   // Start next work phase
@@ -12489,6 +12504,17 @@ function cfEndIntervalWork() {
   const workSecs = _cfTimerSeconds;
   if (!_wlbIntervalSplits) _wlbIntervalSplits = [];
   _wlbIntervalSplits[_wlbCurrentInterval] = workSecs;
+
+  if (_wlbCurrentInterval + 1 >= _wlbIntervals.length) {
+    // Final interval — no rest period, finish the workout now
+    ['wc-next-interval-btn','cf-next-interval-btn'].forEach(function(id){
+      var b=document.getElementById(id);if(b)b.style.display='none';
+    });
+    cfFinishIntervalsWorkout();
+    if (document.getElementById('cf-wod-card')?.style.display !== 'none') wlbPopulateWODCard();
+    return;
+  }
+
   _wlbIntervalPhase = 'rest';
   _cfTimerSeconds = _wlbIntervalRestSecs;
   const fmt = function(s){return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
@@ -13461,6 +13487,7 @@ function cfSelectFormat(format, btn) {
   _cfCurrentFormat = format;
     document.querySelectorAll('.wod-format-chip').forEach(b=>b.classList.remove('active'));
     if (btn) btn.classList.add('active');
+    cfSyncQualityScoreUI(format);
   
     const noTimer = ['For Quality','Heavy'].includes(format);
     const timerBlock = document.getElementById('cf-timer-block');
@@ -14009,11 +14036,13 @@ function cfTimerTick() {
         _cfSetup.tabataPhase = 'rest';
         _cfTimerSeconds = _cfSetup.tabataRest;
         cfBeepRest();
+        cfSpeak('Rest');
         cfUpdateTabataDisplay();
       } else {
         _cfSetup.tabataPhase = 'work';
         _cfTimerSeconds = _cfSetup.tabataWork;
         cfBeepInterval();
+        cfSpeak('Go!');
         cfUpdateTabataDisplay();
       }
       _cfSetup.tabataSecondsInPhase = 0;
@@ -14053,6 +14082,8 @@ function cfTimerDone() {
   if (btn) { btn.textContent = 'Done ✓'; btn.style.background = 'var(--cf-green)'; }
   cfAutoFillScore();
   toast("Time's up! Log your score below.");
+  // Give the finish beep/flash a beat to register, then take them back to the log screen
+  setTimeout(wlbExitWODCard, 900);
 }
 
 function cfResetTimer() {
@@ -14068,6 +14099,16 @@ function cfResetTimer() {
   _cfSetup.tabataRoundsDone = 0;
   _cfSetup.emomCurrentRound = 1;
   _cfSetup.emomSecondsInRound = 0;
+  _wlbCurrentInterval = 0;
+  _wlbIntervalPhase = 'work';
+  _wlbIntervalSplits = [];
+  const wcNextBtn3 = document.getElementById('wc-next-interval-btn');
+  if (wcNextBtn3) wcNextBtn3.style.display = 'none';
+  const wcSkipBtn3 = document.getElementById('wc-skip-rest-btn');
+  if (wcSkipBtn3) wcSkipBtn3.style.display = 'none';
+  if (_cfCurrentFormat === 'Intervals' && document.getElementById('cf-wod-card')?.style.display !== 'none') {
+    wlbPopulateWODCard();
+  }
 
   const btn = document.getElementById('cf-timer-start-btn');
   if (btn) { btn.textContent = 'Start'; btn.style.background = ''; }
@@ -14162,6 +14203,27 @@ function cfFormatScoreInput(input) {
   } else {
     if (hint) hint.textContent = '';
   }
+}
+
+// For Quality is scored as simple pass/fail — swap the free-text score field
+// for a checkbox instead of asking for a typed value.
+function cfSyncQualityScoreUI(format) {
+  const textField = document.getElementById('cf-score-value-field');
+  const checkField = document.getElementById('cf-score-complete-field');
+  const checkbox = document.getElementById('cf-score-complete-checkbox');
+  const isQuality = format === 'For Quality';
+  if (textField) textField.style.display = isQuality ? 'none' : '';
+  if (checkField) checkField.style.display = isQuality ? '' : 'none';
+  if (isQuality && checkbox) {
+    checkbox.checked = false;
+    const sv = document.getElementById('cf-score-value');
+    if (sv) sv.value = '';
+  }
+}
+
+function cfToggleQualityComplete(checkbox) {
+  const sv = document.getElementById('cf-score-value');
+  if (sv) sv.value = checkbox.checked ? 'Complete' : '';
 }
 
 // Score hint update now merged into main cfSelectFormat below
