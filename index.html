@@ -1421,10 +1421,10 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             <div style="font-size:11px;font-weight:700;color:var(--text-muted);white-space:nowrap">Lead-In</div>
             <div style="display:flex;gap:6px;align-items:center">
               <button class="wod-format-chip" id="leadin-0"  onclick="cfSetLeadin(0)"  style="padding:3px 10px;font-size:10px" >None</button>
-              <button class="wod-format-chip" id="leadin-15" onclick="cfSetLeadin(15)" style="padding:3px 10px;font-size:10px">15s</button>
+              <button class="wod-format-chip active" id="leadin-15" onclick="cfSetLeadin(15)" style="padding:3px 10px;font-size:10px">15s</button>
               <button class="wod-format-chip" id="leadin-30" onclick="cfSetLeadin(30)" style="padding:3px 10px;font-size:10px">30s</button>
               <button class="wod-format-chip" id="leadin-45" onclick="cfSetLeadin(45)" style="padding:3px 10px;font-size:10px">45s</button>
-              <button class="wod-format-chip active" id="leadin-60" onclick="cfSetLeadin(60)" style="padding:3px 10px;font-size:10px">60s</button>
+              <button class="wod-format-chip" id="leadin-60" onclick="cfSetLeadin(60)" style="padding:3px 10px;font-size:10px">60s</button>
             </div>
           </div>
 
@@ -13698,7 +13698,7 @@ function cfSelectFormat(format, btn) {
 
 // ── Countdown lead-in timer ────────────────────────
 let _cfCountdownInterval = null;
-let _cfLeadinSeconds = 60; // default
+let _cfLeadinSeconds = 15; // default
 
 function cfSetLeadin(seconds) {
   _cfLeadinSeconds = seconds;
