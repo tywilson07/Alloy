@@ -9749,9 +9749,14 @@ function cfEnterFullscreen() {
   _cfFsActive = true;
   fs.classList.add('active');
 
-  // Try native fullscreen API (works great for TV casting)
-  if (fs.requestFullscreen) fs.requestFullscreen().catch(()=>{});
-  else if (fs.webkitRequestFullscreen) fs.webkitRequestFullscreen();
+  // Try native fullscreen API (works great for TV casting). iPhone Safari doesn't support
+  // the Fullscreen API on non-<video> elements — webkitRequestFullscreen there throws
+  // synchronously instead of failing quietly, so this must never be allowed to propagate
+  // and abort whatever called cfEnterFullscreen() (e.g. starting the workout timer).
+  try {
+    if (fs.requestFullscreen) fs.requestFullscreen().catch(()=>{});
+    else if (fs.webkitRequestFullscreen) fs.webkitRequestFullscreen();
+  } catch(e) {}
 
   // Set WOD name and format
   const wodName = document.getElementById('cf-score-wod')?.value || '';
@@ -13862,7 +13867,8 @@ function cfWODCardStart() {
   cfUnlockIOSAudioSession();
   // Hitting Start also puts up the big-format TV timer (see ALLOY — FULLSCREEN TV TIMER)
   // so mirroring the phone to a TV shows a clean display automatically — no separate toggle needed.
-  cfEnterFullscreen();
+  // Must never throw here: a fullscreen failure should never be able to block the workout from starting.
+  try { cfEnterFullscreen(); } catch(e) {}
   try {
     var ctx = cfGetAudioCtx();
     if (ctx) {
