@@ -9821,6 +9821,8 @@ function cfFsSyncDisplay() {
     } else if (s <= 5) {
       timeEl.classList.add('warning');
     }
+  } else if (_cfCurrentFormat === 'Intervals') {
+    if (_wlbIntervalPhase === 'rest') timeEl.classList.add('rest');
   } else if (['AMRAP','For Time','Chipper','Partner'].includes(_cfCurrentFormat)) {
     if (s <= 10 && _cfTimerSeconds > 0) timeEl.classList.add('warning');
     if (_cfTimerSeconds <= 0 && !_cfTimerRunning) timeEl.classList.add('done');
@@ -9837,10 +9839,18 @@ function cfFsSyncDisplay() {
       const totalRounds = Math.floor(_cfSetup.emomTotal / _cfSetup.emomInterval);
       phaseEl.textContent = `Round ${_cfSetup.emomCurrentRound} of ${totalRounds}`;
       phaseEl.className = 'fs-phase';
+    } else if (_cfCurrentFormat === 'Intervals' && _wlbIsIntervals && _wlbIntervals.length > 0) {
+      phaseEl.textContent = _wlbIntervalPhase === 'rest'
+        ? `REST · Next: Interval ${_wlbCurrentInterval + 2}`
+        : `Interval ${_wlbCurrentInterval + 1} of ${_wlbIntervals.length}`;
+      phaseEl.className = 'fs-phase' + (_wlbIntervalPhase === 'rest' ? ' rest-phase' : '');
     } else {
       phaseEl.textContent = '';
     }
   }
+
+  // Live-refresh the interval list — current interval and completed splits change over time
+  if (_cfCurrentFormat === 'Intervals') cfFsRenderMovements();
 
   // Rounds display (AMRAP)
   if (roundsEl) {
@@ -10897,7 +10907,13 @@ function wlbSyncWODCard() {
 const _origCfEnterFullscreen = cfEnterFullscreen;
 function cfEnterFullscreen() {
   _origCfEnterFullscreen();
-  // Add WOD movements to fullscreen view if not already there
+  cfFsRenderMovements();
+}
+
+// Builds/refreshes the movements panel in the TV fullscreen view. Called once when
+// entering fullscreen, and again every tick from cfFsSyncDisplay() for Intervals
+// (current interval + completed splits change live, unlike a static movement list).
+function cfFsRenderMovements() {
   let fsMovements = document.getElementById('fs-wod-movements');
   if (!fsMovements) {
     const fsEl = document.getElementById('cf-fullscreen-timer');
@@ -10910,9 +10926,37 @@ function cfEnterFullscreen() {
       if (controls) fsEl.insertBefore(fsMovements, controls);
     }
   }
-  if (fsMovements) {
-    const wtUnit = wlbGetWeightUnit();
-    let html = '';
+  if (!fsMovements) return;
+
+  const wtUnit = wlbGetWeightUnit();
+  let html = '';
+
+  if (_wlbIsIntervals && _wlbIntervals.length > 0) {
+    const fmtSplit = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+    html = _wlbIntervals.map((interval, iIdx) => {
+      const isCurrent = iIdx === _wlbCurrentInterval;
+      const splitSecs = _wlbIntervalSplits[iIdx];
+      const splitBadge = splitSecs != null
+        ? `<span style="font-size:16px;font-weight:900;font-family:var(--mono);color:rgba(255,255,255,.55)">${fmtSplit(splitSecs)} ✓</span>`
+        : '';
+      const movLines = interval.movements.map(mv => {
+        if (!mv.name) return '';
+        const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
+        const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+        return `<div style="display:flex;align-items:baseline;gap:12px;padding:4px 0">
+          <span style="font-size:${isCurrent?'28':'18'}px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:50px">${mv.reps||''}</span>
+          <span style="font-size:${isCurrent?'20':'15'}px;font-weight:800;color:${isCurrent?'#fff':'rgba(255,255,255,.4)'}">${mv.name}${unit}${wt}</span>
+        </div>`;
+      }).filter(Boolean).join('');
+      return `<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);opacity:${isCurrent?'1':'0.4'}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--cf-green)">Interval ${iIdx+1}${isCurrent?' ← NOW':''}</span>
+          ${splitBadge}
+        </div>
+        ${movLines}
+      </div>`;
+    }).join('');
+  } else {
     if (_wlbRounds > 1) html += `<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${_wlbRounds} ROUNDS</div>`;
     html += _wlbMovements.map(mv => {
       if (!mv.name) return '';
@@ -10923,8 +10967,9 @@ function cfEnterFullscreen() {
         <span style="font-size:18px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
       </div>`;
     }).join('');
-    fsMovements.innerHTML = html;
   }
+
+  fsMovements.innerHTML = html;
 }
 
 // ═══════════════════════════════════════════════════
