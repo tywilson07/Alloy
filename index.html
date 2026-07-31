@@ -13708,6 +13708,19 @@ function cfSetLeadin(seconds) {
   });
 }
 
+// speechSynthesis is a separate engine from Web Audio/AudioContext — unlocking one
+// doesn't unlock the other. iOS Safari needs an utterance spoken synchronously inside
+// a user gesture before speak() calls from later setInterval callbacks (every "3-2-1-Go"
+// and phase-change voice cue) will actually produce audio, same requirement as cfGetAudioCtx.
+function cfUnlockSpeechSynthesis() {
+  if (!window.speechSynthesis) return;
+  try {
+    var utt = new SpeechSynthesisUtterance(' ');
+    utt.volume = 0.01;
+    window.speechSynthesis.speak(utt);
+  } catch(e) {}
+}
+
 // Shared AudioContext for beeps — must be created/unlocked inside a user gesture
 // (see cfWODCardStart) for iOS Safari to allow playback from later setInterval callbacks.
 let _cfAudioCtx = null;
@@ -13865,6 +13878,7 @@ function cfWODCardStart() {
   // within this tap's gesture — a throwaway context unlocked here would do nothing
   // for beeps fired later from setInterval, since iOS unlock is per-context-instance.
   cfUnlockIOSAudioSession();
+  cfUnlockSpeechSynthesis();
   // Hitting Start also puts up the big-format TV timer (see ALLOY — FULLSCREEN TV TIMER)
   // so mirroring the phone to a TV shows a clean display automatically — no separate toggle needed.
   // Must never throw here: a fullscreen failure should never be able to block the workout from starting.
