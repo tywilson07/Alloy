@@ -11173,7 +11173,49 @@ function cfToggleSplitsDetail(id) {
   if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
+// Parses a WOD score string into a comparable numeric value, for both the
+// improvement badges below and the progress charts. Returns null when the
+// score isn't meaningfully chartable/comparable (e.g. For Quality's Complete/blank).
+function cfParseScoreValue(score, format) {
+  if (!score) return null;
+  if (['For Time','Chipper','Partner','Intervals'].includes(format)) {
+    const parts = String(score).split(':');
+    if (parts.length === 2) {
+      const m = parseInt(parts[0]), s = parseInt(parts[1]);
+      if (!isNaN(m) && !isNaN(s)) return { value: m*60+s, higherIsBetter: false, kind: 'time' };
+    }
+    return null;
+  }
+  if (format === 'AMRAP') {
+    const m = String(score).match(/^(\d+)(?:\+(\d+))?/);
+    if (m) return { value: parseInt(m[1])*100 + (parseInt(m[2])||0), higherIsBetter: true, kind: 'amrap' };
+    return null;
+  }
+  if (format === 'Heavy') {
+    const m = String(score).match(/^([\d,]+)/);
+    if (m) return { value: parseFloat(m[1].replace(/,/g,'')), higherIsBetter: true, kind: 'number' };
+    return null;
+  }
+  if (format === 'For Quality') return null; // pass/fail, not chartable
+  // EMOM/Tabata/other — chart it if the whole score is a plain number
+  if (/^\d+(\.\d+)?$/.test(String(score).trim())) {
+    return { value: parseFloat(score), higherIsBetter: true, kind: 'number' };
+  }
+  return null;
+}
+
+// Chart.js instances for the currently-rendered "by WOD" history view — must be
+// destroyed before every re-render (search typing re-renders on every keystroke)
+// or Chart.js throws "Canvas is already in use".
+let _cfHistCharts = [];
+function cfDestroyHistCharts() {
+  _cfHistCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
+  _cfHistCharts = [];
+}
+
 function cfRenderHistByWOD(body, scores) {
+  cfDestroyHistCharts();
+
   // Group by WOD name
   const groups = {};
   scores.forEach(s => {
@@ -11186,41 +11228,29 @@ function cfRenderHistByWOD(body, scores) {
     new Date(b[1][0].logged_at) - new Date(a[1][0].logged_at)
   );
 
-  body.innerHTML = sorted.map(([wodName, attempts]) => {
-    const isForTime = attempts[0]?.format && ['For Time','Chipper','Partner'].includes(attempts[0].format);
-    const isAMRAP = attempts[0]?.format === 'AMRAP';
+  const getImprovement = (curr, prev, format) => {
+    const c = cfParseScoreValue(curr, format), p = cfParseScoreValue(prev, format);
+    if (!c || !p) return null;
+    if (c.value === p.value) return 'same';
+    return c.higherIsBetter ? (c.value > p.value ? 'better' : 'worse') : (c.value < p.value ? 'better' : 'worse');
+  };
 
-    // Detect improvement
-    const getImprovement = (curr, prev) => {
-      if (!curr || !prev) return null;
-      // For Time: lower is better
-      if (isForTime) {
-        const parseTime = t => {
-          if (!t) return null;
-          const parts = t.split(':');
-          if (parts.length === 2) return parseInt(parts[0])*60 + parseInt(parts[1]);
-          return null;
-        };
-        const c = parseTime(curr), p = parseTime(prev);
-        if (c && p) return c < p ? 'better' : c > p ? 'worse' : 'same';
-      }
-      // AMRAP: higher is better
-      if (isAMRAP) {
-        const parseRounds = t => {
-          if (!t) return null;
-          const m = t.match(/^(\d+)(?:\+(\d+))?/);
-          return m ? parseInt(m[1])*100 + (parseInt(m[2])||0) : null;
-        };
-        const c = parseRounds(curr), p = parseRounds(prev);
-        if (c && p) return c > p ? 'better' : c < p ? 'worse' : 'same';
-      }
-      return null;
-    };
+  // Build chart data up front (oldest → newest, left to right) so it's shared
+  // between the HTML template pass and the chart-instantiation pass below.
+  const groupData = sorted.map(([wodName, attempts], groupIdx) => {
+    const chartPoints = attempts.slice().reverse().map(s => {
+      const parsed = cfParseScoreValue(s.score, s.format);
+      if (!parsed) return null;
+      return { date: new Date(s.logged_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}), value: parsed.value, kind: parsed.kind };
+    }).filter(Boolean);
+    return { wodName, attempts, chartPoints, chartId: 'cf-hist-chart-' + groupIdx };
+  });
 
+  body.innerHTML = groupData.map(({wodName, attempts, chartPoints, chartId}) => {
     const attemptsHtml = attempts.map((s, i) => {
       const d = new Date(s.logged_at);
       const dateLabel = d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});
-      const improvement = i < attempts.length-1 ? getImprovement(s.score, attempts[i+1].score) : null;
+      const improvement = i < attempts.length-1 ? getImprovement(s.score, attempts[i+1].score, s.format) : null;
       const improveBadge = improvement === 'better'
         ? `<span style="color:var(--cf-green);font-size:11px;font-weight:800">▲ PR</span>`
         : improvement === 'worse'
@@ -11255,9 +11285,16 @@ function cfRenderHistByWOD(body, scores) {
     // Best score
     const best = attempts.reduce((b, s) => {
       if (!b) return s;
-      const imp = getImprovement(s.score, b.score);
+      const imp = getImprovement(s.score, b.score, s.format);
       return imp === 'better' ? s : b;
     }, null);
+
+    const chartCard = chartPoints.length >= 2
+      ? `<div class="chart-card" style="margin:0 14px 10px;padding:10px 12px">
+          <div class="chart-label">${chartPoints[0].kind === 'time' ? 'Time per attempt — lower is better' : 'Score per attempt'}</div>
+          <canvas id="${chartId}" height="90"></canvas>
+        </div>`
+      : '';
 
     return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:10px">
       <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
@@ -11267,12 +11304,38 @@ function cfRenderHistByWOD(body, scores) {
         </div>
         ${best?`<div style="text-align:right"><div style="font-size:10px;font-weight:700;color:var(--cf-green);text-transform:uppercase;letter-spacing:.5px">Best</div><div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">${best.score}</div></div>`:''}
       </div>
+      ${chartCard}
       <div style="padding:0 14px">${attemptsHtml}</div>
       <div style="padding:10px 14px">
         <button class="btn btn-primary btn-sm btn-full" onclick="cfPreFillTrack('${wodName}')">Do this WOD again</button>
       </div>
     </div>`;
   }).join('');
+
+  // Canvases now exist in the DOM — instantiate their charts
+  groupData.forEach(({chartPoints, chartId}) => {
+    if (chartPoints.length < 2) return;
+    const canvas = document.getElementById(chartId);
+    if (!canvas) return;
+    const chart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: chartPoints.map(p => p.date),
+        datasets: [{
+          data: chartPoints.map(p => p.value),
+          borderColor: 'var(--cf-green)',
+          backgroundColor: 'rgba(57,211,83,0.12)',
+          borderWidth: 2,
+          tension: .3,
+          pointBackgroundColor: 'var(--cf-green)',
+          pointRadius: 4,
+          fill: true
+        }]
+      },
+      options: { ...CHART_OPTS }
+    });
+    _cfHistCharts.push(chart);
+  });
 }
 
 async function cfDeleteScoreFromHist(id, wodName) {
