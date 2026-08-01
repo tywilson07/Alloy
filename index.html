@@ -10528,24 +10528,19 @@ async function wlbLoadPreviousAttempts(wodName) {
 
 function wlbFindBestScore(attempts, fmt) {
   if (!attempts.length) return null;
-  const isForTime = ['For Time','Chipper','Partner'].includes(fmt);
-  const isAMRAP = fmt === 'AMRAP';
-  if (isForTime) {
-    const pt = t => { const m = t?.match(/(\d+):(\d+)/); return m ? parseInt(m[1])*60+parseInt(m[2]) : Infinity; };
-    return attempts.reduce((b,s) => pt(s.score) < pt(b.score) ? s : b);
-  }
-  if (isAMRAP) {
-    const pr = t => { const m = t?.match(/^(\d+)(?:\+(\d+))?/); return m ? parseInt(m[1])*100+(parseInt(m[2])||0) : -1; };
-    return attempts.reduce((b,s) => pr(s.score) > pr(b.score) ? s : b);
-  }
-  return attempts[0];
+  return attempts.reduce((best, s) => {
+    const c = cfParseScoreValue(s.score, fmt);
+    if (!c) return best; // not chartable/comparable (e.g. For Quality) — keep most recent
+    const b = cfParseScoreValue(best.score, fmt);
+    if (!b) return s;
+    const better = c.higherIsBetter ? c.value > b.value : c.value < b.value;
+    return better ? s : best;
+  });
 }
 
 function wlbRenderPrevAttempts(attempts, fmt, best) {
   const body = document.getElementById('wlb-prev-attempts-body');
   if (!body) return;
-  const isForTime = ['For Time','Chipper','Partner'].includes(fmt);
-  const isAMRAP = fmt === 'AMRAP';
 
   body.innerHTML = attempts.slice(0,5).map((s,i) => {
     const d = new Date(s.logged_at);
@@ -10555,14 +10550,12 @@ function wlbRenderPrevAttempts(attempts, fmt, best) {
     let arrow = '';
     if (i < attempts.length - 1) {
       const prev = attempts[i+1];
-      if (isForTime) {
-        const pt = t => { const m = t?.match(/(\d+):(\d+)/); return m ? parseInt(m[1])*60+parseInt(m[2]) : null; };
-        const c = pt(s.score), p = pt(prev.score);
-        if (c && p) arrow = c < p ? '<span style="color:var(--cf-green);font-size:11px;font-weight:800"> ▲</span>' : c > p ? '<span style="color:var(--red);font-size:11px;font-weight:700"> ▼</span>' : '';
-      } else if (isAMRAP) {
-        const pr = t => { const m = t?.match(/^(\d+)(?:\+(\d+))?/); return m ? parseInt(m[1])*100+(parseInt(m[2])||0) : null; };
-        const c = pr(s.score), p = pr(prev.score);
-        if (c && p) arrow = c > p ? '<span style="color:var(--cf-green);font-size:11px;font-weight:800"> ▲</span>' : c < p ? '<span style="color:var(--red);font-size:11px;font-weight:700"> ▼</span>' : '';
+      const c = cfParseScoreValue(s.score, fmt), p = cfParseScoreValue(prev.score, fmt);
+      if (c && p && c.value !== p.value) {
+        const better = c.higherIsBetter ? c.value > p.value : c.value < p.value;
+        arrow = better
+          ? '<span style="color:var(--cf-green);font-size:11px;font-weight:800"> ▲</span>'
+          : '<span style="color:var(--red);font-size:11px;font-weight:700"> ▼</span>';
       }
     }
     const len = attempts.slice(0,5).length;
