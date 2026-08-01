@@ -13654,7 +13654,10 @@ function cfToggleCap() {
 // ── Format selection ──
 function cfSelectFormat(format, btn) {
   _cfCurrentFormat = format;
-    document.querySelectorAll('.wod-format-chip').forEach(b=>b.classList.remove('active'));
+    // Scoped to just the format row — .wod-format-chip is reused by the lead-in,
+    // interval-rest-duration, and library-filter button groups too, and clearing
+    // "active" across all of them wiped out their own selected states on every format switch.
+    document.querySelectorAll('.wod-format-chips .wod-format-chip').forEach(b=>b.classList.remove('active'));
     if (btn) btn.classList.add('active');
 
     const noTimer = ['For Quality','Heavy'].includes(format);
