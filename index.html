@@ -9729,6 +9729,9 @@ async function cfSaveBuiltWOD(wod) {
     difficulty: _cfBuilderState.difficulty || '',
     duration_bucket: _cfBuilderState.duration || '',
     equipment: _cfBuilderState.equipment || [],
+    // Remembers the AI's suggested scoring type even if this gets saved to the
+    // library directly without ever going through "Track Now" first.
+    builder_state: wod.scoring_type ? { scoringType: wod.scoring_type } : undefined,
     created_at: new Date().toISOString()
   };
   try {
@@ -10224,6 +10227,7 @@ function wlbRenderMovements() {
 
 function wlbUpdatePreview() {
   if (_cfCurrentFormat === 'Heavy') cfUpdateHeavyScoreTotal();
+  cfAutoDetectScoringType();
   const preview = document.getElementById('wlb-preview');
   if (!preview) return;
 
@@ -13678,6 +13682,7 @@ function cfSelectFormat(format, btn) {
     const showScoringType = format === 'Tabata' || format === 'EMOM';
     if (scoringTypeRow) scoringTypeRow.style.display = showScoringType ? 'flex' : 'none';
     _cfScoringType = 'reps';
+    _cfScoringTypeManuallySet = false;
     document.querySelectorAll('.cf-scoring-type-chips .wod-format-chip').forEach(b => {
       b.classList.toggle('active', b.id === 'scoretype-reps');
     });
@@ -13798,12 +13803,33 @@ function cfSetLeadin(seconds) {
 // clear .active across all .wod-format-chip elements (that exact mistake wiped out
 // the lead-in row's highlight on every format switch, fixed in commit c63bdaa).
 let _cfScoringType = 'reps';
-function cfSetScoringType(type) {
+let _cfScoringTypeManuallySet = false; // true once the user (or a restored WOD) explicitly picked a type — blocks auto-detection from overriding it
+function cfSetScoringType(type, isManual = true) {
   _cfScoringType = type;
+  if (isManual) _cfScoringTypeManuallySet = true;
   document.querySelectorAll('.cf-scoring-type-chips .wod-format-chip').forEach(b => {
     b.classList.toggle('active', b.id === 'scoretype-' + type);
   });
   cfUpdateScoreHint();
+}
+
+// Auto-suggests a scoring type from the first programmed movement, using the same
+// classifier (wlbGetMovementType/wlbDefaultUnit) already driving the per-movement
+// unit toggle in the Interval/EMOM builders. Never overrides an explicit user choice.
+function cfAutoDetectScoringType() {
+  if (_cfScoringTypeManuallySet) return;
+  if (_cfCurrentFormat !== 'Tabata' && _cfCurrentFormat !== 'EMOM') return;
+  let name = '';
+  if (_cfCurrentFormat === 'Tabata') {
+    name = _wlbMovements[0]?.name || '';
+  } else {
+    const firstWork = _wlbEmomStations.find(st => !st.isRest && st.movements[0]?.name);
+    name = firstWork?.movements[0]?.name || '';
+  }
+  if (!name) return;
+  const type = wlbGetMovementType(name);
+  const suggested = type === 'bike' ? 'calories' : ['row','run','carry'].includes(type) ? 'distance' : 'reps';
+  if (suggested !== _cfScoringType) cfSetScoringType(suggested, false);
 }
 
 // speechSynthesis is a separate engine from Web Audio/AudioContext — unlocking one
@@ -14901,13 +14927,18 @@ function cfLoadWODToTrack(wod) {
   // Restore builder state if saved
   setTimeout(() => {
     const bs = wod.builder_state;
+    // Restore remembered scoring type (Tabata/EMOM only) — cfSelectFormat() above
+    // already reset it to 'reps', so only override if this WOD actually saved one.
+    // Checked outside the `if (bs)` block below because a freshly AI-generated WOD
+    // (via "Track Now", before ever being saved) has no builder_state wrapper at all —
+    // its suggested scoring type only exists as the top-level wod.scoring_type field.
+    const restoredScoringType = bs?.scoringType || wod.scoring_type;
+    if (restoredScoringType) cfSetScoringType(restoredScoringType);
+
     if (bs) {
       _wlbIsIntervals   = bs.isIntervals   || false;
       _wlbIsEmomStation = bs.isEmomStation || false;
       _wlbIsHeavy       = bs.isHeavy       || false;
-      // Restore remembered scoring type (Tabata/EMOM only) — cfSelectFormat() above
-      // already reset it to 'reps', so only override if this WOD actually saved one.
-      if (bs.scoringType) cfSetScoringType(bs.scoringType);
 
       if (bs.isIntervals && bs.intervals?.length > 0) {
         _wlbIntervals = bs.intervals;
