@@ -1428,6 +1428,17 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
             </div>
           </div>
 
+          <!-- Scoring type row — shown for Tabata/EMOM only, where the same interval
+               structure can be scored by reps, calories, or distance depending on the movement -->
+          <div id="cf-scoring-type-row" style="display:none;align-items:center;justify-content:space-between;margin-bottom:10px;padding:8px 12px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);white-space:nowrap">Scored By</div>
+            <div class="cf-scoring-type-chips" style="display:flex;gap:6px;align-items:center">
+              <button class="wod-format-chip active" id="scoretype-reps" onclick="cfSetScoringType('reps')" style="padding:3px 10px;font-size:10px">Reps</button>
+              <button class="wod-format-chip" id="scoretype-calories" onclick="cfSetScoringType('calories')" style="padding:3px 10px;font-size:10px">Calories</button>
+              <button class="wod-format-chip" id="scoretype-distance" onclick="cfSetScoringType('distance')" style="padding:3px 10px;font-size:10px">Distance</button>
+            </div>
+          </div>
+
           <!-- Time cap row — shown for For Time / Chipper / Partner -->
           <div id="cf-cap-row" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:8px 12px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
             <div style="font-size:11px;font-weight:700;color:var(--text-muted)">Time Cap</div>
@@ -11062,6 +11073,7 @@ function cfSaveLoggedWODToLibrary() {
     showBuyout: _wlbShowBuyout,
     buyoutMovements: JSON.parse(JSON.stringify(_wlbBuyoutMovements)),
     setup: { ..._cfSetup },
+    scoringType: _cfScoringType,
   };
 
   const wod = {
@@ -11148,7 +11160,7 @@ function cfRenderHistByDate(body, scores) {
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div>
           <div class="cf-score-wod">${s.wod_name}${hasSplits?' <span style="color:var(--cf-green);font-size:11px;font-weight:700">▾ splits</span>':''}</div>
-          <div class="cf-score-meta">${dateLabel} · ${s.format||'WOD'}</div>
+          <div class="cf-score-meta">${dateLabel} · ${s.format||'WOD'}${s.scoring_type && s.scoring_type !== 'reps' ? ' · ' + s.scoring_type.charAt(0).toUpperCase() + s.scoring_type.slice(1) : ''}</div>
         </div>
         <div style="text-align:right">
           <div class="cf-score-value">${s.score}</div>
@@ -11293,7 +11305,7 @@ function cfRenderHistByWOD(body, scores) {
       <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
         <div>
           <div style="font-size:15px;font-weight:900;text-transform:uppercase;letter-spacing:.2px">${wodName}</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${attempts[0]?.format||'WOD'} · ${attempts.length} attempt${attempts.length!==1?'s':''}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${attempts[0]?.format||'WOD'}${attempts[0]?.scoring_type && attempts[0].scoring_type !== 'reps' ? ' · ' + attempts[0].scoring_type.charAt(0).toUpperCase() + attempts[0].scoring_type.slice(1) : ''} · ${attempts.length} attempt${attempts.length!==1?'s':''}</div>
         </div>
         ${best?`<div style="text-align:right"><div style="font-size:10px;font-weight:700;color:var(--cf-green);text-transform:uppercase;letter-spacing:.5px">Best</div><div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">${best.score}</div></div>`:''}
       </div>
@@ -13659,6 +13671,17 @@ function cfSelectFormat(format, btn) {
     if (timerBlock) timerBlock.style.display = noTimer ? 'none' : '';
     if (noTimerMsg) noTimerMsg.style.display = noTimer ? '' : 'none';
 
+    // Scoring-type row (Reps/Calories/Distance) — Tabata/EMOM only, since those are
+    // the only formats where the same structure can be scored by a different metric
+    // depending on the movement. Reset to Reps on every format switch.
+    const scoringTypeRow = document.getElementById('cf-scoring-type-row');
+    const showScoringType = format === 'Tabata' || format === 'EMOM';
+    if (scoringTypeRow) scoringTypeRow.style.display = showScoringType ? 'flex' : 'none';
+    _cfScoringType = 'reps';
+    document.querySelectorAll('.cf-scoring-type-chips .wod-format-chip').forEach(b => {
+      b.classList.toggle('active', b.id === 'scoretype-reps');
+    });
+
     // ALWAYS hide all setup panels regardless of format
     ['amrap','emom','tabata','fortime'].forEach(p => {
       const el = document.getElementById('cf-setup-' + p);
@@ -13678,6 +13701,7 @@ function cfSelectFormat(format, btn) {
       wlbUpdateStructureUI();
       const sv = document.getElementById('cf-score-value');
       if (sv) sv.placeholder = format === 'Heavy' ? 'e.g. 275 lb x3 or 5RM: 225 lb' : 'e.g. Complete or Sets: 3x10';
+      cfUpdateScoreHint();
       cfSyncQualityScoreUI(format);
       return;
     }
@@ -13735,10 +13759,9 @@ function cfSelectFormat(format, btn) {
     const labelEl = document.getElementById('cf-timer-label');
     if (labelEl) labelEl.textContent = format;
   
-    // Update score placeholder
-    const sv = document.getElementById('cf-score-value');
-    if (sv) sv.placeholder = format === 'AMRAP' ? 'e.g. 9+4' : 'e.g. 24:38';
-  
+    // Update score placeholder/hint (handles Tabata/EMOM's scoring-type-dependent text too)
+    cfUpdateScoreHint();
+
     // Update EMOM/Tabata summaries
     if (format === 'EMOM') cfUpdateEmomSummary();
     if (format === 'Tabata') cfUpdateTabataSummary();
@@ -13767,6 +13790,20 @@ function cfSetLeadin(seconds) {
     const btn = document.getElementById('leadin-' + s);
     if (btn) btn.classList.toggle('active', s === seconds);
   });
+}
+
+// Tabata/EMOM only — the same interval structure can be scored by reps
+// (bodyweight/dumbbell work), calories, or distance (bike/row/ski erg), so this
+// is orthogonal to format. Scoped to .cf-scoring-type-chips specifically — do NOT
+// clear .active across all .wod-format-chip elements (that exact mistake wiped out
+// the lead-in row's highlight on every format switch, fixed in commit c63bdaa).
+let _cfScoringType = 'reps';
+function cfSetScoringType(type) {
+  _cfScoringType = type;
+  document.querySelectorAll('.cf-scoring-type-chips .wod-format-chip').forEach(b => {
+    b.classList.toggle('active', b.id === 'scoretype-' + type);
+  });
+  cfUpdateScoreHint();
 }
 
 // speechSynthesis is a separate engine from Web Audio/AudioContext — unlocking one
@@ -14443,8 +14480,7 @@ function cfUpdateTimerDisplay() {
 // ── Score auto-format ──────────────────────────────
 function cfFormatScoreInput(input) {
   const fmt = _cfCurrentFormat;
-  let val = input.value;
-  const hint = document.getElementById('cf-score-format-hint');
+  const val = input.value;
 
   if (['For Time','Chipper','Partner'].includes(fmt)) {
     // Auto-format as MM:SS as digits are typed
@@ -14459,22 +14495,35 @@ function cfFormatScoreInput(input) {
         input.value = `${parseInt(mins)||0}:${secs}`;
       }
     }
+  }
+  cfUpdateScoreHint();
+}
+
+// Single source of truth for the score field's hint text + placeholder, driven by
+// format and (for Tabata/EMOM) scoring type. Called on every keystroke (above), and
+// also directly from cfSelectFormat()/cfSetScoringType() so the hint is correct
+// immediately on selection rather than only after the user starts typing.
+function cfUpdateScoreHint() {
+  const fmt = _cfCurrentFormat;
+  const hint = document.getElementById('cf-score-format-hint');
+  const sv = document.getElementById('cf-score-value');
+  const scoreTypeHint = { reps: null, calories: 'total calories', distance: 'total distance (m)' };
+  const scoreTypePlaceholder = { reps: null, calories: 'e.g. 42', distance: 'e.g. 850' };
+
+  if (['For Time','Chipper','Partner'].includes(fmt)) {
     if (hint) hint.textContent = 'MM:SS';
-
+    if (sv) sv.placeholder = 'e.g. 24:38';
   } else if (fmt === 'AMRAP') {
-    // Format: rounds+reps e.g. 9+4
-    // Auto-add + if just a number typed and they're continuing
     if (hint) hint.textContent = 'rounds+reps';
-
+    if (sv) sv.placeholder = 'e.g. 9+4';
   } else if (fmt === 'EMOM') {
-    if (hint) hint.textContent = 'rounds completed';
-
+    if (hint) hint.textContent = scoreTypeHint[_cfScoringType] || 'rounds completed';
+    if (sv) sv.placeholder = scoreTypePlaceholder[_cfScoringType] || 'e.g. 18';
   } else if (fmt === 'Tabata') {
-    if (hint) hint.textContent = 'total reps';
-
+    if (hint) hint.textContent = scoreTypeHint[_cfScoringType] || 'total reps';
+    if (sv) sv.placeholder = scoreTypePlaceholder[_cfScoringType] || 'e.g. 65';
   } else if (fmt === 'Heavy') {
     if (hint) hint.textContent = 'weight lifted';
-
   } else {
     if (hint) hint.textContent = '';
   }
@@ -14591,6 +14640,7 @@ async function cfLogScore() {
     notes,
     feel,
     interval_splits: intervalSplits,
+    scoring_type: ['Tabata','EMOM'].includes(_cfCurrentFormat) ? _cfScoringType : null,
     logged_at: new Date().toISOString()
   };
   try {
@@ -14855,6 +14905,9 @@ function cfLoadWODToTrack(wod) {
       _wlbIsIntervals   = bs.isIntervals   || false;
       _wlbIsEmomStation = bs.isEmomStation || false;
       _wlbIsHeavy       = bs.isHeavy       || false;
+      // Restore remembered scoring type (Tabata/EMOM only) — cfSelectFormat() above
+      // already reset it to 'reps', so only override if this WOD actually saved one.
+      if (bs.scoringType) cfSetScoringType(bs.scoringType);
 
       if (bs.isIntervals && bs.intervals?.length > 0) {
         _wlbIntervals = bs.intervals;
@@ -14903,7 +14956,7 @@ function cfOpenBuildWOD() {
       <input id="cf-wod-name" placeholder='e.g. "HAUL"'></div>
     <div class="row">
       <div class="field"><label>Format</label>
-        <select id="cf-wod-format"><option>For Time</option><option>AMRAP</option><option>EMOM</option><option>Chipper</option><option>Partner</option><option>Tabata</option><option>For Quality</option><option>Heavy</option></select></div>
+        <select id="cf-wod-format"><option>For Time</option><option>AMRAP</option><option>EMOM</option><option>Chipper</option><option>Partner</option><option>Tabata</option><option>For Quality</option><option>Heavy</option><option>Intervals</option></select></div>
       <div class="field"><label>Time Cap (min)</label>
         <input id="cf-wod-cap" type="number" placeholder="20"></div>
     </div>
