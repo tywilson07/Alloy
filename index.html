@@ -738,14 +738,14 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
    column on the right. */
 #cf-fullscreen-timer{display:none;position:fixed;inset:0;background:#0d0d0d;z-index:9999;flex-direction:row;align-items:stretch;gap:0;cursor:pointer;padding:6vh 6vw;overflow:hidden}
 #cf-fullscreen-timer.active{display:flex}
-.fs-left-panel{flex:0 0 42%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-right:4vw;min-width:0}
+.fs-left-panel{flex:0 0 50%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-right:4vw;min-width:0}
 .fs-right-panel{flex:1;display:flex;flex-direction:column;justify-content:center;padding-left:4vw;border-left:1px solid rgba(255,255,255,.1);min-width:0;overflow:hidden}
-/* Font sizes below are the same clamp() approach as before, just re-tuned for a ~42%-wide
+/* Font sizes below are the same clamp() approach as before, re-tuned for a 50%-wide
    column instead of the full screen width (vw is always relative to the whole viewport,
    not the parent panel, so these needed scaling down to match the narrower column). */
 .fs-wod-name{font-family:'Barlow Condensed',-apple-system,sans-serif;font-size:clamp(20px,4vw,52px);font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#fff;opacity:.5;margin-bottom:clamp(6px,2vw,20px);text-align:center}
 .fs-format-label{font-size:clamp(11px,2vw,22px);font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:#39d353;margin-bottom:clamp(4px,1.5vw,12px);opacity:.8;text-align:center}
-.fs-time{font-family:'Barlow Condensed','JetBrains Mono',monospace;font-size:clamp(80px,12vw,220px);font-weight:900;letter-spacing:-.02em;line-height:.85;color:#39d353;font-variant-numeric:tabular-nums;transition:color .3s}
+.fs-time{font-family:'Barlow Condensed','JetBrains Mono',monospace;font-size:clamp(90px,14vw,260px);font-weight:900;letter-spacing:-.02em;line-height:.85;color:#39d353;font-variant-numeric:tabular-nums;transition:color .3s}
 .fs-time.warning{color:#FFB800}
 .fs-time.done{color:#fff}
 .fs-time.rest{color:#444}
@@ -11190,26 +11190,26 @@ function cfFsRenderMovements() {
     const current = _wlbIntervals[_wlbCurrentInterval];
     const prevSplitSecs = _wlbCurrentInterval > 0 ? _wlbIntervalSplits[_wlbCurrentInterval - 1] : null;
     const lastSplitLine = prevSplitSecs != null
-      ? `<div style="font-size:14px;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">Interval ${_wlbCurrentInterval}: ${fmtSplit(prevSplitSecs)} ✓</div>`
+      ? `<div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">Interval ${_wlbCurrentInterval}: ${fmtSplit(prevSplitSecs)} ✓</div>`
       : '';
     html = lastSplitLine + (current?.movements||[]).map(mv => {
       if (!mv.name) return '';
       const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
       const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-      return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)">
-        <span style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:50px">${mv.reps||''}</span>
-        <span style="font-size:20px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
+      return `<div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:24px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:44px">${mv.reps||''}</span>
+        <span style="font-size:17px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
       </div>`;
     }).filter(Boolean).join('');
   } else {
-    if (_wlbRounds > 1) html += `<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${_wlbRounds} ROUNDS</div>`;
+    if (_wlbRounds > 1) html += `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${_wlbRounds} ROUNDS</div>`;
     html += _wlbMovements.map(mv => {
       if (!mv.name) return '';
       const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
       const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-      return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)">
-        <span style="font-size:24px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:50px">${mv.reps||''}</span>
-        <span style="font-size:18px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
+      return `<div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:44px">${mv.reps||''}</span>
+        <span style="font-size:16px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
       </div>`;
     }).join('');
   }
@@ -11571,26 +11571,26 @@ function cfRenderRemoteTVMovements(state) {
     const current = state.intervals[state.currentInterval];
     const prevSplitSecs = state.currentInterval > 0 ? splits[state.currentInterval - 1] : null;
     const lastSplitLine = prevSplitSecs != null
-      ? `<div style="font-size:14px;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">Interval ${state.currentInterval}: ${fmtSplit(prevSplitSecs)} ✓</div>`
+      ? `<div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">Interval ${state.currentInterval}: ${fmtSplit(prevSplitSecs)} ✓</div>`
       : '';
     html = lastSplitLine + (current?.movements||[]).map(mv => {
       if (!mv.name) return '';
       const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
       const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-      return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)">
-        <span style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:50px">${mv.reps||''}</span>
-        <span style="font-size:20px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
+      return `<div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:24px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:44px">${mv.reps||''}</span>
+        <span style="font-size:17px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
       </div>`;
     }).filter(Boolean).join('');
   } else {
-    if (state.wlbRounds > 1) html += `<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${state.wlbRounds} ROUNDS</div>`;
+    if (state.wlbRounds > 1) html += `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${state.wlbRounds} ROUNDS</div>`;
     html += (state.movements||[]).map(mv => {
       if (!mv.name) return '';
       const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
       const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-      return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)">
-        <span style="font-size:24px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:50px">${mv.reps||''}</span>
-        <span style="font-size:18px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
+      return `<div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:44px">${mv.reps||''}</span>
+        <span style="font-size:16px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
       </div>`;
     }).join('');
   }
