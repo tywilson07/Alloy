@@ -10869,7 +10869,7 @@ function wlbStartWOD() {
   _wcSyncInterval = setInterval(wlbSyncWODCard, 250);
   // Push live state to the TV Display (separate device reading via Supabase Realtime) — slower than the local 250ms card sync, no need for sub-second precision on a remote board
   if (_cfLiveSyncInterval) clearInterval(_cfLiveSyncInterval);
-  _cfLiveSyncInterval = setInterval(cfPushLiveState, 1000);
+  _cfLiveSyncInterval = setInterval(cfPushLiveState, 500);
   cfPushLiveState();
   // Card opens showing workout — user taps Start when ready
 }
@@ -10881,6 +10881,7 @@ function wlbExitWODCard() {
   cfReleaseWakeLock(); // WOD card closed — screen can sleep
   if (_wcSyncInterval) clearInterval(_wcSyncInterval);
   if (_cfLiveSyncInterval) clearInterval(_cfLiveSyncInterval);
+  cfUpsertLiveState(null); // tell the TV Display to go idle instead of freezing on the last frame
   if (_cfFsActive) cfExitFullscreen(); // leave the TV timer too
   // Pause timer if running
   if (_cfTimerRunning) cfToggleTimer();
@@ -11169,30 +11170,25 @@ function cfFsRenderMovements() {
   let html = '';
 
   if (_wlbIsIntervals && _wlbIntervals.length > 0) {
+    // Show only the CURRENT interval, not the whole list — a long Interval WOD (8+
+    // intervals) rendered every one stacked vertically and overflowed the screen with
+    // no way to scroll on a TV. The phase label already says "Interval N of Total";
+    // this area's job is just "what am I doing right now."
     const fmtSplit = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
-    html = _wlbIntervals.map((interval, iIdx) => {
-      const isCurrent = iIdx === _wlbCurrentInterval;
-      const splitSecs = _wlbIntervalSplits[iIdx];
-      const splitBadge = splitSecs != null
-        ? `<span style="font-size:16px;font-weight:900;font-family:var(--mono);color:rgba(255,255,255,.55)">${fmtSplit(splitSecs)} ✓</span>`
-        : '';
-      const movLines = interval.movements.map(mv => {
-        if (!mv.name) return '';
-        const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
-        const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-        return `<div style="display:flex;align-items:baseline;gap:12px;padding:4px 0">
-          <span style="font-size:${isCurrent?'28':'18'}px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:50px">${mv.reps||''}</span>
-          <span style="font-size:${isCurrent?'20':'15'}px;font-weight:800;color:${isCurrent?'#fff':'rgba(255,255,255,.4)'}">${mv.name}${unit}${wt}</span>
-        </div>`;
-      }).filter(Boolean).join('');
-      return `<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);opacity:${isCurrent?'1':'0.4'}">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <span style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--cf-green)">Interval ${iIdx+1}${isCurrent?' ← NOW':''}</span>
-          ${splitBadge}
-        </div>
-        ${movLines}
+    const current = _wlbIntervals[_wlbCurrentInterval];
+    const prevSplitSecs = _wlbCurrentInterval > 0 ? _wlbIntervalSplits[_wlbCurrentInterval - 1] : null;
+    const lastSplitLine = prevSplitSecs != null
+      ? `<div style="font-size:14px;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">Interval ${_wlbCurrentInterval}: ${fmtSplit(prevSplitSecs)} ✓</div>`
+      : '';
+    html = lastSplitLine + (current?.movements||[]).map(mv => {
+      if (!mv.name) return '';
+      const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
+      const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+      return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:50px">${mv.reps||''}</span>
+        <span style="font-size:20px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
       </div>`;
-    }).join('');
+    }).filter(Boolean).join('');
   } else {
     if (_wlbRounds > 1) html += `<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${_wlbRounds} ROUNDS</div>`;
     html += _wlbMovements.map(mv => {
@@ -11347,7 +11343,7 @@ async function cfInitTVDisplay(username) {
     if (!row) return;
     lastUpdateMs = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
     if (staleEl) staleEl.style.display = 'none';
-    cfTVReceiveState(row.state);
+    cfTVReceiveState(row.state, lastUpdateMs);
   };
 
   try {
@@ -11377,9 +11373,27 @@ let _tvSyncedState = null;
 let _tvSyncedAtMs = 0;
 let _tvPrevState = null;
 
-function cfTVReceiveState(state) {
+function cfTVReceiveState(state, updatedAtMs) {
   _tvSyncedState = state;
-  _tvSyncedAtMs = Date.now();
+  // Anchor interpolation to when the PHONE captured this snapshot (updated_at), not
+  // when the TV happened to receive it — using receipt time left a constant lag baked
+  // in equal to however long the push+Realtime round trip took, which interpolation
+  // alone couldn't fix since it only smooths between syncs, not the sync's own staleness.
+  _tvSyncedAtMs = updatedAtMs || Date.now();
+
+  if (!state) {
+    // Workout ended and the phone left the WOD card — reset to idle instead of
+    // freezing on the last frame of a finished workout forever.
+    cfShowTVMessage('Waiting for a workout to start…');
+    const fsMovements = document.getElementById('fs-wod-movements');
+    if (fsMovements) fsMovements.innerHTML = '';
+    const phaseEl = document.getElementById('fs-phase'); if (phaseEl) phaseEl.textContent = '';
+    const roundsEl = document.getElementById('fs-rounds'); if (roundsEl) roundsEl.textContent = '';
+    const progressEl = document.getElementById('fs-progress-bar'); if (progressEl) progressEl.style.width = '0%';
+    _tvPrevState = null;
+    return;
+  }
+
   cfTVDetectAudioCues(_tvPrevState, state);
   _tvPrevState = state;
   cfRenderRemoteTVState(state);
@@ -11538,31 +11552,25 @@ function cfRenderRemoteTVMovements(state) {
   let html = '';
 
   if (state.isIntervals && state.intervals?.length > 0) {
+    // Show only the CURRENT interval, not the whole list — a long Interval WOD (8+
+    // intervals) rendered every one stacked vertically and overflowed the TV screen
+    // with no way to scroll. The phase label already says "Interval N of Total".
     const fmtSplit = sec => Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
     const splits = state.intervalSplits || [];
-    html = state.intervals.map((interval, iIdx) => {
-      const isCurrent = iIdx === state.currentInterval;
-      const splitSecs = splits[iIdx];
-      const splitBadge = splitSecs != null
-        ? `<span style="font-size:16px;font-weight:900;font-family:var(--mono);color:rgba(255,255,255,.55)">${fmtSplit(splitSecs)} ✓</span>`
-        : '';
-      const movLines = (interval.movements||[]).map(mv => {
-        if (!mv.name) return '';
-        const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
-        const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-        return `<div style="display:flex;align-items:baseline;gap:12px;padding:4px 0">
-          <span style="font-size:${isCurrent?'28':'18'}px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:50px">${mv.reps||''}</span>
-          <span style="font-size:${isCurrent?'20':'15'}px;font-weight:800;color:${isCurrent?'#fff':'rgba(255,255,255,.4)'}">${mv.name}${unit}${wt}</span>
-        </div>`;
-      }).filter(Boolean).join('');
-      return `<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);opacity:${isCurrent?'1':'0.4'}">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <span style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--cf-green)">Interval ${iIdx+1}${isCurrent?' ← NOW':''}</span>
-          ${splitBadge}
-        </div>
-        ${movLines}
+    const current = state.intervals[state.currentInterval];
+    const prevSplitSecs = state.currentInterval > 0 ? splits[state.currentInterval - 1] : null;
+    const lastSplitLine = prevSplitSecs != null
+      ? `<div style="font-size:14px;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">Interval ${state.currentInterval}: ${fmtSplit(prevSplitSecs)} ✓</div>`
+      : '';
+    html = lastSplitLine + (current?.movements||[]).map(mv => {
+      if (!mv.name) return '';
+      const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
+      const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+      return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:28px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:50px">${mv.reps||''}</span>
+        <span style="font-size:20px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
       </div>`;
-    }).join('');
+    }).filter(Boolean).join('');
   } else {
     if (state.wlbRounds > 1) html += `<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${state.wlbRounds} ROUNDS</div>`;
     html += (state.movements||[]).map(mv => {
@@ -15049,6 +15057,11 @@ function cfTimerDone() {
   if (btn) { btn.textContent = 'Done ✓'; btn.style.background = 'var(--cf-green)'; }
   cfAutoFillScore();
   toast("Time's up! Log your score below.");
+  // Push the "done" (timerRunning:false) state to the TV Display right now, rather
+  // than waiting for the next scheduled push — wlbExitWODCard() below fires in less
+  // time than the push interval, so without this the TV could miss ever learning the
+  // workout ended and keep its last-known direction ticking indefinitely.
+  cfPushLiveState();
   // Give the finish beep/flash a beat to register, then take them back to the log screen
   setTimeout(wlbExitWODCard, 900);
 }
