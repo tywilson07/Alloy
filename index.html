@@ -1069,6 +1069,19 @@ html.tv-mode #cf-fullscreen-timer { display: flex !important; }
           <div class="chart-label">Cardio — distance over time</div>
           <canvas id="chart-cardio" height="140"></canvas>
         </div>
+        <div id="chart-bodyweight-wrap" class="chart-card" style="display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <div class="chart-label" style="margin-bottom:0">Body Weight over time</div>
+            <select id="bw-range-select" onchange="renderBodyWeightChart()" style="font-size:11px;padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text-secondary)">
+              <option value="30">30 days</option>
+              <option value="90" selected>90 days</option>
+              <option value="180">6 months</option>
+              <option value="365">1 year</option>
+            </select>
+          </div>
+          <div id="bw-stats" style="display:flex;gap:16px;margin-bottom:10px"></div>
+          <canvas id="chart-bodyweight" height="160"></canvas>
+        </div>
         <div id="progress-empty" class="empty-state"><span class="emo">📈</span><h3>Track your progress</h3><p>Select an exercise from the dropdown above to see volume and max weight charts over time.</p></div>
       </div>
     </div>
@@ -2155,6 +2168,7 @@ let selectedDate = todayStr();
 let _calWorkouts = {};   // local cache {date: [workout,...]}
 let _calAssigned = {};   // assigned workouts from coach {date: [assignment,...]}
 let _calWODScores = {};  // WOD scores {date: [score,...]}
+let _calBodyWeight = {}; // body weight log {date: {id, weight, unit, note}} — one entry per day
 let _calPrograms = [];   // programs visible to this user
 let _activeProgAssignments = []; // [{id, program_id, start_date}] — supports multiple simultaneous active programs
 let _calOverrides = {};  // planned workout overrides {newDate: {originalDate, workoutName, programId}}
@@ -2177,12 +2191,13 @@ async function renderCalendar() {
     const queryEnd   = (() => { const d = new Date(endDate+'T12:00:00');   d.setDate(d.getDate()+6); return d.toISOString().slice(0,10); })();
     // Load programs first (getVisiblePrograms may do sequential calls for athletes)
     const progs = await getVisiblePrograms();
-    const [wkts, assigns, assigned, overrides, wodScores] = await Promise.all([
+    const [wkts, assigns, assigned, overrides, wodScores, weighIns] = await Promise.all([
       db('workouts','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
       db('program_assignments','GET',null,`?user_id=eq.${currentUser.id}&select=*`),
       db('workout_assignments','GET',null,`?assigned_to=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
       db('workout_schedule_overrides','GET',null,`?user_id=eq.${currentUser.id}&select=*`).catch(()=>[]),
-      db('cf_scores','GET',null,`?user_id=eq.${currentUser.id}&logged_at=gte.${queryStart}T00:00:00&logged_at=lte.${queryEnd}T23:59:59&select=*`).catch(()=>[])
+      db('cf_scores','GET',null,`?user_id=eq.${currentUser.id}&logged_at=gte.${queryStart}T00:00:00&logged_at=lte.${queryEnd}T23:59:59&select=*`).catch(()=>[]),
+      db('body_weight','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[])
     ]);
     _calWorkouts = {};
     (wkts||[]).forEach(w => {
@@ -2201,6 +2216,8 @@ async function renderCalendar() {
       if (!_calAssigned[a.date]) _calAssigned[a.date] = [];
       _calAssigned[a.date].push(a);
     });
+    _calBodyWeight = {};
+    (weighIns||[]).forEach(w => { _calBodyWeight[w.date] = w; });
     _calPrograms = progs || [];
     _activeProgAssignments = (assigns||[]).filter(a=>a.active).map(a=>({id:a.id, program_id:a.program_id, start_date:a.start_date||null}));
     // Build overrides map: originalDate → newDate (tagged with programId for multi-program disambiguation)
@@ -2219,6 +2236,73 @@ async function renderCalendar() {
   updateProgProgress();
   if (currentUser) renderMonthlyGoal(currentUser.id, currentYear, currentMonth);
   updateCalHeader();
+}
+
+// ═══════════════════════════════════════════════════
+// BODY WEIGHT (ported from Notch, the app Alloy was forked from — this was
+// added to Notch after the fork, so Alloy never had it until now)
+// ═══════════════════════════════════════════════════
+function openLogWeight(ds) {
+  const existing = _calBodyWeight[ds];
+  document.getElementById('modal-title').textContent = '⚖️ Log Body Weight';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">
+      Log your weight for <strong>${new Date(ds+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</strong>.
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:12px">
+      <div class="field" style="flex:1">
+        <label>Weight</label>
+        <input id="bw-weight" type="number" step="0.1" min="0"
+          value="${existing?.weight||''}" placeholder="175.5"
+          inputmode="decimal" onfocus="this.select()"
+          style="font-size:22px;font-family:var(--mono);font-weight:700;text-align:center;padding:10px">
+      </div>
+      <div class="field" style="width:80px">
+        <label>Unit</label>
+        <select id="bw-unit" style="font-size:14px;padding:10px">
+          <option value="lb" ${(existing?.unit||'lb')==='lb'?'selected':''}>lb</option>
+          <option value="kg" ${existing?.unit==='kg'?'selected':''}>kg</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Note <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+      <input id="bw-note" type="text" value="${existing?.note||''}"
+        placeholder="e.g. morning fasted, after workout..."
+        style="font-size:13px;padding:10px">
+    </div>
+    ${existing?`<button class="btn btn-danger btn-sm" onclick="deleteLogWeight('${existing.id}','${ds}')">Delete entry</button>`:''}`;
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveLogWeight('${ds}','${existing?.id||''}')">Save</button>`;
+  showModal();
+}
+
+async function saveLogWeight(ds, existingId) {
+  const weight = parseFloat(document.getElementById('bw-weight')?.value);
+  const unit   = document.getElementById('bw-unit')?.value || 'lb';
+  const note   = document.getElementById('bw-note')?.value?.trim() || null;
+  if (!weight || isNaN(weight)) { toast('Enter a weight'); return; }
+  try {
+    const payload = {user_id: currentUser.id, date: ds, weight, unit, note};
+    if (existingId) {
+      await db('body_weight','PATCH',payload,`?id=eq.${existingId}`);
+    } else {
+      await db('body_weight','POST',payload);
+    }
+    closeModal();
+    toast(`Weight logged: ${weight}${unit} ✓`);
+    await renderCalendar();
+  } catch(e) { toast('Save failed'); console.error(e); }
+}
+
+async function deleteLogWeight(id, ds) {
+  try {
+    await db('body_weight','DELETE',null,`?id=eq.${id}`);
+    closeModal();
+    toast('Entry deleted');
+    await renderCalendar();
+  } catch(e) { toast('Delete failed'); console.error(e); }
 }
 
 function buildWeekStrip() {
@@ -2272,12 +2356,14 @@ function buildWeekStrip() {
       dotClass = 'planned';
     }
     const hasWOD = (_calWODScores[ds]||[]).length > 0;
+    const hasBW = !!_calBodyWeight[ds];
     html += `<div class="week-strip-day ${isToday?'today':''} ${isSel?'selected':''}" onclick="selectDay('${ds}')">
       <div class="week-strip-dow">${DAYS_SHORT[i]}</div>
       <div class="week-strip-num">${d.getDate()}</div>
       <div style="display:flex;gap:2px;justify-content:center;align-items:center">
         <div class="week-strip-dot ${dotClass}"></div>
         ${hasWOD ? '<div class="week-strip-dot" style="background:var(--cf-green);width:5px;height:5px"></div>' : ''}
+        ${hasBW ? '<div class="week-strip-dot" style="background:#22D3EE;width:5px;height:5px"></div>' : ''}
       </div>
     </div>`;
   }
@@ -2746,6 +2832,22 @@ async function renderDayPanel(ds) {
     : `<button class="btn btn-primary btn-full btn-sm" onclick="openLogModal('${ds}',null)">+ Add Lift Workout</button>
        <button class="btn btn-white btn-full btn-sm" style="margin-top:6px" onclick="cfPreFillTrackDate('${ds}')">+ Log WOD for this day</button>`;
 
+  // Body weight — shared across Lift/WOD mode, same as the rest of this unified day panel
+  const bwEntry = _calBodyWeight[ds];
+  const bwHtml = `
+    <div style="border-top:1px solid var(--border);padding:10px 14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:16px">⚖️</span>
+          <div>
+            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#0E7490">Body Weight</div>
+            ${bwEntry ? `<div style="font-size:13px;font-weight:700;color:var(--text-primary)">${bwEntry.weight} ${bwEntry.unit||'lb'}${bwEntry.note?` <span style="font-weight:400;color:var(--text-muted);font-size:11px">· ${bwEntry.note}</span>`:''}</div>` : `<div style="font-size:12px;color:var(--text-muted)">Not logged</div>`}
+          </div>
+        </div>
+        <button class="btn btn-white btn-xs" onclick="openLogWeight('${ds}')">${bwEntry ? 'Edit' : '+ Log'}</button>
+      </div>
+    </div>`;
+
   panel.innerHTML=`
     <div class="day-panel-header">
       <div class="day-panel-date">${label}</div>
@@ -2754,7 +2856,7 @@ async function renderDayPanel(ds) {
         ${dayWODs.length>0?`<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3)">⚡ ${dayWODs.length} WOD</span>`:''}
       </div>
     </div>
-    <div class="day-panel-body">${wodHtml}${bodyHtml}</div>
+    <div class="day-panel-body">${wodHtml}${bodyHtml}${bwHtml}</div>
     <div class="day-panel-footer">
       ${footerBtns}
     </div>`;
@@ -6078,8 +6180,9 @@ async function renderProgressView() {
     sel.innerHTML = '<option value="">Select exercise...</option>' +
       [...names].map(n=>`<option value="${n}" ${n===current?'selected':''}>${n}</option>`).join('');
     if (current) renderProgressCharts();
-    // Also populate cardio chart always
+    // Also populate cardio + body weight charts always
     renderCardioChart(rows||[]);
+    renderBodyWeightChart();
   } catch(e) { console.error(e); }
 }
 
@@ -6135,6 +6238,77 @@ function renderCardioChart(rows) {
     data:{labels:data.map(d=>d.date),datasets:[{data:data.map(d=>d.dist),borderColor:'var(--orange)',backgroundColor:'rgba(255,92,0,0.1)',tension:.3,pointBackgroundColor:'var(--orange)',pointRadius:4,fill:true}]},
     options:{...CHART_OPTS}
   });
+}
+
+// Ported from Notch (see BODY WEIGHT section above) — stats row (Current/Change/Lowest)
+// plus a two-dataset chart (raw weight + 7-day rolling average).
+async function renderBodyWeightChart() {
+  const days = parseInt(document.getElementById('bw-range-select')?.value||'90');
+  const since = new Date(Date.now() - days*24*60*60*1000).toISOString().slice(0,10);
+  try {
+    const rows = await db('body_weight','GET',null,
+      `?user_id=eq.${currentUser.id}&date=gte.${since}&select=date,weight,unit&order=date.asc`);
+    const wrap = document.getElementById('chart-bodyweight-wrap');
+    const statsEl = document.getElementById('bw-stats');
+    if (!rows?.length) { if(wrap) wrap.style.display='none'; return; }
+    wrap.style.display='';
+
+    const weights = rows.map(r=>parseFloat(r.weight));
+    const unit = rows[rows.length-1].unit||'lb';
+    const current = weights[weights.length-1];
+    const start = weights[0];
+    const lowest = Math.min(...weights);
+    const change = (current - start).toFixed(1);
+    const changeColor = change < 0 ? 'var(--lime)' : change > 0 ? 'var(--orange)' : 'var(--text-muted)';
+
+    statsEl.innerHTML = `
+      <div style="text-align:center">
+        <div style="font-size:18px;font-weight:900;color:var(--text-primary)">${current}${unit}</div>
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Current</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:18px;font-weight:900;color:${changeColor}">${change>0?'+':''}${change}${unit}</div>
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Change</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:18px;font-weight:900;color:#67E8F9">${lowest}${unit}</div>
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Lowest</div>
+      </div>`;
+
+    // 7-day rolling average
+    const avgWeights = weights.map((_, i) => {
+      const slice = weights.slice(Math.max(0, i-6), i+1);
+      return slice.reduce((a,b)=>a+b,0)/slice.length;
+    });
+
+    const canvas = document.getElementById('chart-bodyweight');
+    if (!canvas) return;
+    if (window._bwChart) { window._bwChart.destroy(); window._bwChart = null; }
+    window._bwChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: rows.map(r => {
+          const d = new Date(r.date+'T12:00:00');
+          return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+        }),
+        datasets: [
+          { label: `Weight (${unit})`, data: weights, borderColor: '#67E8F9', backgroundColor: 'rgba(103,232,249,.08)', borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, fill: true, tension: 0.3 },
+          { label: '7-day avg', data: avgWeights, borderColor: '#0E7490', borderWidth: 2, pointRadius: 0, borderDash: [4,4], fill: false, tension: 0.3 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { labels: { color: getComputedStyle(document.body).getPropertyValue('--text-secondary').trim(), font: {size: 11} } },
+          tooltip: { mode: 'index', intersect: false }
+        },
+        scales: {
+          x: { ticks: { color: getComputedStyle(document.body).getPropertyValue('--text-muted').trim(), maxTicksLimit: 8, font: {size: 10} }, grid: { display: false } },
+          y: { ticks: { color: getComputedStyle(document.body).getPropertyValue('--text-muted').trim(), font: {size: 10} }, grid: { color: 'rgba(255,255,255,.06)' } }
+        }
+      }
+    });
+  } catch(e) { console.error('Body weight chart error', e); }
 }
 
 // ═══════════════════════════════════════════════════
