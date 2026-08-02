@@ -726,7 +726,11 @@ body.cf-mode .prog-progress-bar, body.cf-mode .wm-progress-fill { background: va
 body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: var(--cf-green) !important; }
 
 /* ── FULLSCREEN TV TIMER ── */
-#cf-fullscreen-timer{display:none;position:fixed;inset:0;background:#0d0d0d;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer}
+/* padding keeps content inside the ~90% "title-safe" zone most TVs actually display —
+   many TVs/set-top browsers overscan-crop a border around the edges without the
+   browser knowing, so content flush to inset:0 can get physically cut off on-screen
+   even though the DOM/viewport reports full size. */
+#cf-fullscreen-timer{display:none;position:fixed;inset:0;background:#0d0d0d;z-index:9999;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:pointer;padding:6vh 6vw;overflow:hidden}
 #cf-fullscreen-timer.active{display:flex}
 .fs-wod-name{font-family:'Barlow Condensed',-apple-system,sans-serif;font-size:clamp(24px,5vw,72px);font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#fff;opacity:.5;margin-bottom:clamp(6px,2vw,20px)}
 .fs-format-label{font-size:clamp(12px,2.5vw,28px);font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:#39d353;margin-bottom:clamp(4px,1.5vw,12px);opacity:.8}
@@ -746,7 +750,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
 .fs-exit-btn{position:fixed;top:clamp(10px,2vw,24px);right:clamp(10px,2vw,24px);width:clamp(32px,5vw,52px);height:clamp(32px,5vw,52px);border-radius:50%;background:rgba(255,255,255,.08);border:1px solid #333;color:#555;font-size:clamp(12px,2vw,20px);cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .3s,color .2s}
 #cf-fullscreen-timer:hover .fs-exit-btn{opacity:1}
 .fs-exit-btn:hover{color:#fff;background:rgba(255,255,255,.15)}
-.fs-progress-bar{position:fixed;bottom:0;left:0;height:clamp(3px,.5vw,6px);background:#39d353;transition:width 1s linear;border-radius:0 999px 999px 0}
+.fs-progress-bar{position:fixed;bottom:6vh;left:0;height:clamp(3px,.5vw,6px);background:#39d353;transition:width 1s linear;border-radius:0 999px 999px 0}
 
 /* Fixed mode pill — mobile only, always left of More */
 #fixed-mode-pill {
@@ -11046,13 +11050,30 @@ async function cfUpsertLiveState(stateObj) {
 
 // Mirrors exactly what cfFsSyncDisplay()/cfFsRenderMovements() already read locally
 // for the Fullscreen Timer, packaged into one object a remote page can render from.
+// Direction the timer is currently ticking (+1 up, -1 down, 0 stopped), inferred by
+// comparing consecutive pushes rather than hardcoding per-format/phase rules (Intervals
+// alone ticks both directions depending on work/rest phase) — lets the TV interpolate
+// the displayed number smoothly between syncs instead of only updating once/second on
+// network arrival (the ~1.5s lag reported was from waiting on push+network each time).
+let _cfLastPushedSeconds = null;
 function cfPushLiveState() {
   if (!currentUser) return;
+  const tickDirection = (_cfLastPushedSeconds !== null && _cfTimerRunning)
+    ? Math.sign(_cfTimerSeconds - _cfLastPushedSeconds)
+    : 0;
+  _cfLastPushedSeconds = _cfTimerSeconds;
+
+  const countdownOverlay = document.getElementById('wc-countdown-overlay');
+  const countdownNumber = document.getElementById('wc-countdown-number');
+  const leadinActive = countdownOverlay && countdownOverlay.style.display === 'flex';
+
   const state = {
     wodName: document.getElementById('cf-score-wod')?.value || '',
     format: _cfCurrentFormat,
     timerSeconds: _cfTimerSeconds,
     timerRunning: _cfTimerRunning,
+    tickDirection,
+    leadin: leadinActive ? { active: true, text: countdownNumber?.textContent || '' } : { active: false },
     rounds: _cfRounds,
     reps: _cfReps,
     setup: { ..._cfSetup },
@@ -11088,6 +11109,23 @@ function cfShowTVMessage(msg) {
   if (nameEl) nameEl.textContent = msg;
 }
 
+// Web Audio requires a user gesture to unlock (the same rule this app already works
+// around on iOS) — but a TV page loads itself with no tap at all. Some TV browsers may
+// allow audio anyway; this button is the fallback in case this one doesn't, dismissable
+// with a single remote OK-press, since Android TV/Google TV browsers do support clicking
+// an on-screen focused element.
+function cfTVShowSoundPrompt() {
+  const btn = document.createElement('button');
+  btn.id = 'fs-tv-sound-btn';
+  btn.textContent = '🔊 Click to Enable Sound';
+  btn.style.cssText = 'position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:var(--cf-green,#39d353);color:#0d0d0d;font-weight:900;font-size:18px;border:none;border-radius:999px;padding:14px 28px;cursor:pointer;z-index:20';
+  btn.onclick = () => {
+    try { cfGetAudioCtx(); cfBeep(880, 0.1, 0.3); } catch(e) {}
+    btn.remove();
+  };
+  document.getElementById('cf-fullscreen-timer')?.appendChild(btn);
+}
+
 async function cfInitTVDisplay(username) {
   // Read-only board — no timer controls make sense here
   const controls = document.querySelector('#cf-fullscreen-timer .fs-controls');
@@ -11095,6 +11133,7 @@ async function cfInitTVDisplay(username) {
   const exitBtn = document.querySelector('#cf-fullscreen-timer .fs-exit-btn');
   if (exitBtn) exitBtn.style.display = 'none';
 
+  cfTVShowSoundPrompt();
   cfShowTVMessage('Connecting…');
 
   let userId;
@@ -11121,7 +11160,7 @@ async function cfInitTVDisplay(username) {
     if (!row) return;
     lastUpdateMs = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
     if (staleEl) staleEl.style.display = 'none';
-    cfRenderRemoteTVState(row.state);
+    cfTVReceiveState(row.state);
   };
 
   try {
@@ -11138,6 +11177,67 @@ async function cfInitTVDisplay(username) {
   setInterval(() => {
     if (staleEl) staleEl.style.display = (lastUpdateMs && Date.now() - lastUpdateMs > 10000) ? '' : 'none';
   }, 2000);
+
+  // Ticks the displayed number locally every 250ms between syncs, instead of only
+  // updating once/second whenever a push happens to arrive over the network — the
+  // reported ~1.5s lag was from waiting on push+network round-trip for every digit.
+  setInterval(cfTVInterpolateTimer, 250);
+}
+
+// ── Local interpolation + audio cues (the TV plays its own sound directly —
+// no AirPlay/iOS routing involved here, unlike the phone-mirroring case) ──
+let _tvSyncedState = null;
+let _tvSyncedAtMs = 0;
+let _tvPrevState = null;
+
+function cfTVReceiveState(state) {
+  _tvSyncedState = state;
+  _tvSyncedAtMs = Date.now();
+  cfTVDetectAudioCues(_tvPrevState, state);
+  _tvPrevState = state;
+  cfRenderRemoteTVState(state);
+}
+
+function cfTVInterpolateTimer() {
+  if (!_tvSyncedState || !_tvSyncedState.timerRunning || !_tvSyncedState.tickDirection) return;
+  const timeEl = document.getElementById('fs-time');
+  if (!timeEl || _tvSyncedState.leadin?.active) return; // lead-in shows its own count, not the timer
+  const elapsed = Math.round((Date.now() - _tvSyncedAtMs) / 1000);
+  const interpolated = Math.max(0, _tvSyncedState.timerSeconds + _tvSyncedState.tickDirection * elapsed);
+  const m = Math.floor(interpolated/60), sec = interpolated%60;
+  timeEl.textContent = `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+// Compares the previous synced state to the new one and fires the same beep/speak
+// cues the phone uses (cfBeep/cfSpeak already exist in this shared script) — the TV's
+// own speakers play them directly, sidestepping the iOS-mirroring audio problem entirely.
+function cfTVDetectAudioCues(prev, curr) {
+  if (!curr) return;
+  // Lead-in countdown ticking down
+  const prevLeadin = prev?.leadin?.text, currLeadin = curr.leadin?.text;
+  if (curr.leadin?.active && currLeadin !== prevLeadin) {
+    if (['3','2','1'].includes(currLeadin)) { cfBeep(880, 0.15, 0.7); cfSpeak(currLeadin); }
+    else if (currLeadin === 'GO!') { cfBeep(1100, 0.15, 0.7); cfSpeak('Go!'); }
+  }
+  if (!prev) return;
+  // Tabata work/rest phase transitions
+  if (curr.format === 'Tabata' && prev.setup?.tabataPhase !== curr.setup?.tabataPhase) {
+    if (curr.setup?.tabataPhase === 'rest') { cfBeepRest(); cfSpeak('Rest'); }
+    else { cfBeepInterval(); cfSpeak('Go!'); }
+  }
+  // Intervals work/rest phase transitions
+  if (curr.format === 'Intervals' && prev.intervalPhase !== curr.intervalPhase) {
+    if (curr.intervalPhase === 'rest') cfBeepRest();
+    else { cfBeepInterval(); cfSpeak('Interval ' + (curr.currentInterval + 1)); }
+  }
+  // EMOM round changes
+  if (curr.format === 'EMOM' && prev.setup?.emomCurrentRound !== curr.setup?.emomCurrentRound) {
+    cfBeepInterval();
+  }
+  // Workout just finished
+  if (prev.timerRunning && !curr.timerRunning && prev.timerSeconds !== curr.timerSeconds) {
+    cfBeepDone();
+  }
 }
 
 // Mirrors cfFsSyncDisplay()/cfFsRenderMovements() exactly, but reads from a synced
@@ -11157,6 +11257,18 @@ function cfRenderRemoteTVState(state) {
   const phaseEl = document.getElementById('fs-phase');
   const roundsEl = document.getElementById('fs-rounds');
   const progressEl = document.getElementById('fs-progress-bar');
+
+  // Lead-in countdown ("Starting in...") — separate from the workout timer itself,
+  // and easy to miss because the countdown overlay (wc-countdown-overlay) is a
+  // sibling of #cf-fullscreen-timer, hidden by the tv-mode CSS along with the rest
+  // of the normal app — so it's rendered here, inside the timer display, instead.
+  if (state.leadin?.active) {
+    if (timeEl) { timeEl.textContent = state.leadin.text || ''; timeEl.className = 'fs-time'; }
+    if (phaseEl) { phaseEl.textContent = 'STARTING IN'; phaseEl.className = 'fs-phase'; }
+    if (roundsEl) roundsEl.textContent = '';
+    if (progressEl) progressEl.style.width = '0%';
+    return;
+  }
 
   const secs = Math.abs(state.timerSeconds || 0);
   const m = Math.floor(secs/60), sec = secs%60;
