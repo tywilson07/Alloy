@@ -10895,7 +10895,11 @@ function wlbExitWODCard() {
   cfReleaseWakeLock(); // WOD card closed — screen can sleep
   if (_wcSyncInterval) clearInterval(_wcSyncInterval);
   if (_cfLiveSyncInterval) clearInterval(_cfLiveSyncInterval);
-  cfUpsertLiveState(null); // tell the TV Display to go idle instead of freezing on the last frame
+  // On a natural finish, leave the TV Display showing the "Workout Complete" summary
+  // (already pushed by cfTimerDone()) rather than resetting it — only a manual/early
+  // exit (Reset/Exit tapped without finishing) should send the TV back to idle.
+  if (_cfWorkoutJustFinished) { _cfWorkoutJustFinished = false; }
+  else { cfUpsertLiveState(null); }
   if (_cfFsActive) cfExitFullscreen(); // leave the TV timer too
   // Pause timer if running
   if (_cfTimerRunning) cfToggleTimer();
@@ -11162,6 +11166,44 @@ function cfEnterFullscreen() {
   cfFsRenderMovements();
 }
 
+// Shared by both the local mirroring path (cfFsRenderMovements) and the remote TV
+// path (cfRenderRemoteTVMovements) — builds: a compact history line of every completed
+// split so far, the current interval prominently, and a dimmed preview of the next one
+// so the athlete can see what's coming. Kept as one function so the two render paths
+// can't drift out of sync with each other.
+function cfBuildIntervalDisplayHTML(intervals, currentIdx, splits, wtUnit) {
+  const fmtSplit = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+  const movLine = (mv, big) => {
+    if (!mv.name) return '';
+    const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
+    const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+    return `<div style="display:flex;align-items:baseline;gap:10px;padding:${big?'5px':'3px'} 0">
+      <span style="font-size:${big?'24':'16'}px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:${big?'44':'34'}px">${mv.reps||''}</span>
+      <span style="font-size:${big?'17':'13'}px;font-weight:800;color:${big?'#fff':'rgba(255,255,255,.55)'}">${mv.name}${unit}${wt}</span>
+    </div>`;
+  };
+
+  const historyChips = [];
+  for (let i = 0; i < currentIdx; i++) {
+    if (splits[i] != null) historyChips.push(`I${i+1}: ${fmtSplit(splits[i])}`);
+  }
+  const historyHtml = historyChips.length
+    ? `<div style="font-size:12px;font-weight:700;color:rgba(255,255,255,.45);margin-bottom:14px;text-align:center;line-height:1.7">${historyChips.join('&nbsp;&nbsp;·&nbsp;&nbsp;')}</div>`
+    : '';
+
+  const current = intervals[currentIdx];
+  const currentHtml = `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--cf-green);margin-bottom:6px;text-align:center">Interval ${currentIdx+1} of ${intervals.length} — NOW</div>
+    ${(current?.movements||[]).map(mv => movLine(mv, true)).filter(Boolean).join('')}`;
+
+  const next = intervals[currentIdx+1];
+  const nextHtml = next ? `<div style="opacity:.45;border-top:1px solid rgba(255,255,255,.1);margin-top:14px;padding-top:12px">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.5);margin-bottom:4px;text-align:center">Up Next — Interval ${currentIdx+2}</div>
+      ${(next.movements||[]).map(mv => movLine(mv, false)).filter(Boolean).join('')}
+    </div>` : '';
+
+  return historyHtml + currentHtml + nextHtml;
+}
+
 // Builds/refreshes the movements panel in the TV fullscreen view. Called once when
 // entering fullscreen, and again every tick from cfFsSyncDisplay() for Intervals
 // (current interval + completed splits change live, unlike a static movement list).
@@ -11182,25 +11224,7 @@ function cfFsRenderMovements() {
   let html = '';
 
   if (_wlbIsIntervals && _wlbIntervals.length > 0) {
-    // Show only the CURRENT interval, not the whole list — a long Interval WOD (8+
-    // intervals) rendered every one stacked vertically and overflowed the screen with
-    // no way to scroll on a TV. The phase label already says "Interval N of Total";
-    // this area's job is just "what am I doing right now."
-    const fmtSplit = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
-    const current = _wlbIntervals[_wlbCurrentInterval];
-    const prevSplitSecs = _wlbCurrentInterval > 0 ? _wlbIntervalSplits[_wlbCurrentInterval - 1] : null;
-    const lastSplitLine = prevSplitSecs != null
-      ? `<div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">Interval ${_wlbCurrentInterval}: ${fmtSplit(prevSplitSecs)} ✓</div>`
-      : '';
-    html = lastSplitLine + (current?.movements||[]).map(mv => {
-      if (!mv.name) return '';
-      const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
-      const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-      return `<div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)">
-        <span style="font-size:24px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:44px">${mv.reps||''}</span>
-        <span style="font-size:17px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
-      </div>`;
-    }).filter(Boolean).join('');
+    html = cfBuildIntervalDisplayHTML(_wlbIntervals, _wlbCurrentInterval, _wlbIntervalSplits, wtUnit);
   } else {
     if (_wlbRounds > 1) html += `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${_wlbRounds} ROUNDS</div>`;
     html += _wlbMovements.map(mv => {
@@ -11280,6 +11304,8 @@ function cfPushLiveState() {
     wlbRounds: _wlbRounds,
     movements: _wlbIsIntervals ? [] : _wlbMovements,
     weightUnit: wlbGetWeightUnit(),
+    finished: _cfWorkoutJustFinished,
+    finalScore: _cfWorkoutJustFinished ? (document.getElementById('cf-score-value')?.value || '') : null,
   };
   cfUpsertLiveState(state);
 }
@@ -11471,6 +11497,18 @@ function cfRenderRemoteTVState(state) {
   const roundsEl = document.getElementById('fs-rounds');
   const progressEl = document.getElementById('fs-progress-bar');
 
+  // Workout Complete summary — stays up until the next workout starts pushing again
+  // (wlbExitWODCard() leaves this state in place rather than resetting to idle), instead
+  // of the timer just stopping with nothing to look at.
+  if (state.finished) {
+    if (timeEl) { timeEl.textContent = state.finalScore || ''; timeEl.className = 'fs-time done'; }
+    if (phaseEl) { phaseEl.textContent = 'WORKOUT COMPLETE'; phaseEl.className = 'fs-phase'; }
+    if (roundsEl) roundsEl.textContent = '';
+    if (progressEl) progressEl.style.width = '100%';
+    cfRenderRemoteTVCompleteStats(state);
+    return;
+  }
+
   // Lead-in countdown ("Starting in...") — separate from the workout timer itself,
   // and easy to miss because the countdown overlay (wc-countdown-overlay) is a
   // sibling of #cf-fullscreen-timer, hidden by the tv-mode CSS along with the rest
@@ -11546,6 +11584,39 @@ function cfRenderRemoteTVState(state) {
   cfRenderRemoteTVMovements(state);
 }
 
+// Right-panel content for the "Workout Complete" screen — for Intervals, every split
+// (state.finalScore is already the summed total work time, so that alone covers "total
+// time" for the big number up top); other formats just rely on the final score itself,
+// already shown prominently, so this clears rather than repeating the movements list.
+function cfRenderRemoteTVCompleteStats(state) {
+  let fsMovements = document.getElementById('fs-wod-movements');
+  if (!fsMovements) {
+    const rightPanel = document.getElementById('fs-right-panel');
+    if (rightPanel) {
+      fsMovements = document.createElement('div');
+      fsMovements.id = 'fs-wod-movements';
+      fsMovements.style.cssText = 'width:100%';
+      rightPanel.appendChild(fsMovements);
+    }
+  }
+  if (!fsMovements) return;
+
+  if (state.format === 'Intervals' && state.intervals?.length) {
+    const fmtSplit = s => Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+    const splits = state.intervalSplits || [];
+    const rows = state.intervals.map((iv, idx) => {
+      const s = splits[idx];
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:15px;font-weight:700;color:rgba(255,255,255,.6)">Interval ${idx+1}</span>
+        <span style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">${s!=null ? fmtSplit(s)+' ✓' : '—'}</span>
+      </div>`;
+    }).join('');
+    fsMovements.innerHTML = `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.5);margin-bottom:10px;text-align:center">Interval Splits</div>${rows}`;
+  } else {
+    fsMovements.innerHTML = '';
+  }
+}
+
 function cfRenderRemoteTVMovements(state) {
   let fsMovements = document.getElementById('fs-wod-movements');
   if (!fsMovements) {
@@ -11563,25 +11634,7 @@ function cfRenderRemoteTVMovements(state) {
   let html = '';
 
   if (state.isIntervals && state.intervals?.length > 0) {
-    // Show only the CURRENT interval, not the whole list — a long Interval WOD (8+
-    // intervals) rendered every one stacked vertically and overflowed the TV screen
-    // with no way to scroll. The phase label already says "Interval N of Total".
-    const fmtSplit = sec => Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
-    const splits = state.intervalSplits || [];
-    const current = state.intervals[state.currentInterval];
-    const prevSplitSecs = state.currentInterval > 0 ? splits[state.currentInterval - 1] : null;
-    const lastSplitLine = prevSplitSecs != null
-      ? `<div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">Interval ${state.currentInterval}: ${fmtSplit(prevSplitSecs)} ✓</div>`
-      : '';
-    html = lastSplitLine + (current?.movements||[]).map(mv => {
-      if (!mv.name) return '';
-      const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
-      const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-      return `<div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)">
-        <span style="font-size:24px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:44px">${mv.reps||''}</span>
-        <span style="font-size:17px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
-      </div>`;
-    }).filter(Boolean).join('');
+    html = cfBuildIntervalDisplayHTML(state.intervals, state.currentInterval, state.intervalSplits || [], wtUnit);
   } else {
     if (state.wlbRounds > 1) html += `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${state.wlbRounds} ROUNDS</div>`;
     html += (state.movements||[]).map(mv => {
@@ -15059,6 +15112,11 @@ function cfUpdateTabataDisplay() {
   if (display) display.style.color = _cfSetup.tabataPhase === 'work' ? 'var(--cf-green)' : 'var(--text-muted)';
 }
 
+// True from the moment a workout finishes naturally until the next one starts — lets
+// wlbExitWODCard() (called for BOTH a natural finish and a manual early exit) tell them
+// apart, so the TV Display gets a "Workout Complete" summary instead of just going idle.
+let _cfWorkoutJustFinished = false;
+
 function cfTimerDone() {
   clearInterval(_cfTimerInterval);
   _cfTimerRunning = false;
@@ -15068,10 +15126,10 @@ function cfTimerDone() {
   if (btn) { btn.textContent = 'Done ✓'; btn.style.background = 'var(--cf-green)'; }
   cfAutoFillScore();
   toast("Time's up! Log your score below.");
-  // Push the "done" (timerRunning:false) state to the TV Display right now, rather
-  // than waiting for the next scheduled push — wlbExitWODCard() below fires in less
-  // time than the push interval, so without this the TV could miss ever learning the
-  // workout ended and keep its last-known direction ticking indefinitely.
+  _cfWorkoutJustFinished = true;
+  // Push the "done"+finished state to the TV Display right now, rather than waiting for
+  // the next scheduled push — wlbExitWODCard() below fires in less time than the push
+  // interval, so without this the TV could miss ever learning the workout ended.
   cfPushLiveState();
   // Give the finish beep/flash a beat to register, then take them back to the log screen
   setTimeout(wlbExitWODCard, 900);
@@ -15079,6 +15137,7 @@ function cfTimerDone() {
 
 function cfResetTimer() {
   _wlbWorkoutStarted = false;
+  _cfWorkoutJustFinished = false;
   clearInterval(_cfTimerInterval);
   _cfTimerRunning = false;
   _cfTimerSeconds = 0;
