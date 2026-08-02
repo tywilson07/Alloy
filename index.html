@@ -818,6 +818,11 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
   letter-spacing: .5px;
 }
 
+/* TV Display mode (?tv=username) — hides the whole normal app instantly via pure CSS,
+   no JS timing dependency, so the login screen never flashes before the early
+   <head> script below can react. See ALLOY_TV_USERNAME / cfInitTVDisplay(). */
+html.tv-mode body > *:not(#cf-fullscreen-timer) { display: none !important; }
+html.tv-mode #cf-fullscreen-timer { display: flex !important; }
 </style>
   <script>
     if ("serviceWorker" in navigator) {
@@ -827,6 +832,10 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
           .catch(e => console.warn("[SW] Registration failed:", e));
       });
     }
+    // Detect TV Display mode as early as possible (before <body> even parses) so the
+    // login screen and normal app never flash — see plan: Option C, live TV board.
+    window.ALLOY_TV_USERNAME = new URLSearchParams(location.search).get('tv') || null;
+    if (window.ALLOY_TV_USERNAME) document.documentElement.classList.add('tv-mode');
   </script>
 </head>
 <body class="cf-mode">
@@ -9461,17 +9470,23 @@ async function checkFirstLogin() {
 initTouchDrag();
 initTheme(); // Apply theme before anything renders
 
-const saved=loadSession();
-if(saved){
-  // Re-fetch from DB to pick up any role changes since last login
-  db('users','GET',null,`?id=eq.${saved.id}&select=*`).then(rows=>{
-    currentUser = (rows&&rows.length) ? rows[0] : saved;
-    saveSession(currentUser);
-    enterApp();
-  }).catch(()=>{
-    // Offline or error — fall back to cached session
-    currentUser=saved; enterApp();
-  });
+if (window.ALLOY_TV_USERNAME) {
+  // TV Display mode — the CSS in <head> already hid the whole normal app instantly.
+  // Skip login/enterApp entirely; this is a read-only board, not a logged-in session.
+  cfInitTVDisplay(window.ALLOY_TV_USERNAME);
+} else {
+  const saved=loadSession();
+  if(saved){
+    // Re-fetch from DB to pick up any role changes since last login
+    db('users','GET',null,`?id=eq.${saved.id}&select=*`).then(rows=>{
+      currentUser = (rows&&rows.length) ? rows[0] : saved;
+      saveSession(currentUser);
+      enterApp();
+    }).catch(()=>{
+      // Offline or error — fall back to cached session
+      currentUser=saved; enterApp();
+    });
+  }
 }
 
 // Navigate to the unified calendar from any mode
@@ -10661,6 +10676,10 @@ function wlbStartWOD() {
   // Start syncing timer to card
   if (_wcSyncInterval) clearInterval(_wcSyncInterval);
   _wcSyncInterval = setInterval(wlbSyncWODCard, 250);
+  // Push live state to the TV Display (separate device reading via Supabase Realtime) — slower than the local 250ms card sync, no need for sub-second precision on a remote board
+  if (_cfLiveSyncInterval) clearInterval(_cfLiveSyncInterval);
+  _cfLiveSyncInterval = setInterval(cfPushLiveState, 1000);
+  cfPushLiveState();
   // Card opens showing workout — user taps Start when ready
 }
 
@@ -10670,6 +10689,7 @@ function wlbExitWODCard() {
   document.body.style.overflow = '';
   cfReleaseWakeLock(); // WOD card closed — screen can sleep
   if (_wcSyncInterval) clearInterval(_wcSyncInterval);
+  if (_cfLiveSyncInterval) clearInterval(_cfLiveSyncInterval);
   if (_cfFsActive) cfExitFullscreen(); // leave the TV timer too
   // Pause timer if running
   if (_cfTimerRunning) cfToggleTimer();
@@ -10985,6 +11005,268 @@ function cfFsRenderMovements() {
   } else {
     if (_wlbRounds > 1) html += `<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${_wlbRounds} ROUNDS</div>`;
     html += _wlbMovements.map(mv => {
+      if (!mv.name) return '';
+      const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
+      const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+      return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:24px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:50px">${mv.reps||''}</span>
+        <span style="font-size:18px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
+      </div>`;
+    }).join('');
+  }
+
+  fsMovements.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════
+// ALLOY — TV DISPLAY (remote, via Supabase Realtime)
+// A separate device (e.g. a browser on a gym TV) loads ?tv=<username> and shows
+// this same live state continuously — no AirPlay/mirroring involved. This half
+// (phone side) pushes state; see cfInitTVDisplay() further down for the receiving half.
+// ═══════════════════════════════════════════════════
+
+let _cfLiveSyncInterval = null;
+
+// db() (used everywhere else in this app) doesn't support upsert — rather than change
+// its behavior for every other caller, this is a small dedicated fetch just for this.
+async function cfUpsertLiveState(stateObj) {
+  try {
+    await fetch(`${SUPA_URL}/rest/v1/cf_live_session?on_conflict=user_id`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': `Bearer ${SUPA_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({ user_id: String(currentUser.id), state: stateObj, updated_at: new Date().toISOString() })
+    });
+  } catch(e) { /* best-effort — a dropped push just means the TV board is briefly stale */ }
+}
+
+// Mirrors exactly what cfFsSyncDisplay()/cfFsRenderMovements() already read locally
+// for the Fullscreen Timer, packaged into one object a remote page can render from.
+function cfPushLiveState() {
+  if (!currentUser) return;
+  const state = {
+    wodName: document.getElementById('cf-score-wod')?.value || '',
+    format: _cfCurrentFormat,
+    timerSeconds: _cfTimerSeconds,
+    timerRunning: _cfTimerRunning,
+    rounds: _cfRounds,
+    reps: _cfReps,
+    setup: { ..._cfSetup },
+    isIntervals: _wlbIsIntervals,
+    intervals: _wlbIsIntervals ? _wlbIntervals : [],
+    currentInterval: _wlbCurrentInterval,
+    intervalPhase: _wlbIntervalPhase,
+    intervalSplits: _wlbIntervalSplits,
+    wlbRounds: _wlbRounds,
+    movements: _wlbIsIntervals ? [] : _wlbMovements,
+    weightUnit: wlbGetWeightUnit(),
+  };
+  cfUpsertLiveState(state);
+}
+
+// ── Receiving half: runs on a separate device loaded with ?tv=<username> ──
+
+function cfLoadSupabaseClient() {
+  return new Promise((resolve, reject) => {
+    if (window.supabase) return resolve();
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+function cfShowTVMessage(msg) {
+  const fs = document.getElementById('cf-fullscreen-timer');
+  if (fs) fs.classList.add('active');
+  const nameEl = document.getElementById('fs-wod-name');
+  if (nameEl) nameEl.textContent = msg;
+}
+
+async function cfInitTVDisplay(username) {
+  // Read-only board — no timer controls make sense here
+  const controls = document.querySelector('#cf-fullscreen-timer .fs-controls');
+  if (controls) controls.style.display = 'none';
+  const exitBtn = document.querySelector('#cf-fullscreen-timer .fs-exit-btn');
+  if (exitBtn) exitBtn.style.display = 'none';
+
+  cfShowTVMessage('Connecting…');
+
+  let userId;
+  try {
+    const rows = await db('users', 'GET', null, `?username=eq.${encodeURIComponent(username)}&select=id`);
+    if (!rows || !rows.length) { cfShowTVMessage('No user found: ' + username); return; }
+    userId = rows[0].id;
+  } catch(e) { cfShowTVMessage('Could not reach Alloy'); return; }
+
+  try {
+    await cfLoadSupabaseClient();
+  } catch(e) { cfShowTVMessage('Could not load live connection'); return; }
+
+  const supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+  let lastUpdateMs = 0;
+
+  const staleEl = document.createElement('div');
+  staleEl.id = 'fs-tv-stale';
+  staleEl.style.cssText = 'display:none;position:fixed;top:24px;left:50%;transform:translateX(-50%);background:rgba(255,184,0,.15);border:1px solid #FFB800;color:#FFB800;font-weight:800;font-size:14px;letter-spacing:.05em;text-transform:uppercase;padding:8px 20px;border-radius:999px;z-index:10';
+  staleEl.textContent = '⚠ Not currently connected';
+  document.getElementById('cf-fullscreen-timer')?.appendChild(staleEl);
+
+  const renderFromRow = (row) => {
+    if (!row) return;
+    lastUpdateMs = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
+    if (staleEl) staleEl.style.display = 'none';
+    cfRenderRemoteTVState(row.state);
+  };
+
+  try {
+    const rows = await db('cf_live_session', 'GET', null, `?user_id=eq.${userId}&select=*`);
+    if (rows && rows.length) renderFromRow(rows[0]);
+    else cfShowTVMessage('Waiting for a workout to start…');
+  } catch(e) { cfShowTVMessage('Waiting for a workout to start…'); }
+
+  supa.channel('tv-' + userId)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'cf_live_session', filter: `user_id=eq.${userId}` },
+      payload => renderFromRow(payload.new))
+    .subscribe();
+
+  setInterval(() => {
+    if (staleEl) staleEl.style.display = (lastUpdateMs && Date.now() - lastUpdateMs > 10000) ? '' : 'none';
+  }, 2000);
+}
+
+// Mirrors cfFsSyncDisplay()/cfFsRenderMovements() exactly, but reads from a synced
+// state object instead of this page's own local variables (kept separate from the
+// local-mirroring version so an issue here can never affect the working local feature).
+function cfRenderRemoteTVState(state) {
+  if (!state) return;
+  const fs = document.getElementById('cf-fullscreen-timer');
+  if (fs) fs.classList.add('active');
+
+  const nameEl = document.getElementById('fs-wod-name');
+  const fmtEl = document.getElementById('fs-format-label');
+  if (nameEl) nameEl.textContent = state.wodName || '';
+  if (fmtEl) fmtEl.textContent = state.format || '';
+
+  const timeEl = document.getElementById('fs-time');
+  const phaseEl = document.getElementById('fs-phase');
+  const roundsEl = document.getElementById('fs-rounds');
+  const progressEl = document.getElementById('fs-progress-bar');
+
+  const secs = Math.abs(state.timerSeconds || 0);
+  const m = Math.floor(secs/60), sec = secs%60;
+  if (timeEl) {
+    timeEl.textContent = `${m}:${String(sec).padStart(2,'0')}`;
+    timeEl.className = 'fs-time';
+    const setup = state.setup || {};
+    if (state.format === 'Tabata') {
+      if (setup.tabataPhase === 'rest') timeEl.classList.add('rest');
+      else if (secs <= 5) timeEl.classList.add('warning');
+    } else if (state.format === 'Intervals') {
+      if (state.intervalPhase === 'rest') timeEl.classList.add('rest');
+    } else if (['AMRAP','For Time','Chipper','Partner'].includes(state.format)) {
+      if (secs <= 10 && state.timerSeconds > 0) timeEl.classList.add('warning');
+      if (state.timerSeconds <= 0 && !state.timerRunning) timeEl.classList.add('done');
+    }
+  }
+
+  if (phaseEl) {
+    const setup = state.setup || {};
+    if (state.format === 'Tabata') {
+      phaseEl.textContent = setup.tabataPhase === 'work'
+        ? `WORK · Round ${(setup.tabataRoundsDone||0)+1} / ${setup.tabataRounds}`
+        : 'REST';
+      phaseEl.className = 'fs-phase' + (setup.tabataPhase === 'rest' ? ' rest-phase' : '');
+    } else if (state.format === 'EMOM') {
+      const totalRounds = Math.floor((setup.emomTotal||0) / (setup.emomInterval||1));
+      phaseEl.textContent = `Round ${setup.emomCurrentRound||1} of ${totalRounds}`;
+      phaseEl.className = 'fs-phase';
+    } else if (state.format === 'Intervals' && state.isIntervals && state.intervals?.length > 0) {
+      phaseEl.textContent = state.intervalPhase === 'rest'
+        ? `REST · Next: Interval ${state.currentInterval + 2}`
+        : `Interval ${state.currentInterval + 1} of ${state.intervals.length}`;
+      phaseEl.className = 'fs-phase' + (state.intervalPhase === 'rest' ? ' rest-phase' : '');
+    } else {
+      phaseEl.textContent = '';
+    }
+  }
+
+  if (roundsEl) {
+    roundsEl.textContent = (state.format === 'AMRAP' && (state.rounds > 0 || state.reps > 0))
+      ? `${state.rounds} rounds + ${state.reps} reps` : '';
+  }
+
+  if (progressEl) {
+    const setup = state.setup || {};
+    let totalSeconds = 0;
+    if (state.format === 'AMRAP') totalSeconds = (setup.amrapMin||0) * 60;
+    else if (['For Time','Chipper','Partner'].includes(state.format) && setup.capEnabled) totalSeconds = (setup.capMin||0) * 60;
+    else if (state.format === 'Tabata') totalSeconds = (setup.tabataRounds||0) * ((setup.tabataWork||0) + (setup.tabataRest||0));
+    else if (state.format === 'EMOM') totalSeconds = (setup.emomTotal||0) * 60;
+    if (totalSeconds > 0) {
+      const elapsed = totalSeconds - secs;
+      const pct = Math.max(0, Math.min(100, (elapsed / totalSeconds) * 100));
+      progressEl.style.width = pct + '%';
+      progressEl.style.background = pct > 85 ? '#FFB800' : '#39d353';
+    } else {
+      progressEl.style.width = '0%';
+    }
+  }
+
+  cfRenderRemoteTVMovements(state);
+}
+
+function cfRenderRemoteTVMovements(state) {
+  let fsMovements = document.getElementById('fs-wod-movements');
+  if (!fsMovements) {
+    const fsEl = document.getElementById('cf-fullscreen-timer');
+    if (fsEl) {
+      fsMovements = document.createElement('div');
+      fsMovements.id = 'fs-wod-movements';
+      fsMovements.style.cssText = 'padding:16px 24px;max-width:500px;margin:0 auto;width:100%';
+      const controls = fsEl.querySelector('.fs-controls');
+      if (controls) fsEl.insertBefore(fsMovements, controls); else fsEl.appendChild(fsMovements);
+    }
+  }
+  if (!fsMovements) return;
+
+  const wtUnit = state.weightUnit || 'lbs';
+  let html = '';
+
+  if (state.isIntervals && state.intervals?.length > 0) {
+    const fmtSplit = sec => Math.floor(sec/60) + ':' + String(sec%60).padStart(2,'0');
+    const splits = state.intervalSplits || [];
+    html = state.intervals.map((interval, iIdx) => {
+      const isCurrent = iIdx === state.currentInterval;
+      const splitSecs = splits[iIdx];
+      const splitBadge = splitSecs != null
+        ? `<span style="font-size:16px;font-weight:900;font-family:var(--mono);color:rgba(255,255,255,.55)">${fmtSplit(splitSecs)} ✓</span>`
+        : '';
+      const movLines = (interval.movements||[]).map(mv => {
+        if (!mv.name) return '';
+        const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
+        const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+        return `<div style="display:flex;align-items:baseline;gap:12px;padding:4px 0">
+          <span style="font-size:${isCurrent?'28':'18'}px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:50px">${mv.reps||''}</span>
+          <span style="font-size:${isCurrent?'20':'15'}px;font-weight:800;color:${isCurrent?'#fff':'rgba(255,255,255,.4)'}">${mv.name}${unit}${wt}</span>
+        </div>`;
+      }).filter(Boolean).join('');
+      return `<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);opacity:${isCurrent?'1':'0.4'}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--cf-green)">Interval ${iIdx+1}${isCurrent?' ← NOW':''}</span>
+          ${splitBadge}
+        </div>
+        ${movLines}
+      </div>`;
+    }).join('');
+  } else {
+    if (state.wlbRounds > 1) html += `<div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${state.wlbRounds} ROUNDS</div>`;
+    html += (state.movements||[]).map(mv => {
       if (!mv.name) return '';
       const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
       const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
