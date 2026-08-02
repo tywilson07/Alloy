@@ -11274,13 +11274,24 @@ async function cfUpsertLiveState(stateObj) {
 // alone ticks both directions depending on work/rest phase) — lets the TV interpolate
 // the displayed number smoothly between syncs instead of only updating once/second on
 // network arrival (the ~1.5s lag reported was from waiting on push+network each time).
-let _cfLastPushedSeconds = null;
+// Direction the timer is currently ticking, computed deterministically from format/phase
+// rather than by comparing consecutive pushes — that empirical approach was noisy: pushes
+// happen every 500ms but the timer itself only ticks once per 1000ms, so ~half of all
+// consecutive push pairs read the identical second and misread as "stopped" (0), which
+// froze the TV's interpolator until the next real change caught up in a visible jump —
+// this was the cause of the reported "bouncing."
+function cfComputeTickDirection() {
+  if (!_cfTimerRunning) return 0;
+  if (_cfCurrentFormat === 'AMRAP' || _cfCurrentFormat === 'Tabata') return -1;
+  if (_cfCurrentFormat === 'EMOM') return 1;
+  if (['For Time','Chipper','Partner'].includes(_cfCurrentFormat)) return _cfSetup.capEnabled ? -1 : 1;
+  if (_cfCurrentFormat === 'Intervals') return _wlbIntervalPhase === 'rest' ? -1 : 1;
+  return 0;
+}
+
 function cfPushLiveState() {
   if (!currentUser) return;
-  const tickDirection = (_cfLastPushedSeconds !== null && _cfTimerRunning)
-    ? Math.sign(_cfTimerSeconds - _cfLastPushedSeconds)
-    : 0;
-  _cfLastPushedSeconds = _cfTimerSeconds;
+  const tickDirection = cfComputeTickDirection();
 
   const countdownOverlay = document.getElementById('wc-countdown-overlay');
   const countdownNumber = document.getElementById('wc-countdown-number');
@@ -11381,7 +11392,7 @@ async function cfInitTVDisplay(username) {
     if (!row) return;
     lastUpdateMs = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
     if (staleEl) staleEl.style.display = 'none';
-    cfTVReceiveState(row.state, lastUpdateMs);
+    cfTVReceiveState(row.state);
   };
 
   try {
@@ -11411,13 +11422,15 @@ let _tvSyncedState = null;
 let _tvSyncedAtMs = 0;
 let _tvPrevState = null;
 
-function cfTVReceiveState(state, updatedAtMs) {
+function cfTVReceiveState(state) {
   _tvSyncedState = state;
-  // Anchor interpolation to when the PHONE captured this snapshot (updated_at), not
-  // when the TV happened to receive it — using receipt time left a constant lag baked
-  // in equal to however long the push+Realtime round trip took, which interpolation
-  // alone couldn't fix since it only smooths between syncs, not the sync's own staleness.
-  _tvSyncedAtMs = updatedAtMs || Date.now();
+  // Anchor interpolation to the TV's OWN clock at receipt time, not the phone's embedded
+  // timestamp — comparing two independently-clocked devices (phone vs. whatever's on the
+  // TV) risks clock skew between them causing a periodic drift-then-snap-back pattern,
+  // which looks just as much like "bouncing" as the tickDirection bug fixed alongside
+  // this. Accepts a small constant lag (the push+Realtime round trip) in exchange for
+  // never fighting a cross-device clock disagreement — much less noticeable than jitter.
+  _tvSyncedAtMs = Date.now();
 
   if (!state) {
     // Workout ended and the phone left the WOD card — reset to idle instead of
