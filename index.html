@@ -205,6 +205,7 @@ label{font-size:11px;font-weight:800;color:var(--text-muted);display:block;margi
 .maxes-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:20px}
 .max-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px;cursor:pointer;transition:all .12s}
 .max-card:hover{border-color:var(--orange);box-shadow:var(--shadow-orange)}
+.cf-pr-card:hover{border-color:var(--cf-green)!important;box-shadow:none}
 .max-card-name{font-size:10.5px;font-weight:700;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
 .max-card-value{font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text-primary)}
 .max-card-unit{font-size:11px;font-weight:400;color:var(--text-muted);margin-left:2px}
@@ -913,6 +914,7 @@ html.tv-mode #cf-fullscreen-timer { display: flex !important; }
       <button class="nav-item" onclick="nav('cf-track',this)"><span class="icon">⏱</span>Track WOD</button>
       <button class="nav-item" onclick="nav('cf-library',this)"><span class="icon">📋</span>WOD Library</button>
       <button class="nav-item" onclick="nav('cf-history',this)"><span class="icon">📊</span>WOD History</button>
+      <button class="nav-item" onclick="nav('cf-prs',this)"><span class="icon">🏆</span>WOD PRs</button>
       <button class="nav-item" onclick="nav('cf-movement-library',this)"><span class="icon">🏃</span>Movement Library</button>
       <button class="nav-item" onclick="nav('cf-builder',this)"><span class="icon">⚡</span>WOD Builder</button>
       <div id="cf-coach-nav" style="display:none">
@@ -1637,6 +1639,16 @@ html.tv-mode #cf-fullscreen-timer { display: flex !important; }
       </div>
     </div>
 
+    <!-- CF: WOD PRs -->
+    <div class="view" id="view-cf-prs">
+      <div class="view-header">
+        <div class="view-title">WOD PRs</div>
+      </div>
+      <div class="view-body pad-bottom">
+        <div id="cf-prs-body"><div class="loading">Loading...</div></div>
+      </div>
+    </div>
+
     <!-- CF: MOVEMENT LIBRARY -->
     <div class="view" id="view-cf-movement-library">
       <div class="view-header">
@@ -1727,6 +1739,7 @@ html.tv-mode #cf-fullscreen-timer { display: flex !important; }
         <button class="more-menu-item" onclick="nav('cf-library');closeMoreMenu()"><span>📋</span>WOD Library</button>
         <button class="more-menu-item" onclick="nav('cf-builder');closeMoreMenu()"><span>⚡</span>WOD Builder</button>
         <button class="more-menu-item" onclick="nav('cf-history');closeMoreMenu()"><span>📊</span>WOD History</button>
+        <button class="more-menu-item" onclick="nav('cf-prs');closeMoreMenu()"><span>🏆</span>WOD PRs</button>
         <button class="more-menu-item" onclick="nav('cf-movement-library');closeMoreMenu()"><span>🏃</span>Movement Library</button>
         <div id="cf-more-coach" style="display:none">
           <button class="more-menu-item" onclick="nav('cf-athletes');closeMoreMenu()"><span>👥</span>WOD Athletes</button>
@@ -11542,6 +11555,55 @@ async function cfRenderHistory() {
   }
 }
 
+// All-time best score per WOD — the WOD-side equivalent of the Lift side's
+// "Maxes & PRs" page (renderMaxes()), built the same way: group everything logged,
+// reduce to one best-per-name, render a card grid with a "Recent PR" badge.
+// Reuses wlbFindBestScore() (fixed this session to work across every format, not
+// just For Time/AMRAP) rather than re-deriving comparison logic here.
+async function renderWODPRs() {
+  const body = document.getElementById('cf-prs-body');
+  if (!body) return;
+  body.innerHTML = '<div class="loading">Loading...</div>';
+
+  try {
+    const scores = await db('cf_scores','GET',null,
+      `?user_id=eq.${currentUser.id}&select=*&order=logged_at.desc&limit=300`
+    ).catch(() => []);
+
+    if (!scores || !scores.length) {
+      body.innerHTML = `<div class="empty-state"><span class="emo">🏆</span><h3>No PRs yet</h3><p>Log a WOD score to start building your PR board.</p><button class="btn btn-primary btn-sm" onclick="nav('cf-track')">Track a WOD</button></div>`;
+      return;
+    }
+
+    const groups = {};
+    scores.forEach(s => { (groups[s.wod_name] ||= []).push(s); });
+    const sorted = Object.entries(groups).sort((a,b) =>
+      new Date(b[1][0].logged_at) - new Date(a[1][0].logged_at)
+    );
+
+    const cards = sorted.map(([wodName, attempts]) => {
+      const fmt = attempts[0]?.format || 'WOD';
+      const best = wlbFindBestScore(attempts, fmt);
+      const scoringLabel = best.scoring_type && best.scoring_type !== 'reps'
+        ? ' · ' + best.scoring_type.charAt(0).toUpperCase() + best.scoring_type.slice(1) : '';
+      const isRecent = new Date(best.logged_at) > new Date(Date.now() - 30*86400e3);
+      const dateLabel = new Date(best.logged_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+      return `<div class="max-card cf-pr-card" onclick="nav('cf-history')">
+        <div class="max-card-name">${wodName}</div>
+        <div class="max-card-value">${best.score}</div>
+        <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px">${fmt}${scoringLabel}</div>
+        <div class="max-card-date">${dateLabel}</div>
+        ${isRecent?'<div class="max-card-pr" style="background:var(--cf-green-dim);color:var(--cf-green)">↑ Recent PR</div>':''}
+      </div>`;
+    }).join('');
+
+    body.innerHTML = `<div class="maxes-grid">${cards}</div>`;
+  } catch(e) {
+    body.innerHTML = '<div class="error-msg">Could not load PRs</div>';
+    console.error(e);
+  }
+}
+
 function cfRenderHistByDate(body, scores) {
   body.innerHTML = scores.map(s => {
     const d = new Date(s.logged_at);
@@ -13795,7 +13857,7 @@ function alloySwitchMode(mode) {
 
 // ── Extend nav() to handle CF views ──
 function nav(view, btn) {
-  const cfViews = ['cf-dashboard','cf-track','cf-library','cf-athletes','cf-assign','cf-builder','cf-history','cf-movement-library'];
+  const cfViews = ['cf-dashboard','cf-track','cf-library','cf-athletes','cf-assign','cf-builder','cf-history','cf-prs','cf-movement-library'];
   if (cfViews.includes(view)) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     const el = document.getElementById('view-' + view);
@@ -13822,6 +13884,7 @@ function nav(view, btn) {
     if (view === 'cf-assign')    cfRenderAssignWOD();
     if (view === 'cf-builder')   cfRenderWODBuilder();
     if (view === 'cf-history')   cfRenderHistory();
+    if (view === 'cf-prs')       renderWODPRs();
     if (view === 'cf-assign')    cfRenderAssign();
     if (view === 'cf-movement-library') cfRenderMovementLibrary();
     return;
