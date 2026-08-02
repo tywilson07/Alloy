@@ -828,6 +828,10 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
    <head> script below can react. See ALLOY_TV_USERNAME / cfInitTVDisplay(). */
 html.tv-mode body > *:not(#cf-fullscreen-timer) { display: none !important; }
 html.tv-mode #cf-fullscreen-timer { display: flex !important; }
+/* Belt-and-suspenders: cfInitTVDisplay() also hides these via JS, but that depends on
+   the script reaching that line successfully on whatever browser is on the TV device —
+   this guarantees it categorically regardless, same reasoning as the rule above. */
+html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important; }
 </style>
   <script>
     if ("serviceWorker" in navigator) {
