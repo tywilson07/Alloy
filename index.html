@@ -11421,6 +11421,7 @@ async function cfInitTVDisplay(username) {
 let _tvSyncedState = null;
 let _tvSyncedAtMs = 0;
 let _tvPrevState = null;
+let _tvLastRestAnnounced = null; // last rest-countdown second (15/3/2/1) already spoken, so a value isn't repeated across syncs that happen to land on it more than once
 
 function cfTVReceiveState(state) {
   _tvSyncedState = state;
@@ -11450,13 +11451,25 @@ function cfTVReceiveState(state) {
   cfRenderRemoteTVState(state);
 }
 
-function cfTVInterpolateTimer() {
-  if (!_tvSyncedState || !_tvSyncedState.timerRunning || !_tvSyncedState.tickDirection) return;
-  const timeEl = document.getElementById('fs-time');
-  if (!timeEl || _tvSyncedState.leadin?.active) return; // lead-in shows its own count, not the timer
+// Single source of truth for "what second value should the TV be showing right now" —
+// used by BOTH the periodic interpolation tick AND the full state re-render below. Having
+// two separate computations (a raw render on sync + a separate interpolated one between
+// syncs) meant they disagreed by however much time had elapsed since the last sync,
+// flickering the display by ~1 second on every single sync — twice a second.
+function cfTVComputeDisplaySeconds() {
+  if (!_tvSyncedState) return 0;
+  const raw = Math.abs(_tvSyncedState.timerSeconds || 0);
+  if (!_tvSyncedState.timerRunning || !_tvSyncedState.tickDirection) return raw;
   const elapsed = Math.round((Date.now() - _tvSyncedAtMs) / 1000);
-  const interpolated = Math.max(0, _tvSyncedState.timerSeconds + _tvSyncedState.tickDirection * elapsed);
-  const m = Math.floor(interpolated/60), sec = interpolated%60;
+  return Math.max(0, raw + _tvSyncedState.tickDirection * elapsed);
+}
+
+function cfTVInterpolateTimer() {
+  if (!_tvSyncedState || _tvSyncedState.leadin?.active || _tvSyncedState.finished) return;
+  const timeEl = document.getElementById('fs-time');
+  if (!timeEl) return;
+  const secs = cfTVComputeDisplaySeconds();
+  const m = Math.floor(secs/60), sec = secs%60;
   timeEl.textContent = `${m}:${String(sec).padStart(2,'0')}`;
 }
 
@@ -11480,7 +11493,25 @@ function cfTVDetectAudioCues(prev, curr) {
   // Intervals work/rest phase transitions
   if (curr.format === 'Intervals' && prev.intervalPhase !== curr.intervalPhase) {
     if (curr.intervalPhase === 'rest') cfBeepRest();
-    else { cfBeepInterval(); cfSpeak('Interval ' + (curr.currentInterval + 1)); }
+    else {
+      cfBeepInterval();
+      cfSpeak('Go!');
+      setTimeout(() => cfSpeak('Interval ' + (curr.currentInterval + 1)), 700);
+    }
+    _tvLastRestAnnounced = null; // fresh rest period — clear so 15/3/2/1 can fire again below
+  }
+  // Rest countdown callouts (15 seconds, then 3-2-1) — these are sub-second thresholds
+  // *within* a rest phase, not phase transitions, so the block above never catches them.
+  // Missed entirely until now: the phone's own cfIntervalTimerTick() speaks these locally,
+  // but that's phone-only audio (same iOS limitation as the AirPlay-mirroring case) — the
+  // TV needs its own independent detection of the exact same thresholds.
+  if (curr.format === 'Intervals' && curr.intervalPhase === 'rest' && curr.timerRunning) {
+    const secs = Math.abs(curr.timerSeconds || 0);
+    if ([15,3,2,1].includes(secs) && _tvLastRestAnnounced !== secs) {
+      cfBeepWarning();
+      cfSpeak(secs === 15 ? '15 seconds' : String(secs));
+      _tvLastRestAnnounced = secs;
+    }
   }
   // EMOM round changes
   if (curr.format === 'EMOM' && prev.setup?.emomCurrentRound !== curr.setup?.emomCurrentRound) {
@@ -11534,7 +11565,7 @@ function cfRenderRemoteTVState(state) {
     return;
   }
 
-  const secs = Math.abs(state.timerSeconds || 0);
+  const secs = cfTVComputeDisplaySeconds();
   const m = Math.floor(secs/60), sec = secs%60;
   if (timeEl) {
     timeEl.textContent = `${m}:${String(sec).padStart(2,'0')}`;
