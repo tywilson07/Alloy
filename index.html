@@ -11504,13 +11504,22 @@ function cfTVDetectAudioCues(prev, curr) {
   // *within* a rest phase, not phase transitions, so the block above never catches them.
   // Missed entirely until now: the phone's own cfIntervalTimerTick() speaks these locally,
   // but that's phone-only audio (same iOS limitation as the AirPlay-mirroring case) — the
-  // TV needs its own independent detection of the exact same thresholds.
-  if (curr.format === 'Intervals' && curr.intervalPhase === 'rest' && curr.timerRunning) {
-    const secs = Math.abs(curr.timerSeconds || 0);
-    if ([15,3,2,1].includes(secs) && _tvLastRestAnnounced !== secs) {
-      cfBeepWarning();
-      cfSpeak(secs === 15 ? '15 seconds' : String(secs));
-      _tvLastRestAnnounced = secs;
+  // TV needs its own independent detection of the exact same thresholds. Detected by
+  // CROSSING (prev > threshold >= curr) rather than an exact-value match — syncs land
+  // every 500ms and Realtime delivery isn't guaranteed to hand the client every single
+  // value, so a gap could jump straight from e.g. 16 to 13 and an exact-match check would
+  // silently never fire "15 seconds" at all. Verified this exact scenario in isolation —
+  // exact-match missed it, crossing-detection catches it regardless of the gap.
+  if (curr.format === 'Intervals' && curr.intervalPhase === 'rest' && curr.timerRunning && prev.intervalPhase === 'rest') {
+    const prevSecs = Math.abs(prev.timerSeconds || 0);
+    const currSecs = Math.abs(curr.timerSeconds || 0);
+    for (const t of [15, 3, 2, 1]) {
+      if (prevSecs > t && currSecs <= t && _tvLastRestAnnounced !== t) {
+        cfBeepWarning();
+        cfSpeak(t === 15 ? '15 seconds' : String(t));
+        _tvLastRestAnnounced = t;
+        break;
+      }
     }
   }
   // EMOM round changes
