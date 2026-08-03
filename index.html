@@ -15734,6 +15734,18 @@ function cfLoadWODToTrack(wod) {
       if (bs.buyinMovements) { _wlbBuyinMovements = bs.buyinMovements; _wlbShowBuyin = bs.showBuyin; }
       if (bs.buyoutMovements) { _wlbBuyoutMovements = bs.buyoutMovements; _wlbShowBuyout = bs.showBuyout; }
 
+      // Plain formats (For Time/Chipper/Partner/AMRAP/EMOM/Tabata) only ever
+      // store their movements at the top level (wod.movements), never inside
+      // builder_state — restore them here too, or the card loads blank.
+      if (!bs.isIntervals && !bs.isEmomStation && !bs.isHeavy && wod.movements?.length > 0) {
+        _wlbMovements = wod.movements.map(m => ({
+          name: m.name || '', reps: m.reps || '',
+          unit: m.unit || 'reps', weight: m.detail || '',
+          _measurement: m._measurement || ''
+        }));
+        wlbRenderSection('main');
+      }
+
       wlbUpdateStructureUI();
     } else if (wod.movements?.length > 0) {
       // Legacy: restore flat movements
