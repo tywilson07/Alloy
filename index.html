@@ -13502,15 +13502,39 @@ function cfEndIntervalWork() {
 // ═══════════════════════════════════════════════════
 
 
+// Silent looping video — the Screen Wake Lock API below is unreliable on
+// iOS when Alloy is running as a home-screen-installed (standalone) PWA,
+// where it commonly fails silently or gets dropped. A muted, looping video
+// is the standard fallback that actually keeps the screen on there.
+let _noSleepVideo = null;
+function _cfEnsureNoSleepVideo() {
+  if (_noSleepVideo) return _noSleepVideo;
+  const canvas = document.createElement('canvas');
+  canvas.width = 2; canvas.height = 2;
+  canvas.getContext('2d').fillRect(0, 0, 2, 2);
+  const video = document.createElement('video');
+  video.setAttribute('playsinline', '');
+  video.setAttribute('muted', '');
+  video.muted = true;
+  video.loop = true;
+  video.style.cssText = 'position:fixed;top:-10px;left:-10px;width:1px;height:1px;opacity:0.01;pointer-events:none';
+  video.srcObject = canvas.captureStream(1);
+  document.body.appendChild(video);
+  _noSleepVideo = video;
+  return video;
+}
+
 async function cfRequestWakeLock() {
-  if (!('wakeLock' in navigator)) return; // not supported
-  try {
-    _wakeLock = await navigator.wakeLock.request('screen');
-    _wakeLock.addEventListener('release', () => { _wakeLock = null; });
-  } catch(e) {
-    // Wake lock failed (e.g. page not visible) — silently ignore
-    console.log('Wake lock unavailable:', e.message);
+  if ('wakeLock' in navigator) {
+    try {
+      _wakeLock = await navigator.wakeLock.request('screen');
+      _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+    } catch(e) {
+      // Wake lock failed (e.g. page not visible) — silently ignore, the video fallback below still runs
+      console.log('Wake lock unavailable:', e.message);
+    }
   }
+  try { await _cfEnsureNoSleepVideo().play(); } catch(e) {}
 }
 
 function cfReleaseWakeLock() {
@@ -13518,11 +13542,13 @@ function cfReleaseWakeLock() {
     _wakeLock.release().catch(() => {});
     _wakeLock = null;
   }
+  if (_noSleepVideo) _noSleepVideo.pause();
 }
 
 // Re-acquire if page becomes visible again (e.g. user switches apps and returns)
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && _cfTimerRunning) {
+  const wodCardOpen = document.getElementById('cf-wod-card')?.style.display !== 'none';
+  if (document.visibilityState === 'visible' && (_cfTimerRunning || wodCardOpen)) {
     cfRequestWakeLock();
   }
 });
