@@ -10930,11 +10930,11 @@ function wlbPopulateWODCard() {
 
   const mvToCardRow = (mv, highlight) => {
     if (!mv.name && !mv.reps) return '';
-    const wt = mv.weight ? ` <span style="color:var(--text-muted);font-size:12px">@ ${mv.weight} ${wtUnit}</span>` : '';
+    const wt = mv.weight ? ` <span style="color:var(--text-muted);font-size:calc(12px * var(--wc-scale,1))">@ ${mv.weight} ${wtUnit}</span>` : '';
     const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-    return `<div style="display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)">
-      <span style="font-size:28px;font-weight:900;font-family:var(--mono);color:${highlight||'#fff'};min-width:52px;line-height:1">${mv.reps||''}</span>
-      <span style="font-size:16px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
+    return `<div style="display:flex;align-items:baseline;gap:calc(10px * var(--wc-scale,1));padding:calc(8px * var(--wc-scale,1)) 0;border-bottom:1px solid rgba(255,255,255,.07)">
+      <span style="font-size:calc(28px * var(--wc-scale,1));font-weight:900;font-family:var(--mono);color:${highlight||'#fff'};min-width:calc(52px * var(--wc-scale,1));line-height:1">${mv.reps||''}</span>
+      <span style="font-size:calc(16px * var(--wc-scale,1));font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
     </div>`;
   };
 
@@ -10968,12 +10968,12 @@ function wlbPopulateWODCard() {
           if (!mv.name) return '';
           const wt = mv.weight ? ' @ ' + mv.weight + ' ' + wtUnit : '';
           const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-          return '<div style="display:flex;align-items:baseline;gap:10px;padding:4px 0">'
-            + '<span style="font-size:' + (isCurrent?'28':'18') + 'px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:48px">' + (mv.reps||'') + '</span>'
-            + '<span style="font-size:' + (isCurrent?'16':'13') + 'px;font-weight:800;color:' + (isCurrent?'#fff':'rgba(255,255,255,.4)') + '">' + mv.name + unit + wt + '</span>'
+          return '<div style="display:flex;align-items:baseline;gap:calc(10px * var(--wc-scale,1));padding:calc(4px * var(--wc-scale,1)) 0">'
+            + '<span style="font-size:calc(' + (isCurrent?'28':'18') + 'px * var(--wc-scale,1));font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:calc(48px * var(--wc-scale,1))">' + (mv.reps||'') + '</span>'
+            + '<span style="font-size:calc(' + (isCurrent?'16':'13') + 'px * var(--wc-scale,1));font-weight:800;color:' + (isCurrent?'#fff':'rgba(255,255,255,.4)') + '">' + mv.name + unit + wt + '</span>'
             + '</div>';
         }).filter(Boolean).join('');
-        return '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07);opacity:' + (isCurrent?'1':'0.4') + '">'
+        return '<div style="padding:calc(8px * var(--wc-scale,1)) 0;border-bottom:1px solid rgba(255,255,255,.07);opacity:' + (isCurrent?'1':'0.4') + '">'
           + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
           + '<span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--cf-green)">Interval ' + (iIdx+1) + (isCurrent?' ← NOW':'') + '</span>'
           + splitBadge
@@ -10991,14 +10991,14 @@ function wlbPopulateWODCard() {
         const isCurrent = sIdx === ((_cfSetup.emomCurrentRound - 1) % _wlbEmomStations.length);
         const color = station.isRest ? 'var(--text-muted)' : stationColors[sIdx % stationColors.length];
         const movLines = station.isRest
-          ? '<div style="font-size:14px;color:var(--text-muted);font-style:italic">Rest</div>'
+          ? '<div style="font-size:calc(14px * var(--wc-scale,1));color:var(--text-muted);font-style:italic">Rest</div>'
           : station.movements.map(mv => mv.name
-              ? '<div style="display:flex;align-items:baseline;gap:10px;padding:4px 0">'
-                + '<span style="font-size:' + (isCurrent ? '28' : '20') + 'px;font-weight:900;font-family:var(--mono);color:' + color + ';min-width:48px">' + (mv.reps||'') + '</span>'
-                + '<span style="font-size:' + (isCurrent ? '16' : '13') + 'px;font-weight:800;color:' + (isCurrent ? '#fff' : 'rgba(255,255,255,.5)') + '">' + mv.name + (mv.weight ? ' @ ' + mv.weight : '') + '</span>'
+              ? '<div style="display:flex;align-items:baseline;gap:calc(10px * var(--wc-scale,1));padding:calc(4px * var(--wc-scale,1)) 0">'
+                + '<span style="font-size:calc(' + (isCurrent ? '28' : '20') + 'px * var(--wc-scale,1));font-weight:900;font-family:var(--mono);color:' + color + ';min-width:calc(48px * var(--wc-scale,1))">' + (mv.reps||'') + '</span>'
+                + '<span style="font-size:calc(' + (isCurrent ? '16' : '13') + 'px * var(--wc-scale,1));font-weight:800;color:' + (isCurrent ? '#fff' : 'rgba(255,255,255,.5)') + '">' + mv.name + (mv.weight ? ' @ ' + mv.weight : '') + '</span>'
                 + '</div>' : ''
             ).join('');
-        return '<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.07);opacity:' + (isCurrent ? '1' : '0.4') + '">'
+        return '<div style="padding:calc(10px * var(--wc-scale,1)) 0;border-bottom:1px solid rgba(255,255,255,.07);opacity:' + (isCurrent ? '1' : '0.4') + '">'
           + '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:' + color + ';margin-bottom:4px">'
           + (station.label || 'Station ' + (sIdx+1)) + (isCurrent ? ' ← NOW' : '') + '</div>'
           + movLines + '</div>';
@@ -11049,6 +11049,25 @@ function wlbPopulateWODCard() {
   } else if (ghostEl) {
     ghostEl.style.display = 'none';
   }
+
+  wlbFitWODCardMovements();
+}
+
+// Shrinks the movements list's text/row size to fit the visible area without
+// scrolling, down to a minimum readable size — only scrolls if it's still
+// too long even at that minimum.
+function wlbFitWODCardMovements() {
+  const wrap = document.getElementById('wc-movements-wrap');
+  if (!wrap) return;
+  wrap.style.setProperty('--wc-scale', '1');
+  requestAnimationFrame(() => {
+    const overflow = wrap.scrollHeight - wrap.clientHeight;
+    if (overflow > 2) {
+      const ratio = wrap.clientHeight / wrap.scrollHeight;
+      const scale = Math.max(0.6, ratio);
+      wrap.style.setProperty('--wc-scale', scale.toFixed(3));
+    }
+  });
 }
 
 function wlbSyncWODCard() {
@@ -15967,7 +15986,7 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
   </div>
 
   <!-- WOD movements -->
-  <div style="flex:1;min-height:0;overflow-y:auto;padding:16px 18px">
+  <div id="wc-movements-wrap" style="flex:1;min-height:0;overflow-y:auto;padding:16px 18px">
     <!-- Buy-in -->
     <div id="wc-buyin" style="display:none;margin-bottom:14px">
       <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-muted);margin-bottom:6px">Buy-In (once)</div>
