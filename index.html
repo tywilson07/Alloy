@@ -15943,9 +15943,9 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
   <!-- ═══════════════════════════════════════
      ALLOY — WOD CARD (shown when workout starts)
 ═══════════════════════════════════════ -->
-<div id="cf-wod-card" style="display:none;position:fixed;inset:0;z-index:900;background:#0d0d0d;overflow-y:auto;flex-direction:column">
+<div id="cf-wod-card" style="display:none;position:fixed;inset:0;z-index:900;background:#0d0d0d;overflow:hidden;flex-direction:column">
   <!-- Header -->
-  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid rgba(57,211,83,.2)">
+  <div style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid rgba(57,211,83,.2)">
     <div>
       <div id="wc-wod-name" style="font-size:22px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:#fff"></div>
       <div id="wc-format-label" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--cf-green);margin-top:2px"></div>
@@ -15954,7 +15954,7 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
   </div>
 
   <!-- Timer -->
-  <div style="text-align:center;padding:20px 18px 12px;border-bottom:1px solid rgba(57,211,83,.15)">
+  <div style="flex-shrink:0;text-align:center;padding:20px 18px 12px;border-bottom:1px solid rgba(57,211,83,.15)">
     <!-- Ghost target from previous best -->
     <div id="wc-ghost-target" style="display:none;font-size:11px;font-weight:700;color:rgba(57,211,83,.5);margin-bottom:6px;letter-spacing:.5px"></div>
     <div id="wc-timer" style="font-size:72px;font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1;letter-spacing:-2px">0:00</div>
@@ -15967,7 +15967,7 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
   </div>
 
   <!-- WOD movements -->
-  <div style="flex:1;padding:16px 18px">
+  <div style="flex:1;min-height:0;overflow-y:auto;padding:16px 18px">
     <!-- Buy-in -->
     <div id="wc-buyin" style="display:none;margin-bottom:14px">
       <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--text-muted);margin-bottom:6px">Buy-In (once)</div>
@@ -15984,7 +15984,7 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
   </div>
 
   <!-- Controls -->
-  <div style="padding:14px 18px;border-top:1px solid rgba(57,211,83,.2);display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#0d0d0d">
+  <div style="flex-shrink:0;padding:14px 18px;border-top:1px solid rgba(57,211,83,.2);display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#0d0d0d">
     <!-- Round counter (AMRAP/EMOM) -->
     <div id="wc-round-counter" style="display:none;grid-column:1/-1;display:none;align-items:center;justify-content:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(57,211,83,.15);margin-bottom:4px">
       <button class="cf-round-btn" onclick="cfAdjustRounds(-1)">−</button>
