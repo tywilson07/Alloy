@@ -1347,9 +1347,12 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
           </div>
 
           <!-- Main movements -->
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:6px">
             <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--cf-green)">Main Work</div>
-            <button class="btn btn-ghost btn-sm" onclick="wlbAddMovement('main')">+ Add Movement</button>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-ghost btn-sm" onclick="wlbOpenLadderModal()">🪜 Build Ladder</button>
+              <button class="btn btn-ghost btn-sm" onclick="wlbAddMovement('main')">+ Add Movement</button>
+            </div>
           </div>
           <div id="wlb-movements" style="display:flex;flex-direction:column;gap:8px"></div>
           <div id="wlb-movements-empty" style="font-size:12.5px;color:var(--text-muted);padding:8px 0;text-align:center">
@@ -10311,6 +10314,79 @@ function wlbAddMovement(section) {
     inputs?.[inputs.length-1]?.focus();
   }, 50);
   wlbUpdatePreview();
+}
+
+// ── Ladder builder (21-15-9, straight countdowns, etc.) ──
+// Generates plain Main Work rows from a rep-scheme + movement list rather than
+// being its own runtime format — everything downstream (preview, WOD card, TV
+// Display, scoring, save/load) already handles a plain movements list correctly.
+const LADDER_PRESETS = ['21-15-9', '15-12-9-6-3', '10-9-8-7-6-5-4-3-2-1', '5-4-3-2-1'];
+
+function wlbOpenLadderModal() {
+  document.getElementById('modal-title').textContent = 'Build a Ladder';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="field">
+      <label>Rep Scheme</label>
+      <input id="ladder-scheme-input" placeholder="e.g. 21-15-9 or 10-9-8-7-6-5-4-3-2-1" autocomplete="off">
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 14px">
+      ${LADDER_PRESETS.map(p => `<button class="btn btn-ghost btn-xs" onclick="document.getElementById('ladder-scheme-input').value='${p}'">${p}</button>`).join('')}
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <label style="margin:0">Movements</label>
+      <button class="btn btn-ghost btn-xs" onclick="wlbAddLadderMovementRow()">+ Add Movement</button>
+    </div>
+    <div id="ladder-movements-list" style="display:flex;flex-direction:column;gap:6px"></div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:10px;padding:8px;background:var(--surface2);border-radius:var(--radius)">💡 Each rep count in the scheme repeats through every movement listed, in order — e.g. "21-15-9" × Thrusters/Pull-ups builds 21 Thrusters, 21 Pull-ups, 15 Thrusters, 15 Pull-ups, 9 Thrusters, 9 Pull-ups.</div>
+  `;
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="wlbGenerateLadder()">Generate</button>
+  `;
+  wlbAddLadderMovementRow();
+  wlbAddLadderMovementRow();
+  showModal();
+}
+
+function wlbAddLadderMovementRow() {
+  const container = document.getElementById('ladder-movements-list');
+  if (!container) return;
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:6px;align-items:center';
+  row.innerHTML = `
+    <input class="ladder-mv-input" list="cf-movement-suggestions" placeholder="Movement name..." autocomplete="off" style="flex:1">
+    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0;flex-shrink:0">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+function wlbGenerateLadder() {
+  const schemeStr = document.getElementById('ladder-scheme-input')?.value || '';
+  const reps = schemeStr.split(/[^\d]+/).filter(Boolean).map(Number);
+  if (!reps.length) { toast('Enter a rep scheme, e.g. 21-15-9'); return; }
+
+  const names = [...document.querySelectorAll('.ladder-mv-input')]
+    .map(el => el.value.trim())
+    .filter(Boolean);
+  if (!names.length) { toast('Add at least one movement'); return; }
+
+  if (_wlbMovements.length > 0 && !confirm('Replace the current Main Work movements with this ladder?')) return;
+
+  const expanded = [];
+  reps.forEach(r => {
+    names.forEach(name => {
+      expanded.push({ name, reps: String(r), unit: 'reps', weight: '', _measurement: '' });
+    });
+  });
+  _wlbMovements = expanded;
+  if (!_wlbIsChipper) wlbToggleChipper(); // single pass through the expanded list, not repeated rounds
+
+  wlbRenderSection('main');
+  const emptyMsg = document.getElementById('wlb-movements-empty');
+  if (emptyMsg) emptyMsg.style.display = 'none';
+  wlbUpdatePreview();
+  closeModal();
+  toast(`Ladder built — ${reps.join('-')} ✓`);
 }
 
 function wlbRemoveMovement(section, idx) {
