@@ -739,7 +739,7 @@ body.cf-mode .pill-green { background: var(--cf-green-dim) !important; color: va
 #cf-fullscreen-timer{display:none;position:fixed;inset:0;background:#0d0d0d;z-index:9999;flex-direction:row;align-items:stretch;gap:0;cursor:pointer;padding:6vh 6vw;overflow:hidden}
 #cf-fullscreen-timer.active{display:flex}
 .fs-left-panel{flex:0 0 50%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-right:4vw;min-width:0}
-.fs-right-panel{flex:1;display:flex;flex-direction:column;justify-content:center;padding-left:4vw;border-left:1px solid rgba(255,255,255,.1);min-width:0;overflow:hidden}
+.fs-right-panel{flex:1;display:flex;flex-direction:column;justify-content:center;padding-left:4vw;border-left:1px solid rgba(255,255,255,.1);min-width:0;overflow-y:auto}
 /* Font sizes below are the same clamp() approach as before, re-tuned for a 50%-wide
    column instead of the full screen width (vw is always relative to the whole viewport,
    not the parent panel, so these needed scaling down to match the narrower column). */
@@ -11324,6 +11324,26 @@ function cfEnterFullscreen() {
   cfFsRenderMovements();
 }
 
+// Shrinks the TV movements panel's text/row size to fit the visible area without
+// scrolling, down to a minimum readable size — only scrolls (.fs-right-panel already
+// has overflow-y:auto) if it's still too long even at that minimum. Same approach as
+// wlbFitWODCardMovements() for the phone's own WOD card. Shared by every function that
+// renders into #fs-wod-movements (local mirroring, remote TV, and the Workout Complete
+// splits screen), since they all share the same #fs-right-panel container.
+function cfFitTVMovements() {
+  const panel = document.getElementById('fs-right-panel');
+  const content = document.getElementById('fs-wod-movements');
+  if (!panel || !content) return;
+  panel.style.setProperty('--fs-scale', '1');
+  requestAnimationFrame(() => {
+    const overflow = content.scrollHeight - panel.clientHeight;
+    if (overflow > 2) {
+      const scale = Math.max(0.55, panel.clientHeight / content.scrollHeight);
+      panel.style.setProperty('--fs-scale', scale.toFixed(3));
+    }
+  });
+}
+
 // Shared by both the local mirroring path (cfFsRenderMovements) and the remote TV
 // path (cfRenderRemoteTVMovements) — builds: a compact history line of every completed
 // split so far, the current interval prominently, and a dimmed preview of the next one
@@ -11335,9 +11355,9 @@ function cfBuildIntervalDisplayHTML(intervals, currentIdx, splits, wtUnit) {
     if (!mv.name) return '';
     const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
     const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-    return `<div style="display:flex;align-items:baseline;gap:10px;padding:${big?'5px':'3px'} 0">
-      <span style="font-size:${big?'24':'16'}px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:${big?'44':'34'}px">${mv.reps||''}</span>
-      <span style="font-size:${big?'17':'13'}px;font-weight:800;color:${big?'#fff':'rgba(255,255,255,.55)'}">${mv.name}${unit}${wt}</span>
+    return `<div style="display:flex;align-items:baseline;gap:calc(10px * var(--fs-scale,1));padding:calc(${big?'5px':'3px'} * var(--fs-scale,1)) 0">
+      <span style="font-size:calc(${big?'24':'16'}px * var(--fs-scale,1));font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:calc(${big?'44':'34'}px * var(--fs-scale,1))">${mv.reps||''}</span>
+      <span style="font-size:calc(${big?'17':'13'}px * var(--fs-scale,1));font-weight:800;color:${big?'#fff':'rgba(255,255,255,.55)'}">${mv.name}${unit}${wt}</span>
     </div>`;
   };
 
@@ -11346,16 +11366,16 @@ function cfBuildIntervalDisplayHTML(intervals, currentIdx, splits, wtUnit) {
     if (splits[i] != null) historyChips.push(`I${i+1}: ${fmtSplit(splits[i])}`);
   }
   const historyHtml = historyChips.length
-    ? `<div style="font-size:12px;font-weight:700;color:rgba(255,255,255,.45);margin-bottom:14px;text-align:center;line-height:1.7">${historyChips.join('&nbsp;&nbsp;·&nbsp;&nbsp;')}</div>`
+    ? `<div style="font-size:calc(12px * var(--fs-scale,1));font-weight:700;color:rgba(255,255,255,.45);margin-bottom:calc(14px * var(--fs-scale,1));text-align:center;line-height:1.7">${historyChips.join('&nbsp;&nbsp;·&nbsp;&nbsp;')}</div>`
     : '';
 
   const current = intervals[currentIdx];
-  const currentHtml = `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--cf-green);margin-bottom:6px;text-align:center">Interval ${currentIdx+1} of ${intervals.length} — NOW</div>
+  const currentHtml = `<div style="font-size:calc(11px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--cf-green);margin-bottom:calc(6px * var(--fs-scale,1));text-align:center">Interval ${currentIdx+1} of ${intervals.length} — NOW</div>
     ${(current?.movements||[]).map(mv => movLine(mv, true)).filter(Boolean).join('')}`;
 
   const next = intervals[currentIdx+1];
-  const nextHtml = next ? `<div style="opacity:.45;border-top:1px solid rgba(255,255,255,.1);margin-top:14px;padding-top:12px">
-      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.5);margin-bottom:4px;text-align:center">Up Next — Interval ${currentIdx+2}</div>
+  const nextHtml = next ? `<div style="opacity:.45;border-top:1px solid rgba(255,255,255,.1);margin-top:calc(14px * var(--fs-scale,1));padding-top:calc(12px * var(--fs-scale,1))">
+      <div style="font-size:calc(10px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.5);margin-bottom:calc(4px * var(--fs-scale,1));text-align:center">Up Next — Interval ${currentIdx+2}</div>
       ${(next.movements||[]).map(mv => movLine(mv, false)).filter(Boolean).join('')}
     </div>` : '';
 
@@ -11384,19 +11404,20 @@ function cfFsRenderMovements() {
   if (_wlbIsIntervals && _wlbIntervals.length > 0) {
     html = cfBuildIntervalDisplayHTML(_wlbIntervals, _wlbCurrentInterval, _wlbIntervalSplits, wtUnit);
   } else {
-    if (_wlbRounds > 1) html += `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${_wlbRounds} ROUNDS</div>`;
+    if (_wlbRounds > 1) html += `<div style="font-size:calc(11px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:calc(12px * var(--fs-scale,1));text-align:center">${_wlbRounds} ROUNDS</div>`;
     html += _wlbMovements.map(mv => {
       if (!mv.name) return '';
       const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
       const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-      return `<div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)">
-        <span style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:44px">${mv.reps||''}</span>
-        <span style="font-size:16px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
+      return `<div style="display:flex;align-items:baseline;gap:calc(10px * var(--fs-scale,1));padding:calc(5px * var(--fs-scale,1)) 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:calc(20px * var(--fs-scale,1));font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:calc(44px * var(--fs-scale,1))">${mv.reps||''}</span>
+        <span style="font-size:calc(16px * var(--fs-scale,1));font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
       </div>`;
     }).join('');
   }
 
   fsMovements.innerHTML = html;
+  cfFitTVMovements();
 }
 
 // ═══════════════════════════════════════════════════
@@ -11839,15 +11860,16 @@ function cfRenderRemoteTVCompleteStats(state) {
     const splits = state.intervalSplits || [];
     const rows = state.intervals.map((iv, idx) => {
       const s = splits[idx];
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08)">
-        <span style="font-size:15px;font-weight:700;color:rgba(255,255,255,.6)">Interval ${idx+1}</span>
-        <span style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">${s!=null ? fmtSplit(s)+' ✓' : '—'}</span>
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:calc(8px * var(--fs-scale,1)) 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:calc(15px * var(--fs-scale,1));font-weight:700;color:rgba(255,255,255,.6)">Interval ${idx+1}</span>
+        <span style="font-size:calc(20px * var(--fs-scale,1));font-weight:900;font-family:var(--mono);color:var(--cf-green)">${s!=null ? fmtSplit(s)+' ✓' : '—'}</span>
       </div>`;
     }).join('');
-    fsMovements.innerHTML = `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.5);margin-bottom:10px;text-align:center">Interval Splits</div>${rows}`;
+    fsMovements.innerHTML = `<div style="font-size:calc(11px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.5);margin-bottom:10px;text-align:center">Interval Splits</div>${rows}`;
   } else {
     fsMovements.innerHTML = '';
   }
+  cfFitTVMovements();
 }
 
 function cfRenderRemoteTVMovements(state) {
@@ -11870,29 +11892,29 @@ function cfRenderRemoteTVMovements(state) {
     if (!mv.name) return '';
     const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
     const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-    return `<div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)">
-      <span style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:44px">${mv.reps||''}</span>
-      <span style="font-size:16px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
+    return `<div style="display:flex;align-items:baseline;gap:calc(10px * var(--fs-scale,1));padding:calc(5px * var(--fs-scale,1)) 0;border-bottom:1px solid rgba(255,255,255,.08)">
+      <span style="font-size:calc(20px * var(--fs-scale,1));font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:calc(44px * var(--fs-scale,1))">${mv.reps||''}</span>
+      <span style="font-size:calc(16px * var(--fs-scale,1));font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
     </div>`;
   };
 
   if (state.showBuyin && state.buyinMovements?.length) {
-    html += `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.5);margin-bottom:6px">Buy-In</div>`;
+    html += `<div style="font-size:calc(11px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.5);margin-bottom:6px">Buy-In</div>`;
     html += state.buyinMovements.map(mvToRow).join('');
-    html += `<div style="margin:10px 0;border-top:1px solid rgba(255,255,255,.12)"></div>`;
+    html += `<div style="margin:calc(10px * var(--fs-scale,1)) 0;border-top:1px solid rgba(255,255,255,.12)"></div>`;
   }
 
   if (state.isIntervals && state.intervals?.length > 0) {
     html += cfBuildIntervalDisplayHTML(state.intervals, state.currentInterval, state.intervalSplits || [], wtUnit);
   } else if (state.isHeavy) {
-    html += `<div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green);margin-bottom:10px;text-align:center">${state.heavyMovement || 'Movement'}</div>`;
+    html += `<div style="font-size:calc(13px * var(--fs-scale,1));font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green);margin-bottom:calc(10px * var(--fs-scale,1));text-align:center">${state.heavyMovement || 'Movement'}</div>`;
     html += (state.heavySets||[]).map((set, idx) => {
       const wt = set.weight ? `${set.weight} ${wtUnit}` : '—';
       const reps = set.reps || '—';
-      return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)">
-        <span style="font-size:12px;font-weight:700;color:rgba(255,255,255,.5);min-width:48px">Set ${idx+1}</span>
-        <span style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:40px">${reps}</span>
-        <span style="font-size:15px;font-weight:800;color:#fff">${wt}</span>
+      return `<div style="display:flex;align-items:baseline;gap:calc(12px * var(--fs-scale,1));padding:calc(6px * var(--fs-scale,1)) 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:calc(12px * var(--fs-scale,1));font-weight:700;color:rgba(255,255,255,.5);min-width:calc(48px * var(--fs-scale,1))">Set ${idx+1}</span>
+        <span style="font-size:calc(22px * var(--fs-scale,1));font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:calc(40px * var(--fs-scale,1))">${reps}</span>
+        <span style="font-size:calc(15px * var(--fs-scale,1));font-weight:800;color:#fff">${wt}</span>
       </div>`;
     }).join('');
   } else if (state.isEmomStation && state.emomStations?.length > 0) {
@@ -11902,32 +11924,33 @@ function cfRenderRemoteTVMovements(state) {
       const isCurrent = sIdx === currentIdx;
       const color = station.isRest ? 'rgba(255,255,255,.5)' : stationColors[sIdx % stationColors.length];
       const movLines = station.isRest
-        ? `<div style="font-size:13px;color:rgba(255,255,255,.5);font-style:italic">Rest</div>`
+        ? `<div style="font-size:calc(13px * var(--fs-scale,1));color:rgba(255,255,255,.5);font-style:italic">Rest</div>`
         : (station.movements||[]).map(mv => {
             if (!mv.name) return '';
             const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
-            return `<div style="display:flex;align-items:baseline;gap:10px;padding:2px 0">
-              <span style="font-size:${isCurrent?'20':'15'}px;font-weight:900;font-family:var(--mono);color:${color};min-width:40px">${mv.reps||''}</span>
-              <span style="font-size:${isCurrent?'15':'12'}px;font-weight:800;color:${isCurrent?'#fff':'rgba(255,255,255,.5)'}">${mv.name}${wt}</span>
+            return `<div style="display:flex;align-items:baseline;gap:calc(10px * var(--fs-scale,1));padding:calc(2px * var(--fs-scale,1)) 0">
+              <span style="font-size:calc(${isCurrent?'20':'15'}px * var(--fs-scale,1));font-weight:900;font-family:var(--mono);color:${color};min-width:calc(40px * var(--fs-scale,1))">${mv.reps||''}</span>
+              <span style="font-size:calc(${isCurrent?'15':'12'}px * var(--fs-scale,1));font-weight:800;color:${isCurrent?'#fff':'rgba(255,255,255,.5)'}">${mv.name}${wt}</span>
             </div>`;
           }).filter(Boolean).join('');
-      return `<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);opacity:${isCurrent?'1':'0.4'}">
-        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:${color};margin-bottom:3px">${station.label||'Station '+(sIdx+1)}${isCurrent?' ← NOW':''}</div>
+      return `<div style="padding:calc(8px * var(--fs-scale,1)) 0;border-bottom:1px solid rgba(255,255,255,.08);opacity:${isCurrent?'1':'0.4'}">
+        <div style="font-size:calc(9px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:${color};margin-bottom:3px">${station.label||'Station '+(sIdx+1)}${isCurrent?' ← NOW':''}</div>
         ${movLines}
       </div>`;
     }).join('');
   } else {
-    if (state.wlbRounds > 1) html += `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${state.wlbRounds} ROUNDS</div>`;
+    if (state.wlbRounds > 1) html += `<div style="font-size:calc(11px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:calc(12px * var(--fs-scale,1));text-align:center">${state.wlbRounds} ROUNDS</div>`;
     html += (state.movements||[]).map(mvToRow).join('');
   }
 
   if (state.showBuyout && state.buyoutMovements?.length) {
-    html += `<div style="margin:10px 0;border-top:1px solid rgba(255,255,255,.12)"></div>`;
-    html += `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.5);margin-bottom:6px">Buy-Out</div>`;
+    html += `<div style="margin:calc(10px * var(--fs-scale,1)) 0;border-top:1px solid rgba(255,255,255,.12)"></div>`;
+    html += `<div style="font-size:calc(11px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.5);margin-bottom:6px">Buy-Out</div>`;
     html += state.buyoutMovements.map(mvToRow).join('');
   }
 
   fsMovements.innerHTML = html;
+  cfFitTVMovements();
 }
 
 // ═══════════════════════════════════════════════════
