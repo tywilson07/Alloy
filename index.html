@@ -10354,10 +10354,60 @@ function wlbAddLadderMovementRow() {
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;gap:6px;align-items:center';
   row.innerHTML = `
-    <input class="ladder-mv-input" list="cf-movement-suggestions" placeholder="Movement name..." autocomplete="off" style="flex:1">
+    <input class="ladder-mv-input" placeholder="Movement name..." autocomplete="off" style="flex:1"
+      oninput="wlbLadderShowSuggestions(this)" onblur="setTimeout(wlbLadderHideSuggestions, 150)">
     <button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0;flex-shrink:0">✕</button>
   `;
   container.appendChild(row);
+}
+
+// Movement-name autocomplete for the ladder modal — mirrors wlbShowSuggestions()
+// (index.html ~12299) but writes straight into the target input's value instead of
+// into a _wlbMovements[idx] slot, since ladder rows aren't backed by that array
+// until Generate is clicked. Native <input list> datalist suggestions don't
+// render on iOS Safari, which is why the rest of the builder never uses it either.
+let _ladderSuggestTarget = null;
+
+function wlbLadderShowSuggestions(input) {
+  _ladderSuggestTarget = input;
+  wlbLadderHideSuggestions();
+
+  const q = (input.value || '').toLowerCase().trim();
+  if (q.length < 2) return;
+
+  const all = cfGetAllMovements();
+  const startsWith = all.filter(m => m.name.toLowerCase().startsWith(q));
+  const contains   = all.filter(m => !m.name.toLowerCase().startsWith(q) && m.name.toLowerCase().includes(q));
+  const matches = [...startsWith, ...contains].slice(0, 5);
+  if (!matches.length) return;
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'wlb-suggestions';
+  dropdown.id = 'ladder-suggestions-dropdown';
+  dropdown.innerHTML = matches.map(m => {
+    const nameHtml = m.name.replace(new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi'),
+      '<strong style="color:var(--cf-green)">$1</strong>');
+    return `<div class="wlb-suggestion-item" onmousedown="wlbLadderPickSuggestion('${m.name.replace(/'/g,"\\'")}')">
+      <span>${nameHtml}</span>
+      <span class="wlb-suggestion-cat">${m.category||''}</span>
+    </div>`;
+  }).join('');
+
+  const wrapper = input.parentElement;
+  if (wrapper) {
+    wrapper.style.position = 'relative';
+    dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;z-index:9999;max-height:220px;overflow-y:auto;margin-top:2px';
+    wrapper.appendChild(dropdown);
+  }
+}
+
+function wlbLadderPickSuggestion(name) {
+  if (_ladderSuggestTarget) _ladderSuggestTarget.value = name;
+  wlbLadderHideSuggestions();
+}
+
+function wlbLadderHideSuggestions() {
+  document.getElementById('ladder-suggestions-dropdown')?.remove();
 }
 
 function wlbGenerateLadder() {
