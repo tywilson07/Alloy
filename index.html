@@ -11004,6 +11004,19 @@ function wlbPopulateWODCard() {
           + movLines + '</div>';
       }).join('');
     }
+  } else if (fmt === 'Heavy' && _wlbIsHeavy) {
+    if (rlEl) rlEl.textContent = _wlbHeavyMovement || '';
+    if (mvList) {
+      mvList.innerHTML = _wlbHeavySets.map((set, idx) => {
+        const wt = set.weight ? set.weight + ' ' + wtUnit : '—';
+        const reps = set.reps || '—';
+        return '<div style="display:flex;align-items:baseline;gap:calc(12px * var(--wc-scale,1));padding:calc(6px * var(--wc-scale,1)) 0;border-bottom:1px solid rgba(255,255,255,.07)">'
+          + '<span style="font-size:calc(12px * var(--wc-scale,1));font-weight:700;color:var(--text-muted);min-width:calc(48px * var(--wc-scale,1))">Set ' + (idx+1) + '</span>'
+          + '<span style="font-size:calc(22px * var(--wc-scale,1));font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:calc(40px * var(--wc-scale,1))">' + reps + '</span>'
+          + '<span style="font-size:calc(15px * var(--wc-scale,1));font-weight:800;color:#fff">' + wt + '</span>'
+          + '</div>';
+      }).join('');
+    }
   } else {
     if (rlEl) {
       if (fmt === 'AMRAP') rlEl.textContent = 'Complete as many rounds as possible';
@@ -11333,6 +11346,15 @@ function cfPushLiveState() {
     intervalSplits: _wlbIntervalSplits,
     wlbRounds: _wlbRounds,
     movements: _wlbIsIntervals ? [] : _wlbMovements,
+    isHeavy: _wlbIsHeavy,
+    heavySets: _wlbIsHeavy ? _wlbHeavySets : [],
+    heavyMovement: _wlbHeavyMovement || '',
+    isEmomStation: _wlbIsEmomStation,
+    emomStations: _wlbIsEmomStation ? _wlbEmomStations : [],
+    showBuyin: _wlbShowBuyin,
+    buyinMovements: _wlbShowBuyin ? _wlbBuyinMovements : [],
+    showBuyout: _wlbShowBuyout,
+    buyoutMovements: _wlbShowBuyout ? _wlbBuyoutMovements : [],
     weightUnit: wlbGetWeightUnit(),
     finished: _cfWorkoutJustFinished,
     finalScore: _cfWorkoutJustFinished ? (document.getElementById('cf-score-value')?.value || '') : null,
@@ -11441,6 +11463,7 @@ let _tvSyncedState = null;
 let _tvSyncedAtMs = 0;
 let _tvPrevState = null;
 let _tvLastRestAnnounced = null; // last rest-countdown second (15/3/2/1) already spoken, so a value isn't repeated across syncs that happen to land on it more than once
+let _tvLastLeadinNum = null; // lowest lead-in count (3/2/1/0=GO) already spoken for the current countdown, same crossing pattern as the rest countdown
 
 function cfTVReceiveState(state) {
   _tvSyncedState = state;
@@ -11497,11 +11520,23 @@ function cfTVInterpolateTimer() {
 // own speakers play them directly, sidestepping the iOS-mirroring audio problem entirely.
 function cfTVDetectAudioCues(prev, curr) {
   if (!curr) return;
-  // Lead-in countdown ticking down
-  const prevLeadin = prev?.leadin?.text, currLeadin = curr.leadin?.text;
-  if (curr.leadin?.active && currLeadin !== prevLeadin) {
-    if (['3','2','1'].includes(currLeadin)) { cfBeep(880, 0.15, 0.7); cfSpeak(currLeadin); }
-    else if (currLeadin === 'GO!') { cfBeep(1100, 0.15, 0.7); cfSpeak('Go!'); }
+  // Lead-in countdown ticking down (start-of-workout 3-2-1-GO). Same crossing pattern as
+  // the rest countdown below, not exact-text match — a skipped push could jump straight
+  // from e.g. "5" to "1" and an exact-match check would silently never announce 3 or 2.
+  if (curr.leadin?.active) {
+    const n = curr.leadin.text === 'GO!' ? 0 : parseInt(curr.leadin.text, 10);
+    if (!Number.isNaN(n)) {
+      for (const t of [3, 2, 1, 0]) {
+        if ((_tvLastLeadinNum === null || _tvLastLeadinNum > t) && n <= t) {
+          cfBeep(t === 0 ? 1100 : 880, 0.15, 0.7);
+          cfSpeak(t === 0 ? 'Go!' : String(t));
+          _tvLastLeadinNum = t;
+          break;
+        }
+      }
+    }
+  } else {
+    _tvLastLeadinNum = null; // reset so the next countdown announces fresh
   }
   if (!prev) return;
   // Tabata work/rest phase transitions
@@ -11705,19 +11740,65 @@ function cfRenderRemoteTVMovements(state) {
   const wtUnit = state.weightUnit || 'lbs';
   let html = '';
 
+  const mvToRow = mv => {
+    if (!mv.name) return '';
+    const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
+    const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
+    return `<div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+      <span style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:44px">${mv.reps||''}</span>
+      <span style="font-size:16px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
+    </div>`;
+  };
+
+  if (state.showBuyin && state.buyinMovements?.length) {
+    html += `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.5);margin-bottom:6px">Buy-In</div>`;
+    html += state.buyinMovements.map(mvToRow).join('');
+    html += `<div style="margin:10px 0;border-top:1px solid rgba(255,255,255,.12)"></div>`;
+  }
+
   if (state.isIntervals && state.intervals?.length > 0) {
-    html = cfBuildIntervalDisplayHTML(state.intervals, state.currentInterval, state.intervalSplits || [], wtUnit);
-  } else {
-    if (state.wlbRounds > 1) html += `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${state.wlbRounds} ROUNDS</div>`;
-    html += (state.movements||[]).map(mv => {
-      if (!mv.name) return '';
-      const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
-      const unit = mv.unit && mv.unit !== 'reps' ? ' ' + mv.unit : '';
-      return `<div style="display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.08)">
-        <span style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:44px">${mv.reps||''}</span>
-        <span style="font-size:16px;font-weight:800;color:#fff">${mv.name}${unit}${wt}</span>
+    html += cfBuildIntervalDisplayHTML(state.intervals, state.currentInterval, state.intervalSplits || [], wtUnit);
+  } else if (state.isHeavy) {
+    html += `<div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green);margin-bottom:10px;text-align:center">${state.heavyMovement || 'Movement'}</div>`;
+    html += (state.heavySets||[]).map((set, idx) => {
+      const wt = set.weight ? `${set.weight} ${wtUnit}` : '—';
+      const reps = set.reps || '—';
+      return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+        <span style="font-size:12px;font-weight:700;color:rgba(255,255,255,.5);min-width:48px">Set ${idx+1}</span>
+        <span style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:40px">${reps}</span>
+        <span style="font-size:15px;font-weight:800;color:#fff">${wt}</span>
       </div>`;
     }).join('');
+  } else if (state.isEmomStation && state.emomStations?.length > 0) {
+    const currentIdx = state.emomStations.length ? ((state.setup?.emomCurrentRound || 1) - 1) % state.emomStations.length : 0;
+    const stationColors = ['var(--cf-green)','#4a9eff','#ff9f4a','#c84aff','#ff4a7a','#4affea'];
+    html += state.emomStations.map((station, sIdx) => {
+      const isCurrent = sIdx === currentIdx;
+      const color = station.isRest ? 'rgba(255,255,255,.5)' : stationColors[sIdx % stationColors.length];
+      const movLines = station.isRest
+        ? `<div style="font-size:13px;color:rgba(255,255,255,.5);font-style:italic">Rest</div>`
+        : (station.movements||[]).map(mv => {
+            if (!mv.name) return '';
+            const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
+            return `<div style="display:flex;align-items:baseline;gap:10px;padding:2px 0">
+              <span style="font-size:${isCurrent?'20':'15'}px;font-weight:900;font-family:var(--mono);color:${color};min-width:40px">${mv.reps||''}</span>
+              <span style="font-size:${isCurrent?'15':'12'}px;font-weight:800;color:${isCurrent?'#fff':'rgba(255,255,255,.5)'}">${mv.name}${wt}</span>
+            </div>`;
+          }).filter(Boolean).join('');
+      return `<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);opacity:${isCurrent?'1':'0.4'}">
+        <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:${color};margin-bottom:3px">${station.label||'Station '+(sIdx+1)}${isCurrent?' ← NOW':''}</div>
+        ${movLines}
+      </div>`;
+    }).join('');
+  } else {
+    if (state.wlbRounds > 1) html += `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:12px;text-align:center">${state.wlbRounds} ROUNDS</div>`;
+    html += (state.movements||[]).map(mvToRow).join('');
+  }
+
+  if (state.showBuyout && state.buyoutMovements?.length) {
+    html += `<div style="margin:10px 0;border-top:1px solid rgba(255,255,255,.12)"></div>`;
+    html += `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,.5);margin-bottom:6px">Buy-Out</div>`;
+    html += state.buyoutMovements.map(mvToRow).join('');
   }
 
   fsMovements.innerHTML = html;
