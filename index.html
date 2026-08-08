@@ -3121,10 +3121,11 @@ async function renderDayPanel(ds) {
 let _dragFromDate=null, _dragWorkoutId=null;
 let _dragPlannedDate = null;
 let _dragPlannedWODDate = null;
+let _dragLoggedItem = null; // {fromDate, id, table, dateField, isTimestamp} — generic "move a logged entry" drag, used by WOD scores and Activity Log (logged lift workouts keep their own dedicated vars above, unchanged)
 
 function calDragStartPlanned(e, fromDate) {
   _dragPlannedDate = fromDate;
-  _dragFromDate = null; _dragWorkoutId = null; _dragPlannedWODDate = null; // clear other drag state
+  _dragFromDate = null; _dragWorkoutId = null; _dragPlannedWODDate = null; _dragLoggedItem = null; // clear other drag state
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', JSON.stringify({plannedDate: fromDate}));
   setTimeout(()=>{ if(e.target) e.target.style.opacity = '.4'; }, 0);
@@ -3132,7 +3133,7 @@ function calDragStartPlanned(e, fromDate) {
 
 function calDragStartPlannedWOD(e, fromDate) {
   _dragPlannedWODDate = fromDate;
-  _dragFromDate = null; _dragWorkoutId = null; _dragPlannedDate = null; // clear other drag state
+  _dragFromDate = null; _dragWorkoutId = null; _dragPlannedDate = null; _dragLoggedItem = null; // clear other drag state
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', JSON.stringify({plannedWODDate: fromDate}));
   setTimeout(()=>{ if(e.target) e.target.style.opacity = '.4'; }, 0);
@@ -3140,25 +3141,55 @@ function calDragStartPlannedWOD(e, fromDate) {
 
 function calDragStart(e,fromDate,id){
   _dragFromDate=fromDate; _dragWorkoutId=id;
-  _dragPlannedDate = null; // clear planned drag state
+  _dragPlannedDate = null; _dragPlannedWODDate = null; _dragLoggedItem = null; // clear other drag state
   e.dataTransfer.effectAllowed='move';
   e.dataTransfer.setData('text/plain',JSON.stringify({fromDate,id}));
   setTimeout(()=>{if(e.target)e.target.style.opacity='.4';},0);
 }
+
+// Generic "move a logged entry to another date" drag — same PATCH-the-date
+// pattern as calDragStart()/the logged-workout branch in calDrop() below,
+// but table-agnostic so WOD scores and Activity Log entries don't each need
+// their own near-duplicate drag lifecycle. isTimestamp:true means dateField
+// is a timestamptz column (cf_scores.logged_at) — the new value gets a T12:00:00
+// anchor, same defensive pattern used everywhere else in this file to avoid a
+// bare date string resolving to the wrong calendar day across timezones.
+function calDragStartLoggedItem(e, fromDate, id, table, dateField, isTimestamp) {
+  _dragLoggedItem = {fromDate, id, table, dateField, isTimestamp};
+  _dragFromDate = null; _dragWorkoutId = null; _dragPlannedDate = null; _dragPlannedWODDate = null; // clear other drag state
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', JSON.stringify({fromDate, id, table}));
+  setTimeout(()=>{ if(e.target) e.target.style.opacity = '.4'; }, 0);
+}
+
 function calDragEnd(e){
   if(e.target)e.target.style.opacity='';
-  _dragFromDate=null; _dragWorkoutId=null; _dragPlannedDate=null; _dragPlannedWODDate=null;
+  _dragFromDate=null; _dragWorkoutId=null; _dragPlannedDate=null; _dragPlannedWODDate=null; _dragLoggedItem=null;
   document.querySelectorAll('.cal-cell.drag-over').forEach(el=>el.classList.remove('drag-over'));
 }
 function calDragOver(e,toDate){
   e.preventDefault(); e.dataTransfer.dropEffect='move';
-  if(toDate!==(_dragFromDate||_dragPlannedDate||_dragPlannedWODDate)) e.currentTarget.classList.add('drag-over');
+  if(toDate!==(_dragFromDate||_dragPlannedDate||_dragPlannedWODDate||_dragLoggedItem?.fromDate)) e.currentTarget.classList.add('drag-over');
 }
 function calDragLeave(e){
   if(!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('drag-over');
 }
 async function calDrop(e,toDate){
   e.preventDefault(); e.currentTarget.classList.remove('drag-over');
+
+  // Handle a generic logged-item drag (WOD scores, Activity Log entries)
+  if (_dragLoggedItem && _dragLoggedItem.fromDate !== toDate) {
+    const {id, table, dateField, isTimestamp} = _dragLoggedItem;
+    _dragLoggedItem = null;
+    const newVal = isTimestamp ? (toDate + 'T12:00:00') : toDate;
+    try {
+      await db(table,'PATCH',{[dateField]:newVal},`?id=eq.${id}&user_id=eq.${currentUser.id}`);
+      toast(`Moved to ${new Date(toDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} ✓`);
+      selectedDate = toDate;
+      renderCalendar();
+    } catch(err) { toast('Move failed — try again'); console.error(err); }
+    return;
+  }
 
   // Handle planned WOD drag (from an active WOD Program)
   if (_dragPlannedWODDate && _dragPlannedWODDate !== toDate) {
@@ -6855,7 +6886,12 @@ function getCellDots(ds) {
   // Show WOD scores in green
   const wodScores = _calWODScores[ds] || [];
   wodScores.forEach(s => {
-    html += `<span class="cal-workout-dot" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3)" title="WOD: ${s.wod_name} — ${s.score}">⚡ ${s.wod_name}</span>`;
+    html += `<span class="cal-workout-dot" data-date="${ds}" data-id="${s.id}"
+      draggable="true"
+      style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3)"
+      ondragstart="calDragStartLoggedItem(event,'${ds}','${s.id}','cf_scores','logged_at',true)"
+      ondragend="calDragEnd(event)"
+      title="WOD: ${s.wod_name} — ${s.score} — drag to move">⚡ ${s.wod_name}</span>`;
   });
   // Show planned workouts from program if no logged workout
   if (logs.length === 0 && assigned.length === 0) {
@@ -6881,7 +6917,12 @@ function getCellDots(ds) {
   // Show general activity log entries
   const dayActivities = _calActivities[ds] || [];
   dayActivities.forEach(a => {
-    html += `<span class="cal-workout-dot" style="background:var(--activity-dim);color:var(--activity);border:1px solid var(--activity-mid)" title="${a.activity_name}${a.duration_min?' — '+a.duration_min+' min':''}">🔵 ${a.activity_name}</span>`;
+    html += `<span class="cal-workout-dot" data-date="${ds}" data-id="${a.id}"
+      draggable="true"
+      style="background:var(--activity-dim);color:var(--activity);border:1px solid var(--activity-mid)"
+      ondragstart="calDragStartLoggedItem(event,'${ds}','${a.id}','activity_log','date',false)"
+      ondragend="calDragEnd(event)"
+      title="${a.activity_name}${a.duration_min?' — '+a.duration_min+' min':''} — drag to move">🔵 ${a.activity_name}</span>`;
   });
   return html;
 }
