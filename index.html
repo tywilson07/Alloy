@@ -10988,6 +10988,7 @@ let _wlbHeavySets = [];   // [{reps:'', weight:'', note:''}] for Heavy format
 let _wlbIsHeavy = false;
 let _wlbShowBuyin = false;
 let _wlbShowBuyout = false;
+let _wlbEditingWODId = null; // set when editing an existing library WOD instead of creating a new one
 
 // Unit preferences — loaded from app settings
 function wlbGetWeightUnit() {
@@ -11633,6 +11634,7 @@ function wlbInit() {
   _wlbIsChipper = false;
   _wlbShowBuyin = false;
   _wlbShowBuyout = false;
+  _wlbEditingWODId = null;
 
   // Reset buy-in/buy-out UI
   const buyinContainer = document.getElementById('wlb-buyin-movements');
@@ -12860,6 +12862,8 @@ function cfSaveLoggedWODToLibrary() {
     scoringType: _cfScoringType,
   };
 
+  const editingId = _wlbEditingWODId;
+
   const wod = {
     user_id: currentUser.id,
     name,
@@ -12871,6 +12875,24 @@ function cfSaveLoggedWODToLibrary() {
     notes: document.getElementById('cf-score-notes')?.value?.trim() || '',
     created_at: new Date().toISOString()
   };
+
+  if (editingId) {
+    const { created_at, ...updateFields } = wod;
+    _wlbEditingWODId = null;
+    db('cf_wods','PATCH',updateFields,`?id=eq.${editingId}`).then(() => {
+      const idx = _cfWODs.findIndex(w=>String(w.id)===String(editingId));
+      if (idx>=0) _cfWODs[idx] = {..._cfWODs[idx], ...updateFields};
+      toast('"' + name + '" updated ✓');
+    }).catch(() => {
+      const idx = _cfWODs.findIndex(w=>String(w.id)===String(editingId));
+      if (idx>=0) {
+        _cfWODs[idx] = {..._cfWODs[idx], ...updateFields};
+        try { localStorage.setItem('cf_wods_local', JSON.stringify(_cfWODs.slice(0,200))); } catch(le) {}
+      }
+      toast('"' + name + '" updated locally ✓');
+    });
+    return;
+  }
 
   db('cf_wods','POST',wod).then(saved => {
     if (saved?.[0]) _cfWODs.unshift(saved[0]);
@@ -16660,14 +16682,25 @@ function cfRenderLibrary() {
     body.innerHTML = `<div class="empty-state"><span class="emo">📋</span><h3>No WODs found</h3><p>Build your first WOD or change the filter above.</p><button class="btn btn-primary btn-sm" onclick="cfOpenBuildWOD()">+ Build WOD</button></div>`;
     return;
   }
+  const cfLibMvLine = m =>
+    `<div style="font-size:12px;color:var(--text-secondary);padding:2px 0">
+      ${m.reps?`<span style="font-family:var(--mono);color:var(--cf-green);font-weight:700;margin-right:6px">${m.reps}</span>`:''}
+      ${m.name}${m.detail?` <span style="color:var(--text-muted)">${m.detail}</span>`:''}
+    </div>`;
+
   body.innerHTML = all.map(w=>{
-    const movHtml = (w.movements||[]).slice(0,4).map(m=>
-      `<div style="font-size:12px;color:var(--text-secondary);padding:2px 0">
-        ${m.reps?`<span style="font-family:var(--mono);color:var(--cf-green);font-weight:700;margin-right:6px">${m.reps}</span>`:''}
-        ${m.name}${m.detail?` <span style="color:var(--text-muted)">${m.detail}</span>`:''}
-      </div>`
-    ).join('');
+    const bs = w.builder_state;
+    const buyinMovs = (bs?.showBuyin && bs?.buyinMovements?.length) ? bs.buyinMovements : [];
+    const buyoutMovs = (bs?.showBuyout && bs?.buyoutMovements?.length) ? bs.buyoutMovements : [];
+    const buyinHtml = buyinMovs.length
+      ? `<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin:4px 0 2px">Buy-In</div>${buyinMovs.map(cfLibMvLine).join('')}`
+      : '';
+    const buyoutHtml = buyoutMovs.length
+      ? `<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin:4px 0 2px">Buy-Out</div>${buyoutMovs.map(cfLibMvLine).join('')}`
+      : '';
+    const movHtml = (w.movements||[]).slice(0,4).map(cfLibMvLine).join('');
     const extra = (w.movements||[]).length - 4;
+    const wJson = JSON.stringify(w).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     return `<div class="wod-card">
       <div class="wod-card-header">
         <div>
@@ -16675,14 +16708,17 @@ function cfRenderLibrary() {
           <div class="wod-card-format">${w.format||''}${w.cap?' · '+w.cap:''}</div>
         </div>
         <div style="display:flex;gap:5px;flex-shrink:0">
-          <button class="btn btn-primary btn-xs" onclick="cfLoadWODToTrack(${JSON.stringify(w).replace(/"/g,'&quot;').replace(/'/g,'&#39;')})">Track</button>
+          <button class="btn btn-primary btn-xs" onclick="cfLoadWODToTrack(${wJson})">Track</button>
+          ${w._user?`<button class="btn btn-ghost btn-xs" onclick="cfLoadWODToTrack(${wJson}, true)">✎</button>`:''}
           ${w._user?`<button class="btn btn-danger btn-xs" onclick="cfDeleteWOD('${w.id}')">✕</button>`:''}
         </div>
       </div>
       <div class="wod-card-body" style="padding-top:8px">
         ${w.description?`<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:6px">${w.description}</div>`:''}
+        ${buyinHtml}
         ${movHtml}
         ${extra>0?`<div style="font-size:11px;color:var(--text-muted);margin-top:3px">+${extra} more</div>`:''}
+        ${buyoutHtml}
         ${w.notes?`<div style="font-size:11.5px;color:var(--text-muted);margin-top:6px;font-style:italic">${w.notes}</div>`:''}
         <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
           ${w._benchmark?'<span class="pill pill-amber">Benchmark</span>':''}
@@ -16724,8 +16760,9 @@ function cfParseWODTimer(wod) {
   };
 }
 
-function cfLoadWODToTrack(wod) {
+function cfLoadWODToTrack(wod, editMode) {
   nav('cf-track');
+  _wlbEditingWODId = editMode ? wod.id : null;
 
   // Pre-fill WOD name
   const nameEl = document.getElementById('cf-score-wod');
@@ -16795,7 +16832,8 @@ function cfLoadWODToTrack(wod) {
 
   const mins = timerParams.minutes;
   const timerMsg = mins ? ` · ${fmt === 'AMRAP' ? mins+' min' : fmt === 'EMOM' ? mins+' min EMOM' : mins+' min cap'} loaded` : '';
-  toast(`${wod.name} loaded${timerMsg} — hit Start when ready`);
+  if (editMode) toast(`Editing "${wod.name}" — make changes, then Save this WOD to Library`);
+  else toast(`${wod.name} loaded${timerMsg} — hit Start when ready`);
 
   // Restore builder state if saved
   setTimeout(() => {
