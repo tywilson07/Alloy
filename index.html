@@ -206,6 +206,9 @@ label{font-size:11px;font-weight:800;color:var(--text-muted);display:block;margi
 .max-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px;cursor:pointer;transition:all .12s}
 .max-card:hover{border-color:var(--orange);box-shadow:var(--shadow-orange)}
 .cf-pr-card:hover{border-color:var(--cf-green)!important;box-shadow:none}
+.wod-prog-card:hover{border-color:var(--cf-green)!important;box-shadow:none}
+.wod-prog-card.active-prog{border-color:var(--cf-green)!important;background:rgba(57,211,83,.08)!important}
+.wod-prog-card .active-check{background:var(--cf-green)!important}
 .max-card-name{font-size:10.5px;font-weight:700;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
 .max-card-value{font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text-primary)}
 .max-card-unit{font-size:11px;font-weight:400;color:var(--text-muted);margin-left:2px}
@@ -929,6 +932,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
       <button class="nav-item" onclick="nav('cf-library',this)"><span class="icon">📋</span>WOD Library</button>
       <button class="nav-item" onclick="nav('cf-history',this)"><span class="icon">📊</span>WOD History</button>
       <button class="nav-item" onclick="nav('cf-prs',this)"><span class="icon">🏆</span>WOD PRs</button>
+      <button class="nav-item" onclick="nav('cf-programs',this)"><span class="icon">📋</span>WOD Programs</button>
       <button class="nav-item" onclick="nav('cf-movement-library',this)"><span class="icon">🏃</span>Movement Library</button>
       <button class="nav-item" onclick="nav('cf-builder',this)"><span class="icon">⚡</span>WOD Builder</button>
       <div id="cf-coach-nav" style="display:none">
@@ -1679,6 +1683,20 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
       </div>
     </div>
 
+    <!-- CF: WOD PROGRAMS -->
+    <div class="view" id="view-cf-programs">
+      <div class="view-header">
+        <div class="view-title">WOD Programs</div>
+        <button class="btn btn-white btn-sm" onclick="openCreateWODProgram()">+ Custom</button>
+      </div>
+      <div class="view-body pad-bottom">
+        <div id="active-wod-prog-card" style="margin-bottom:16px"></div>
+        <div id="wod-assign-panel"></div>
+        <div class="section-label">All WOD Programs</div>
+        <div class="prog-grid" id="wod-prog-grid"></div>
+      </div>
+    </div>
+
     <!-- CF: MOVEMENT LIBRARY -->
     <div class="view" id="view-cf-movement-library">
       <div class="view-header">
@@ -1770,6 +1788,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
         <button class="more-menu-item" onclick="nav('cf-builder');closeMoreMenu()"><span>⚡</span>WOD Builder</button>
         <button class="more-menu-item" onclick="nav('cf-history');closeMoreMenu()"><span>📊</span>WOD History</button>
         <button class="more-menu-item" onclick="nav('cf-prs');closeMoreMenu()"><span>🏆</span>WOD PRs</button>
+        <button class="more-menu-item" onclick="nav('cf-programs');closeMoreMenu()"><span>📋</span>WOD Programs</button>
         <button class="more-menu-item" onclick="nav('cf-movement-library');closeMoreMenu()"><span>🏃</span>Movement Library</button>
         <div id="cf-more-coach" style="display:none">
           <button class="more-menu-item" onclick="nav('cf-athletes');closeMoreMenu()"><span>👥</span>WOD Athletes</button>
@@ -2189,6 +2208,9 @@ let _calBodyWeight = {}; // body weight log {date: {id, weight, unit, note}} —
 let _calPrograms = [];   // programs visible to this user
 let _activeProgAssignments = []; // [{id, program_id, start_date}] — supports multiple simultaneous active programs
 let _calOverrides = {};  // planned workout overrides {newDate: {originalDate, workoutName, programId}}
+let _calWODPrograms = [];   // WOD programs visible to this user
+let _activeWODProgAssignments = []; // [{id, program_id, start_date}]
+let _calWODOverrides = {};  // planned-WOD overrides {originalDate: {newDate, wodName, id, programId}}
 
 function todayStr() {
   const d = new Date();
@@ -2208,13 +2230,16 @@ async function renderCalendar() {
     const queryEnd   = (() => { const d = new Date(endDate+'T12:00:00');   d.setDate(d.getDate()+6); return d.toISOString().slice(0,10); })();
     // Load programs first (getVisiblePrograms may do sequential calls for athletes)
     const progs = await getVisiblePrograms();
-    const [wkts, assigns, assigned, overrides, wodScores, weighIns] = await Promise.all([
+    const wodProgs = await getVisibleWODPrograms();
+    const [wkts, assigns, assigned, overrides, wodScores, weighIns, wodAssigns, wodOverrides] = await Promise.all([
       db('workouts','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
       db('program_assignments','GET',null,`?user_id=eq.${currentUser.id}&select=*`),
       db('workout_assignments','GET',null,`?assigned_to=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
       db('workout_schedule_overrides','GET',null,`?user_id=eq.${currentUser.id}&select=*`).catch(()=>[]),
       db('cf_scores','GET',null,`?user_id=eq.${currentUser.id}&logged_at=gte.${queryStart}T00:00:00&logged_at=lte.${queryEnd}T23:59:59&select=*`).catch(()=>[]),
-      db('body_weight','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[])
+      db('body_weight','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[]),
+      db('wod_program_assignments','GET',null,`?user_id=eq.${currentUser.id}&select=*`).catch(()=>[]),
+      db('wod_schedule_overrides','GET',null,`?user_id=eq.${currentUser.id}&select=*`).catch(()=>[])
     ]);
     _calWorkouts = {};
     (wkts||[]).forEach(w => {
@@ -2241,6 +2266,12 @@ async function renderCalendar() {
     _calOverrides = {};
     (overrides||[]).forEach(o => {
       _calOverrides[o.original_date] = {newDate:o.new_date, workoutName:o.workout_name, id:o.id, programId:o.program_id||null};
+    });
+    _calWODPrograms = wodProgs || [];
+    _activeWODProgAssignments = (wodAssigns||[]).filter(a=>a.active).map(a=>({id:a.id, program_id:a.program_id, start_date:a.start_date||null}));
+    _calWODOverrides = {};
+    (wodOverrides||[]).forEach(o => {
+      _calWODOverrides[o.original_date] = {newDate:o.new_date, wodName:o.wod_name, id:o.id, programId:o.program_id||null};
     });
   } catch(e) { console.error('Calendar load error', e); }
   if (_calView === 'week') {
@@ -2491,6 +2522,77 @@ function findProgramForPlannedWorkout(ds, workoutName) {
   }
   // Fallback: first active program
   return _activeProgAssignments[0]?.program_id || null;
+}
+
+// WOD-side equivalent of getPlannedWorkouts/findProgramForPlannedWorkout above,
+// but week-indexed (schedule[weekIndex][dow]) instead of a flat dow lookup —
+// WOD Programs are week-by-week, not one weekly template repeated (see the
+// WOD PROGRAMS section for why). Same override-layering logic otherwise.
+function getPlannedWODs(ds) {
+  if (!_activeWODProgAssignments.length) return [];
+  const dow = new Date(ds+'T12:00:00').getDay();
+  const dsMs = new Date(ds+'T00:00:00').getTime();
+  const msPerDay = 24*60*60*1000;
+  const results = [];
+  const overrides = _calWODOverrides;
+
+  _activeWODProgAssignments.forEach(assign => {
+    const prog = _calWODPrograms.find(p=>p.id===assign.program_id);
+    if (!prog || !assign.start_date) return;
+    const schedule = prog.schedule || [];
+    const startMs = new Date(assign.start_date+'T00:00:00').getTime();
+    const weekIndex = Math.floor((dsMs - startMs) / msPerDay / 7);
+    const inWindow = weekIndex >= 0 && weekIndex < schedule.length;
+    const matchesThisProgram = (ov) => !ov.programId || ov.programId === prog.id;
+    const slotForDate = (dateStr) => {
+      const dMs = new Date(dateStr+'T00:00:00').getTime();
+      const wIdx = Math.floor((dMs - startMs) / msPerDay / 7);
+      const d = new Date(dateStr+'T12:00:00').getDay();
+      return schedule[wIdx]?.[d] || null;
+    };
+
+    if (!inWindow) {
+      // Out of window — only show WODs explicitly moved INTO ds from this program
+      Object.entries(overrides).forEach(([origDate, ov]) => {
+        if (ov.newDate !== ds || !matchesThisProgram(ov)) return;
+        const slot = slotForDate(origDate);
+        if (slot) results.push({...slot, movedFrom:origDate, overrideId:ov.id, programId:prog.id, programName:prog.name});
+      });
+      return;
+    }
+
+    // In window — first add anything moved TO ds from this program
+    Object.entries(overrides).forEach(([origDate, ov]) => {
+      if (ov.newDate !== ds || !matchesThisProgram(ov)) return;
+      const slot = slotForDate(origDate);
+      if (slot) results.push({...slot, movedFrom:origDate, overrideId:ov.id, programId:prog.id, programName:prog.name});
+    });
+
+    // Then the normal scheduled WOD for today's slot, unless moved away or already added above
+    const movedAway = overrides[ds] && matchesThisProgram(overrides[ds]);
+    if (!movedAway) {
+      const slot = schedule[weekIndex]?.[dow];
+      const alreadyMovedIn = slot && results.some(x=>x.programId===prog.id && x.wod_name===slot.wod_name && x.movedFrom);
+      if (slot && !alreadyMovedIn) results.push({...slot, programId:prog.id, programName:prog.name});
+    }
+  });
+
+  return results;
+}
+
+function findProgramForPlannedWOD(ds, wodName) {
+  const dow = new Date(ds+'T12:00:00').getDay();
+  const dsMs = new Date(ds+'T00:00:00').getTime();
+  const msPerDay = 24*60*60*1000;
+  for (const assign of _activeWODProgAssignments) {
+    const prog = _calWODPrograms.find(p=>p.id===assign.program_id);
+    if (!prog || !assign.start_date) continue;
+    const startMs = new Date(assign.start_date+'T00:00:00').getTime();
+    const weekIndex = Math.floor((dsMs - startMs) / msPerDay / 7);
+    const slot = prog.schedule?.[weekIndex]?.[dow];
+    if (slot && slot.wod_name === wodName) return prog.id;
+  }
+  return _activeWODProgAssignments[0]?.program_id || null;
 }
 
 let _calView = 'month'; // 'month' or 'week'
@@ -2840,7 +2942,34 @@ async function renderDayPanel(ds) {
       + (s.notes ? '<div style="font-size:11.5px;color:var(--text-muted);margin-top:5px;font-style:italic;border-top:1px solid rgba(57,211,83,.15);padding-top:4px">"' + s.notes.slice(0,80) + (s.notes.length>80?'…':'') + '"</div>' : '')
       + '</div>';
   });
-  if (!bodyHtml && !wodHtml) bodyHtml=`<div style="padding:16px 0;text-align:center;color:var(--gray-400);font-size:12.5px">Rest day — nothing logged.</div>`;
+  // Planned WOD from an active WOD Program — mirrors the planned-lift block
+  // above, much simpler since a planned WOD just references a Library entry.
+  let plannedWodHtml = '';
+  if (dayWODs.length === 0) {
+    getPlannedWODs(ds).forEach(planned => {
+      const wodDef = [...(_cfWODs||[]), ...(CF_BENCHMARKS||[])].find(w => String(w.id)===String(planned.wod_id))
+        || [...(_cfWODs||[]), ...(CF_BENCHMARKS||[])].find(w => w.name === planned.wod_name);
+      const movPreview = (wodDef?.movements||[]).slice(0,3).map(m =>
+        '<div style="font-size:11px;color:var(--text-muted)">' + (m.reps||'') + ' ' + (m.name||'') + '</div>'
+      ).join('');
+      const trackObj = wodDef || {name:planned.wod_name, format:planned.format||'For Time'};
+      const trackAttr = JSON.stringify(trackObj).replace(/"/g,'&quot;');
+      plannedWodHtml += `<div style="background:rgba(57,211,83,.06);border:1.5px solid rgba(57,211,83,.35);border-radius:var(--radius);padding:10px 13px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:12px;font-weight:900;text-transform:uppercase;color:var(--cf-green)">🔥 ${planned.wod_name}${planned.movedFrom?` <span style="font-size:10px;font-weight:600;color:var(--text-muted)">(moved)</span>`:''}</div>
+          <span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3);font-size:10px">${planned.format||'WOD'}</span>
+        </div>
+        ${movPreview ? `<div style="padding-top:2px">${movPreview}${(wodDef?.movements?.length||0) > 3 ? `<div style="font-size:10px;color:var(--text-muted)">+${wodDef.movements.length-3} more</div>` : ''}</div>` : ''}
+        ${planned.notes ? `<div style="font-size:11.5px;color:var(--text-muted);margin-top:5px;font-style:italic">"${planned.notes}"</div>` : ''}
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-primary btn-xs" onclick="event.stopPropagation();window._cfLogDate='${ds}';cfLoadWODToTrack(${trackAttr})">▶ Track Now</button>
+          <button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();openMovePlannedWOD('${ds}','${planned.wod_name.replace(/'/g,"\\'")}','${planned.overrideId||''}')">↕ Move</button>
+        </div>
+      </div>`;
+    });
+  }
+
+  if (!bodyHtml && !wodHtml && !plannedWodHtml) bodyHtml=`<div style="padding:16px 0;text-align:center;color:var(--gray-400);font-size:12.5px">Rest day — nothing logged.</div>`;
 
   // Footer: mode-aware log button
   const footerBtns = _cfMode
@@ -2873,7 +3002,7 @@ async function renderDayPanel(ds) {
         ${dayWODs.length>0?`<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3)">⚡ ${dayWODs.length} WOD</span>`:''}
       </div>
     </div>
-    <div class="day-panel-body">${wodHtml}${bodyHtml}${bwHtml}</div>
+    <div class="day-panel-body">${wodHtml}${plannedWodHtml}${bodyHtml}${bwHtml}</div>
     <div class="day-panel-footer">
       ${footerBtns}
     </div>`;
@@ -2904,12 +3033,21 @@ async function renderDayPanel(ds) {
 // ── Drag & Drop ──
 let _dragFromDate=null, _dragWorkoutId=null;
 let _dragPlannedDate = null;
+let _dragPlannedWODDate = null;
 
 function calDragStartPlanned(e, fromDate) {
   _dragPlannedDate = fromDate;
-  _dragFromDate = null; _dragWorkoutId = null; // clear logged drag state
+  _dragFromDate = null; _dragWorkoutId = null; _dragPlannedWODDate = null; // clear other drag state
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', JSON.stringify({plannedDate: fromDate}));
+  setTimeout(()=>{ if(e.target) e.target.style.opacity = '.4'; }, 0);
+}
+
+function calDragStartPlannedWOD(e, fromDate) {
+  _dragPlannedWODDate = fromDate;
+  _dragFromDate = null; _dragWorkoutId = null; _dragPlannedDate = null; // clear other drag state
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', JSON.stringify({plannedWODDate: fromDate}));
   setTimeout(()=>{ if(e.target) e.target.style.opacity = '.4'; }, 0);
 }
 
@@ -2922,18 +3060,41 @@ function calDragStart(e,fromDate,id){
 }
 function calDragEnd(e){
   if(e.target)e.target.style.opacity='';
-  _dragFromDate=null; _dragWorkoutId=null; _dragPlannedDate=null;
+  _dragFromDate=null; _dragWorkoutId=null; _dragPlannedDate=null; _dragPlannedWODDate=null;
   document.querySelectorAll('.cal-cell.drag-over').forEach(el=>el.classList.remove('drag-over'));
 }
 function calDragOver(e,toDate){
   e.preventDefault(); e.dataTransfer.dropEffect='move';
-  if(toDate!==(_dragFromDate||_dragPlannedDate)) e.currentTarget.classList.add('drag-over');
+  if(toDate!==(_dragFromDate||_dragPlannedDate||_dragPlannedWODDate)) e.currentTarget.classList.add('drag-over');
 }
 function calDragLeave(e){
   if(!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('drag-over');
 }
 async function calDrop(e,toDate){
   e.preventDefault(); e.currentTarget.classList.remove('drag-over');
+
+  // Handle planned WOD drag (from an active WOD Program)
+  if (_dragPlannedWODDate && _dragPlannedWODDate !== toDate) {
+    const fromDate = _dragPlannedWODDate;
+    _dragPlannedWODDate = null;
+    try {
+      const planned = getPlannedWODs(fromDate)[0];
+      const wodName = planned?.wod_name || '';
+      const existingOverride = Object.entries(_calWODOverrides||{}).find(([orig,ov])=>orig===fromDate);
+      if (existingOverride) {
+        await db('wod_schedule_overrides','PATCH',{new_date:toDate},`?id=eq.${existingOverride[1].id}`);
+      } else {
+        await db('wod_schedule_overrides','POST',{
+          user_id:currentUser.id, original_date:fromDate,
+          new_date:toDate, wod_name:wodName, program_id:findProgramForPlannedWOD(fromDate,wodName)
+        });
+      }
+      toast(`Moved to ${new Date(toDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} ✓`);
+      selectedDate = toDate;
+      renderCalendar();
+    } catch(err) { toast('Move failed — try again'); console.error(err); }
+    return;
+  }
 
   // Handle planned workout drag
   if (_dragPlannedDate && _dragPlannedDate !== toDate) {
@@ -3845,6 +4006,84 @@ async function cancelPlannedMove(overrideId, originalDate) {
   }catch(e){toast('Failed — try again');}
 }
 
+// WOD-side equivalent of openMovePlannedWorkout/confirmMovePlannedWorkout/cancelPlannedMove
+// above, targeting wod_schedule_overrides instead of workout_schedule_overrides.
+async function openMovePlannedWOD(fromDate, wodName, existingOverrideId) {
+  const buildPickerMonth = (year, month) => {
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const monthLabel = new Date(year, month, 1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+    const today = todayStr();
+    let html = `<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px;margin-top:12px">${monthLabel}</div>`;
+    html += `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:4px">
+      ${['S','M','T','W','T','F','S'].map(d=>`<div style="text-align:center;font-size:10px;font-weight:700;color:var(--text-muted);padding:2px">${d}</div>`).join('')}
+    </div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">`;
+    for(let i=0;i<firstDay;i++) html+=`<div></div>`;
+    for(let day=1;day<=daysInMonth;day++){
+      const ds=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const isFrom=ds===fromDate, isToday=ds===today;
+      html+=`<button onclick="confirmMovePlannedWOD('${fromDate}','${ds}','${wodName}','${existingOverrideId}')"
+        style="padding:6px 2px;border-radius:5px;border:1.5px solid ${isFrom?'var(--cf-green)':'var(--border)'};
+          background:${isFrom?'var(--cf-green-dim)':'var(--surface2)'};
+          color:${isFrom?'var(--cf-green)':isToday?'var(--lime)':'var(--text-primary)'};
+          font-size:13px;font-weight:${isToday||isFrom?'800':'500'};
+          cursor:${isFrom?'default':'pointer'};font-family:var(--mono);
+          ${isFrom?'pointer-events:none':''}">
+        ${day}</button>`;
+    }
+    html+=`</div>`;
+    return html;
+  };
+  const now=new Date(), y=now.getFullYear(), m=now.getMonth();
+  const nextM=m+1>11?0:m+1, nextY=m+1>11?y+1:y;
+  document.getElementById('modal-title').textContent=`↕ Move ${wodName}`;
+  document.getElementById('modal-body').innerHTML=`
+    <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:4px">
+      Move this planned WOD to a different day. It hasn't been logged yet — you're just rescheduling it.
+    </div>
+    <div style="font-size:11.5px;color:var(--cf-green);margin-bottom:12px;font-weight:600">
+      Currently scheduled: ${new Date(fromDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}
+    </div>
+    ${buildPickerMonth(y,m)}
+    ${buildPickerMonth(nextY,nextM)}`;
+  document.getElementById('modal-footer').innerHTML=`
+    ${existingOverrideId?`<button class="btn btn-danger btn-sm" onclick="cancelPlannedWODMove('${existingOverrideId}','${fromDate}')">Undo Move</button>`:''}
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>`;
+  showModal();
+}
+
+async function confirmMovePlannedWOD(fromDate, toDate, wodName, existingOverrideId) {
+  if(fromDate===toDate){closeModal();return;}
+  try{
+    if(existingOverrideId && existingOverrideId !== ''){
+      await db('wod_schedule_overrides','PATCH',{new_date:toDate},`?id=eq.${existingOverrideId}`);
+    } else {
+      await db('wod_schedule_overrides','POST',{
+        user_id:currentUser.id,
+        original_date:fromDate,
+        new_date:toDate,
+        wod_name:wodName,
+        program_id:findProgramForPlannedWOD(fromDate,wodName)
+      });
+    }
+    closeModal();
+    selectedDate=toDate;
+    await renderCalendar();
+    toast(`${wodName} moved to ${new Date(toDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} ✓`);
+  }catch(e){toast('Move failed — try again');console.error(e);}
+}
+
+async function cancelPlannedWODMove(overrideId, originalDate) {
+  if(!confirm('Undo this move and return the WOD to its original day?')) return;
+  try{
+    await db('wod_schedule_overrides','DELETE',null,`?id=eq.${overrideId}`);
+    closeModal();
+    selectedDate=originalDate;
+    await renderCalendar();
+    toast('WOD returned to original day');
+  }catch(e){toast('Failed — try again');}
+}
+
 async function openCopyPlannedWorkout(fromDate, workoutName) {
   const buildPickerMonth = (year, month) => {
     const firstDay = new Date(year, month, 1).getDay();
@@ -4719,6 +4958,448 @@ async function saveCustomProgram(){
     renderPrograms();
     renderCalendar(); // refresh calendar so changes show immediately
   }catch(e){toast('Save failed');console.error(e);}
+}
+
+// ═══════════════════════════════════════════════════
+// WOD PROGRAMS — week-by-week recurring WOD schedule, auto-populates the
+// calendar. Mirrors the Lift Programs feature above, but week-by-week rather
+// than one weekly template repeated N times — CrossFit programming genuinely
+// varies week to week, so nothing here auto-repeats — and each day references
+// an existing WOD Library entry instead of embedding a full inline structure.
+// schedule shape: array of weeks; each week is a 7-length array (index
+// 0=Sun..6=Sat); a slot is null (rest day) or {wod_id, wod_name, format, notes}.
+// ═══════════════════════════════════════════════════
+
+function getWODProgFilter() {
+  if (currentUser?.role === 'admin') return '?select=*';
+  return `?select=*&or=(is_preset.eq.true,created_by.eq.${currentUser.id})`;
+}
+
+async function getVisibleWODPrograms() {
+  if (currentUser?.role === 'admin') {
+    return await db('wod_programs','GET',null,'?select=*');
+  }
+  const [filtered, assigns] = await Promise.all([
+    db('wod_programs','GET',null,getWODProgFilter()),
+    db('wod_program_assignments','GET',null,`?user_id=eq.${currentUser.id}&select=program_id`)
+  ]);
+  const assignedIds = (assigns||[]).map(a=>a.program_id);
+  const filteredIds = new Set((filtered||[]).map(p=>p.id));
+  const missingIds = assignedIds.filter(id=>!filteredIds.has(id));
+  let extras = [];
+  if (missingIds.length) {
+    extras = await db('wod_programs','GET',null,`?id=in.(${missingIds.join(',')})&select=*`) || [];
+  }
+  return [...(filtered||[]), ...extras];
+}
+
+async function renderWODPrograms(){
+  const isAdmin = currentUser.role==='admin';
+  try{
+    const [progs, assigns] = await Promise.all([
+      getVisibleWODPrograms(),
+      db('wod_program_assignments','GET',null,`?user_id=eq.${currentUser.id}&select=*`)
+    ]);
+    if (progs) _calWODPrograms = progs;
+    const activeAssigns = (assigns||[]).filter(a=>a.active);
+    const activeProgIds = activeAssigns.map(a=>a.program_id);
+
+    const activeCont = document.getElementById('active-wod-prog-card');
+    if (activeCont) {
+      if (activeAssigns.length) {
+        activeCont.innerHTML = activeAssigns.map(a=>{
+          const p = progs?.find(pp=>pp.id===a.program_id);
+          if (!p) return '';
+          const weeks = (p.schedule||[]).length;
+          const startLabel = a.start_date ? ` · starts ${new Date(a.start_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : '';
+          return `<div style="background:var(--cf-green-dim);border:1.5px solid var(--cf-green);border-radius:var(--radius-lg);padding:12px 14px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
+            <div>
+              <div style="font-size:10px;font-weight:700;color:var(--cf-green);letter-spacing:.8px;text-transform:uppercase;margin-bottom:4px">Active Program</div>
+              <div style="font-size:14px;font-weight:700">${p.name}</div>
+              <div style="font-size:12px;color:var(--gray-500);margin-top:2px">${weeks} week${weeks===1?'':'s'}${startLabel}</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="deactivateOneWODProgram('${a.id}')">Remove</button>
+          </div>`;
+        }).join('');
+      } else {
+        activeCont.innerHTML = `<div style="color:var(--gray-500);font-size:13px;padding:10px 0">No active WOD program — select one below.</div>`;
+      }
+    }
+
+    const assignPanel = document.getElementById('wod-assign-panel');
+    if (assignPanel) {
+      if (isAdmin) {
+        const allUsers = await db('users','GET',null,'?select=id,username,role');
+        const athletes = (allUsers||[]).filter(u=>u.id!==currentUser.id);
+        if (athletes.length) {
+          const allAssigns = await db('wod_program_assignments','GET',null,'?select=*');
+          const rows = athletes.map(u=>{
+            const uAssigns = (allAssigns||[]).filter(a=>a.user_id===u.id&&a.active);
+            const chips = uAssigns.map(a=>{
+              const p = progs?.find(pp=>pp.id===a.program_id);
+              if (!p) return '';
+              return `<span style="display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:3px 8px 3px 10px;font-size:11.5px;font-weight:600;margin:2px 4px 2px 0">
+                ${p.name}
+                <button onclick="removeAthleteWODProgram('${a.id}')" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:13px;padding:0;line-height:1" title="Remove">✕</button>
+              </span>`;
+            }).join('');
+            return `<div style="padding:10px 0;border-bottom:1px solid var(--gray-100)">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+                <div style="font-size:13px;font-weight:600">👤 ${u.username}</div>
+                <button class="btn btn-xs btn-white" onclick="openAssignWODProgramPicker('${u.id}','${u.username}')">+ Add Program</button>
+              </div>
+              <div>${chips || `<span style="font-size:11.5px;color:var(--text-muted);font-style:italic">No active programs</span>`}</div>
+            </div>`;
+          }).join('');
+          assignPanel.innerHTML = `<div style="background:var(--amber-light);border:1px solid #FDE68A;border-radius:var(--radius);padding:12px 14px;margin-bottom:14px">
+            <div style="font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">👑 Assign WOD Programs to Athletes</div>
+            ${rows}
+          </div>`;
+        } else {
+          assignPanel.innerHTML = `<div style="font-size:12.5px;color:var(--gray-400);margin-bottom:14px">No other users yet.</div>`;
+        }
+      } else { assignPanel.innerHTML = ''; }
+    }
+
+    const grid = document.getElementById('wod-prog-grid');
+    if (grid) {
+      const seenNames = new Set();
+      const uniqueProgs = (progs||[]).filter(p=>{ if(seenNames.has(p.name))return false; seenNames.add(p.name); return true; });
+      grid.innerHTML = uniqueProgs.map(p=>{
+        const isActive = activeProgIds.includes(p.id);
+        const weeks = (p.schedule||[]).length;
+        const daysUsed = (p.schedule||[]).reduce((sum,wk)=>sum+(wk||[]).filter(Boolean).length,0);
+        return `<div class="prog-card wod-prog-card ${isActive?'active-prog':''}" onclick="activateWODProgram('${p.id}')">
+          ${isActive?'<div class="active-check">✓</div>':''}
+          <span class="pill pill-green" style="margin-bottom:8px;display:inline-flex">WOD Program</span>
+          <div class="prog-card-name">${p.name}</div>
+          <div class="prog-card-desc">${p.description||''}</div>
+          <div class="prog-card-meta">
+            <span>📅 ${weeks} week${weeks===1?'':'s'}</span>
+            <span>🔥 ${daysUsed} WODs</span>
+          </div>
+          ${(!p.is_preset && (isAdmin || p.created_by===currentUser.id))?`<div style="margin-top:10px;display:flex;gap:6px">
+            <button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();openEditWODProgram('${p.id}')">✏ Edit</button>
+            <button class="btn btn-danger btn-xs" onclick="event.stopPropagation();deleteWODProgram('${p.id}')">Delete</button>
+          </div>`:''}
+        </div>`;
+      }).join('');
+    }
+  }catch(e){console.error('WOD Programs error',e);toast('Could not load WOD programs');}
+}
+
+function activateWODProgram(id){
+  const prog = (_calWODPrograms||[]).find(p=>p.id===id);
+  const progName = prog?.name || 'Program';
+  const weeks = (prog?.schedule||[]).length;
+  const alreadyActive = _activeWODProgAssignments.some(a=>a.program_id===id);
+  document.getElementById('modal-title').textContent = `${alreadyActive?'Update':'Activate'} ${progName}`;
+  document.getElementById('modal-body').innerHTML = `
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">
+      ${alreadyActive?'This program is already active — you can update its start date below.':'When does week 1 start?'} The calendar will show WODs for ${weeks} week${weeks===1?'':'s'} from this date.
+    </div>
+    <div class="field">
+      <label>Start Date</label>
+      <input id="wod-prog-start-date" type="date" value="${todayStr()}" style="font-size:16px;padding:10px;font-family:var(--font)">
+    </div>`;
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="confirmActivateWODProgram('${id}')">${alreadyActive?'Update':'Activate'}</button>`;
+  showModal();
+}
+
+async function confirmActivateWODProgram(id){
+  const startDate = document.getElementById('wod-prog-start-date')?.value || todayStr();
+  closeModal();
+  try{
+    const check = await db('wod_program_assignments','GET',null,`?user_id=eq.${currentUser.id}&program_id=eq.${id}&select=id`);
+    if (check&&check.length){
+      await db('wod_program_assignments','PATCH',{active:true,start_date:startDate},`?user_id=eq.${currentUser.id}&program_id=eq.${id}`);
+    } else {
+      await db('wod_program_assignments','POST',{user_id:currentUser.id,program_id:id,active:true,start_date:startDate});
+    }
+    const prog = (_calWODPrograms||[]).find(p=>p.id===id);
+    const weeks = (prog?.schedule||[]).length;
+    if (weeks) {
+      const windowStart = new Date(startDate+'T00:00:00').getTime();
+      const windowEnd = windowStart + (weeks * 7 * 24 * 60 * 60 * 1000);
+      try {
+        const overrides = await db('wod_schedule_overrides','GET',null,
+          `?user_id=eq.${currentUser.id}&program_id=eq.${id}&select=id,new_date,original_date`);
+        for (const ov of (overrides||[])) {
+          const newDateMs = new Date(ov.new_date+'T00:00:00').getTime();
+          const origDateMs = new Date(ov.original_date+'T00:00:00').getTime();
+          if ((origDateMs < windowStart || origDateMs >= windowEnd) &&
+              (newDateMs < windowStart || newDateMs >= windowEnd)) {
+            await db('wod_schedule_overrides','DELETE',null,`?id=eq.${ov.id}`);
+          }
+        }
+      } catch(e) { console.warn('WOD override cleanup failed:', e); }
+    }
+    renderWODPrograms();
+    await renderCalendar();
+    toast(`${prog?.name||'Program'} activated from ${startDate} ✓`);
+  }catch(e){toast('Could not activate');console.error(e);}
+}
+
+async function deactivateOneWODProgram(assignmentId){
+  try{
+    await db('wod_program_assignments','PATCH',{active:false},`?id=eq.${assignmentId}`);
+    renderWODPrograms();
+    await renderCalendar();
+    toast('Program removed');
+  }catch(e){toast('Error');console.error(e);}
+}
+
+async function openAssignWODProgramPicker(userId, userName){
+  try{
+    const progs = (_calWODPrograms&&_calWODPrograms.length) ? _calWODPrograms : await db('wod_programs','GET',null,'?select=*');
+    const seen = new Set();
+    const uniqueProgs = (progs||[]).filter(p=>{ if(seen.has(p.name))return false; seen.add(p.name); return true; });
+    const existing = await db('wod_program_assignments','GET',null,`?user_id=eq.${userId}&active=eq.true&select=program_id`);
+    const activeIds = (existing||[]).map(a=>a.program_id);
+    document.getElementById('modal-title').textContent = `Add WOD Program — ${userName}`;
+    document.getElementById('modal-body').innerHTML = `
+      <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px">Pick a program to add for ${userName}.</div>
+      <div style="display:flex;flex-direction:column;gap:6px;max-height:340px;overflow-y:auto">
+        ${uniqueProgs.map(p=>`
+          <button class="btn btn-white" style="justify-content:space-between;text-align:left;padding:10px 12px;opacity:${activeIds.includes(p.id)?'.5':'1'}"
+            onclick="openAssignWODStartDate('${userId}','${userName}','${p.id}')" ${activeIds.includes(p.id)?'disabled':''}>
+            <span>${p.name}</span>
+            <span style="font-size:11px;color:var(--text-muted);flex-shrink:0">${activeIds.includes(p.id)?'✓ Active':`${(p.schedule||[]).length}wk`}</span>
+          </button>`).join('')}
+      </div>`;
+    document.getElementById('modal-footer').innerHTML = `<button class="btn btn-ghost btn-full" onclick="closeModal()">Cancel</button>`;
+    showModal();
+  }catch(e){toast('Could not load programs');console.error(e);}
+}
+
+function openAssignWODStartDate(userId, userName, progId){
+  const prog = (_calWODPrograms||[]).find(p=>p.id===progId);
+  const progName = prog?.name || 'Program';
+  const weeks = (prog?.schedule||[]).length;
+  document.getElementById('modal-title').textContent = `Assign ${progName}`;
+  document.getElementById('modal-body').innerHTML = `
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">
+      Assigning <strong>${progName}</strong> to <strong>${userName}</strong>. This is a <strong>${weeks}-week</strong> program.
+    </div>
+    <div class="field">
+      <label>Program Start Date</label>
+      <input id="wod-assign-start-date" type="date" value="${todayStr()}" style="font-size:16px;padding:10px;font-family:var(--font)">
+    </div>`;
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="confirmAssignWODProgram('${userId}','${progId}',document.getElementById('wod-assign-start-date')?.value)">Assign</button>`;
+  showModal();
+}
+
+async function confirmAssignWODProgram(userId, progId, startDate){
+  closeModal();
+  try{
+    const payload = {user_id:userId, program_id:progId, active:true};
+    if (startDate) payload.start_date = startDate;
+    const check = await db('wod_program_assignments','GET',null,`?user_id=eq.${userId}&program_id=eq.${progId}&select=id`);
+    if (check&&check.length){
+      await db('wod_program_assignments','PATCH',{active:true, ...(startDate?{start_date:startDate}:{})},`?user_id=eq.${userId}&program_id=eq.${progId}`);
+    } else {
+      await db('wod_program_assignments','POST',payload);
+    }
+    toast(`Program assigned from ${startDate||'today'} ✓`);
+    renderWODPrograms();
+  }catch(e){toast('Assignment failed');console.error(e);}
+}
+
+async function removeAthleteWODProgram(assignmentId){
+  try{
+    await db('wod_program_assignments','PATCH',{active:false},`?id=eq.${assignmentId}`);
+    toast('Program removed');
+    renderWODPrograms();
+  }catch(e){toast('Error');console.error(e);}
+}
+
+async function deleteWODProgram(id){
+  if(!confirm('Delete this WOD program?')) return;
+  try{await db('wod_programs','DELETE',null,`?id=eq.${id}`);renderWODPrograms();toast('Deleted');}
+  catch(e){toast('Delete failed');console.error(e);}
+}
+
+// ── WOD Program editor — week-by-week builder ──
+let _wpWeeks = [], _editWODProgId = null, _wpActiveStartDate = null;
+
+function openCreateWODProgram(){
+  _editWODProgId = null; _wpWeeks = [Array(7).fill(null)]; _wpActiveStartDate = null;
+  document.getElementById('modal-title').textContent = 'Create WOD Program';
+  buildWODProgramModal(null);
+  showModal();
+}
+
+async function openEditWODProgram(id){
+  try{
+    const rows = await db('wod_programs','GET',null,`?id=eq.${id}&select=*`);
+    const prog = rows?.[0]; if(!prog) return;
+    _editWODProgId = id;
+    _wpWeeks = (prog.schedule&&prog.schedule.length) ? prog.schedule.map(wk => {
+      const week = Array(7).fill(null);
+      (wk||[]).forEach((slot,i)=>{ if(slot) week[i]=slot; });
+      return week;
+    }) : [Array(7).fill(null)];
+    // Look up this program's own active start date (if any) so week cards can show real dates
+    const assign = await db('wod_program_assignments','GET',null,`?user_id=eq.${currentUser.id}&program_id=eq.${id}&active=eq.true&select=start_date`);
+    _wpActiveStartDate = assign?.[0]?.start_date || null;
+    document.getElementById('modal-title').textContent = `Edit — ${prog.name}`;
+    buildWODProgramModal(prog);
+    showModal();
+  }catch(e){toast('Could not load program');console.error(e);}
+}
+
+function wpWeekDateRangeLabel(weekIdx){
+  if (!_wpActiveStartDate) return '';
+  const start = new Date(_wpActiveStartDate+'T00:00:00');
+  const weekStart = new Date(start.getTime() + weekIdx*7*86400000);
+  const weekEnd = new Date(weekStart.getTime() + 6*86400000);
+  const fmt = d => d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  return ` · ${fmt(weekStart)} – ${fmt(weekEnd)}`;
+}
+
+function buildWODProgramModal(prog){
+  const DOW_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const curName = document.getElementById('wp-name')?.value ?? prog?.name ?? '';
+  const curDesc = document.getElementById('wp-desc')?.value ?? prog?.description ?? '';
+
+  const weeksHtml = _wpWeeks.map((week, wIdx) => {
+    const daysHtml = DOW_NAMES.map((dowName, dow) => {
+      const slot = week[dow];
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);width:34px;flex-shrink:0">${dowName}</div>
+        <div style="flex:1;position:relative">
+          <input id="wp-slot-${wIdx}-${dow}" placeholder="Rest day — tap to add a WOD" value="${slot?.wod_name||''}" autocomplete="off"
+            oninput="wpSlotNameInput(${wIdx},${dow},this.value);wpShowWODSuggestions(this,${wIdx},${dow})"
+            onblur="setTimeout(wpHideWODSuggestions,150)"
+            style="width:100%;font-size:13px;font-weight:${slot?'700':'400'}">
+        </div>
+        ${slot?`<button onclick="wpClearSlot(${wIdx},${dow})" title="Clear — make this a rest day" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:15px;padding:0;flex-shrink:0">✕</button>`:'<span style="width:15px;flex-shrink:0"></span>'}
+      </div>`;
+    }).join('');
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--cf-green)">Week ${wIdx+1}${wpWeekDateRangeLabel(wIdx)}</div>
+        ${_wpWeeks.length>1?`<button onclick="wpRemoveWeek(${wIdx})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px">Remove Week</button>`:''}
+      </div>
+      ${daysHtml}
+    </div>`;
+  }).join('');
+
+  document.getElementById('modal-body').innerHTML = `
+    <div class="field"><label>Program Name</label><input id="wp-name" value="${curName}" placeholder="e.g. January Programming"></div>
+    <div class="field"><label>Description</label><textarea id="wp-desc" rows="2">${curDesc}</textarea></div>
+    <div class="divider"></div>
+    ${weeksHtml}
+    <button class="btn btn-ghost btn-sm" onclick="wpAddWeek()">+ Add Week</button>`;
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveWODProgram()">${_editWODProgId?'Save Changes':'Create'}</button>`;
+}
+
+function wpAddWeek(){
+  _wpWeeks.push(Array(7).fill(null));
+  buildWODProgramModal(null);
+}
+function wpRemoveWeek(weekIdx){
+  const hasContent = (_wpWeeks[weekIdx]||[]).some(Boolean);
+  if (hasContent && !confirm('Remove this week? Its WODs will be lost.')) return;
+  _wpWeeks.splice(weekIdx,1);
+  buildWODProgramModal(null);
+}
+function wpSlotNameInput(weekIdx, dow, value){
+  if (!_wpWeeks[weekIdx]) return;
+  const existing = _wpWeeks[weekIdx][dow];
+  if (!value.trim()) { _wpWeeks[weekIdx][dow] = null; return; }
+  // Free-typed name without picking a suggestion — no id/format until resolved via the dropdown
+  _wpWeeks[weekIdx][dow] = {
+    wod_id: existing?.wod_name===value ? existing.wod_id : null,
+    wod_name: value,
+    format: existing?.wod_name===value ? existing.format : '',
+    notes: existing?.notes || ''
+  };
+}
+function wpClearSlot(weekIdx, dow){
+  if (_wpWeeks[weekIdx]) _wpWeeks[weekIdx][dow] = null;
+  buildWODProgramModal(null);
+}
+
+async function saveWODProgram(){
+  const name = document.getElementById('wp-name')?.value?.trim();
+  if (!name) { toast('Name the program first'); return; }
+  const description = document.getElementById('wp-desc')?.value?.trim() || '';
+  const schedule = _wpWeeks.map(week => week.map(slot => slot && slot.wod_name ? {
+    wod_id: slot.wod_id || null, wod_name: slot.wod_name, format: slot.format || '', notes: slot.notes || ''
+  } : null));
+  const payload = { name, description, schedule };
+  try{
+    if (_editWODProgId){
+      await db('wod_programs','PATCH',payload,`?id=eq.${_editWODProgId}`);
+      _calWODPrograms = [];
+      toast('Program updated! ✓');
+    } else {
+      await db('wod_programs','POST',{...payload, is_preset:false, created_by:currentUser.id});
+      _calWODPrograms = [];
+      toast('WOD program created!');
+    }
+    _wpWeeks=[]; _editWODProgId=null; _wpActiveStartDate=null; closeModal();
+    renderWODPrograms();
+    renderCalendar();
+  }catch(e){toast('Save failed');console.error(e);}
+}
+
+// WOD name autocomplete for the program builder — custom dropdown, not a
+// native <input list> datalist (iOS Safari doesn't render datalist suggestions
+// at all, same lesson learned building the Ladder builder's movement picker).
+let _wpSuggestTarget = null, _wpSuggestWeekIdx = null, _wpSuggestDow = null;
+
+function wpShowWODSuggestions(input, weekIdx, dow){
+  _wpSuggestTarget = input; _wpSuggestWeekIdx = weekIdx; _wpSuggestDow = dow;
+  wpHideWODSuggestions();
+
+  const q = (input.value || '').toLowerCase().trim();
+  if (q.length < 2) return;
+
+  const all = [...CF_BENCHMARKS, ..._cfWODs];
+  const startsWith = all.filter(w => w.name.toLowerCase().startsWith(q));
+  const contains   = all.filter(w => !w.name.toLowerCase().startsWith(q) && w.name.toLowerCase().includes(q));
+  const matches = [...startsWith, ...contains].slice(0,6);
+  if (!matches.length) return;
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'wlb-suggestions';
+  dropdown.id = 'wp-suggestions-dropdown';
+  dropdown.innerHTML = matches.map(w => {
+    const nameHtml = w.name.replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<strong style="color:var(--cf-green)">$1</strong>');
+    return `<div class="wlb-suggestion-item" onmousedown="wpPickWODSuggestion('${w.id}')">
+      <span>${nameHtml}</span>
+      <span class="wlb-suggestion-cat">${w.format||''}</span>
+    </div>`;
+  }).join('');
+
+  const wrapper = input.parentElement;
+  if (wrapper) {
+    wrapper.style.position = 'relative';
+    dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;z-index:9999;max-height:220px;overflow-y:auto;margin-top:2px';
+    wrapper.appendChild(dropdown);
+  }
+}
+
+function wpPickWODSuggestion(wodId){
+  const wod = [...CF_BENCHMARKS, ..._cfWODs].find(w => String(w.id)===String(wodId));
+  if (!wod || _wpSuggestWeekIdx==null || _wpSuggestDow==null) { wpHideWODSuggestions(); return; }
+  const existing = _wpWeeks[_wpSuggestWeekIdx][_wpSuggestDow];
+  _wpWeeks[_wpSuggestWeekIdx][_wpSuggestDow] = { wod_id: wod.id, wod_name: wod.name, format: wod.format||'', notes: existing?.notes||'' };
+  if (_wpSuggestTarget) _wpSuggestTarget.value = wod.name;
+  wpHideWODSuggestions();
+  buildWODProgramModal(null); // re-render so the ✕ clear button + bold state appear
+}
+
+function wpHideWODSuggestions(){
+  document.getElementById('wp-suggestions-dropdown')?.remove();
 }
 
 // ═══════════════════════════════════════════════════
@@ -6097,6 +6778,17 @@ function getCellDots(ds) {
         ondragstart="calDragStartPlanned(event,'${ds}')"
         ondragend="calDragEnd(event)"
         title="${p.name} — drag to reschedule">· ${p.name}</span>`;
+    });
+  }
+  // Show planned WODs from a WOD Program if no WOD is already logged
+  if (wodScores.length === 0) {
+    getPlannedWODs(ds).forEach(p => {
+      html += `<span class="cal-workout-dot" data-date="${ds}"
+        draggable="true"
+        style="background:rgba(57,211,83,.08);color:var(--cf-green);border:1px dashed rgba(57,211,83,.4)"
+        ondragstart="calDragStartPlannedWOD(event,'${ds}')"
+        ondragend="calDragEnd(event)"
+        title="${p.wod_name} — drag to reschedule">🔥 ${p.wod_name}</span>`;
     });
   }
   return html;
@@ -14436,7 +15128,7 @@ function alloySwitchMode(mode) {
 
 // ── Extend nav() to handle CF views ──
 function nav(view, btn) {
-  const cfViews = ['cf-dashboard','cf-track','cf-library','cf-athletes','cf-assign','cf-builder','cf-history','cf-prs','cf-movement-library'];
+  const cfViews = ['cf-dashboard','cf-track','cf-library','cf-athletes','cf-assign','cf-builder','cf-history','cf-prs','cf-programs','cf-movement-library'];
   if (cfViews.includes(view)) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     const el = document.getElementById('view-' + view);
@@ -14464,6 +15156,7 @@ function nav(view, btn) {
     if (view === 'cf-builder')   cfRenderWODBuilder();
     if (view === 'cf-history')   cfRenderHistory();
     if (view === 'cf-prs')       renderWODPRs();
+    if (view === 'cf-programs')  renderWODPrograms();
     if (view === 'cf-assign')    cfRenderAssign();
     if (view === 'cf-movement-library') cfRenderMovementLibrary();
     return;
