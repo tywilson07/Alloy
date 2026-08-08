@@ -29,6 +29,7 @@
   --red:#FF3B3B;--red-light:#FF3B3B18;
   --amber:#FFB800;--amber-light:#FFB80018;
   --purple:#BF5FFF;--purple-light:#BF5FFF18;
+  --activity:#3B82F6;--activity-dim:#3B82F622;--activity-mid:#3B82F644;
   --blue:var(--orange);--blue-light:var(--orange-dim);--blue-mid:var(--orange-mid);
   --green:var(--lime);--green-light:var(--lime-dim);
   --gray-900:#F0F2F5;--gray-700:#C8CDD8;--gray-600:#9AA0B0;--gray-500:#6B7280;
@@ -53,6 +54,7 @@
   --shadow-orange:0 0 14px rgba(255,92,0,.15);
   --orange-dim:#FF5C0012;--orange-mid:#FF5C0030;--lime-dim:#55CC0015;
   --red-light:#FEF2F2;--amber-light:#FFFBEB;--purple-light:#F5F3FF;
+  --activity-dim:#3B82F612;--activity-mid:#3B82F630;
 }
 [data-theme="light"] .cal-cell:hover{background:var(--orange-dim)}
 [data-theme="light"] .cal-cell.today{background:var(--orange-dim)}
@@ -2205,6 +2207,7 @@ let _calWorkouts = {};   // local cache {date: [workout,...]}
 let _calAssigned = {};   // assigned workouts from coach {date: [assignment,...]}
 let _calWODScores = {};  // WOD scores {date: [score,...]}
 let _calBodyWeight = {}; // body weight log {date: {id, weight, unit, note}} — one entry per day
+let _calActivities = {}; // general activity log {date: [{id, activity_name, duration_min, notes}]} — multiple per day allowed
 let _calPrograms = [];   // programs visible to this user
 let _activeProgAssignments = []; // [{id, program_id, start_date}] — supports multiple simultaneous active programs
 let _calOverrides = {};  // planned workout overrides {newDate: {originalDate, workoutName, programId}}
@@ -2231,7 +2234,7 @@ async function renderCalendar() {
     // Load programs first (getVisiblePrograms may do sequential calls for athletes)
     const progs = await getVisiblePrograms();
     const wodProgs = await getVisibleWODPrograms();
-    const [wkts, assigns, assigned, overrides, wodScores, weighIns, wodAssigns, wodOverrides] = await Promise.all([
+    const [wkts, assigns, assigned, overrides, wodScores, weighIns, wodAssigns, wodOverrides, activities] = await Promise.all([
       db('workouts','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
       db('program_assignments','GET',null,`?user_id=eq.${currentUser.id}&select=*`),
       db('workout_assignments','GET',null,`?assigned_to=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
@@ -2239,7 +2242,8 @@ async function renderCalendar() {
       db('cf_scores','GET',null,`?user_id=eq.${currentUser.id}&logged_at=gte.${queryStart}T00:00:00&logged_at=lte.${queryEnd}T23:59:59&select=*`).catch(()=>[]),
       db('body_weight','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[]),
       db('wod_program_assignments','GET',null,`?user_id=eq.${currentUser.id}&select=*`).catch(()=>[]),
-      db('wod_schedule_overrides','GET',null,`?user_id=eq.${currentUser.id}&select=*`).catch(()=>[])
+      db('wod_schedule_overrides','GET',null,`?user_id=eq.${currentUser.id}&select=*`).catch(()=>[]),
+      db('activity_log','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[])
     ]);
     _calWorkouts = {};
     (wkts||[]).forEach(w => {
@@ -2260,6 +2264,11 @@ async function renderCalendar() {
     });
     _calBodyWeight = {};
     (weighIns||[]).forEach(w => { _calBodyWeight[w.date] = w; });
+    _calActivities = {};
+    (activities||[]).forEach(a => {
+      if (!_calActivities[a.date]) _calActivities[a.date] = [];
+      _calActivities[a.date].push(a);
+    });
     _calPrograms = progs || [];
     _activeProgAssignments = (assigns||[]).filter(a=>a.active).map(a=>({id:a.id, program_id:a.program_id, start_date:a.start_date||null}));
     // Build overrides map: originalDate → newDate (tagged with programId for multi-program disambiguation)
@@ -2347,6 +2356,66 @@ async function saveLogWeight(ds, existingId) {
 async function deleteLogWeight(id, ds) {
   try {
     await db('body_weight','DELETE',null,`?id=eq.${id}`);
+    closeModal();
+    toast('Entry deleted');
+    await renderCalendar();
+  } catch(e) { toast('Delete failed'); console.error(e); }
+}
+
+// ── Activity Log — a catch-all for anything that doesn't fit Lift or WOD
+// (boxing PT, a class, physical therapy, a walk...). Deliberately just a
+// name + optional duration + notes, no structure, so it never fights the
+// user into a format that doesn't apply. Supports multiple per day, same
+// as logged lift workouts / WOD scores (not capped at one like body weight —
+// a busy day can have more than one thing worth capturing).
+function openLogActivity(ds, existingId) {
+  const existing = existingId ? (_calActivities[ds]||[]).find(a=>String(a.id)===String(existingId)) : null;
+  document.getElementById('modal-title').textContent = '🔵 Log Activity';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">
+      Log some activity for <strong>${new Date(ds+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</strong> — doesn't need to be a structured workout.
+    </div>
+    <div class="field">
+      <label>Activity</label>
+      <input id="act-name" type="text" value="${existing?.activity_name||''}" placeholder="e.g. Boxing PT, Yoga class, Hike..." style="font-size:15px;font-weight:600;padding:10px">
+    </div>
+    <div class="field">
+      <label>Duration <span style="font-weight:400;color:var(--text-muted)">(optional, minutes)</span></label>
+      <input id="act-duration" type="number" min="0" step="5" value="${existing?.duration_min||''}" placeholder="45" style="padding:10px">
+    </div>
+    <div class="field">
+      <label>Notes <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+      <textarea id="act-notes" rows="2" placeholder="How'd it go?">${existing?.notes||''}</textarea>
+    </div>
+    ${existing?`<button class="btn btn-danger btn-sm" onclick="deleteLogActivity('${existing.id}','${ds}')">Delete entry</button>`:''}`;
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveLogActivity('${ds}','${existing?.id||''}')">Save</button>`;
+  showModal();
+}
+
+async function saveLogActivity(ds, existingId) {
+  const activity_name = document.getElementById('act-name')?.value?.trim();
+  const durationRaw = document.getElementById('act-duration')?.value;
+  const duration_min = durationRaw ? parseInt(durationRaw) : null;
+  const notes = document.getElementById('act-notes')?.value?.trim() || null;
+  if (!activity_name) { toast('Name the activity'); return; }
+  try {
+    const payload = {user_id: currentUser.id, date: ds, activity_name, duration_min, notes};
+    if (existingId) {
+      await db('activity_log','PATCH',payload,`?id=eq.${existingId}`);
+    } else {
+      await db('activity_log','POST',payload);
+    }
+    closeModal();
+    toast(`Activity logged: ${activity_name} ✓`);
+    await renderCalendar();
+  } catch(e) { toast('Save failed'); console.error(e); }
+}
+
+async function deleteLogActivity(id, ds) {
+  try {
+    await db('activity_log','DELETE',null,`?id=eq.${id}`);
     closeModal();
     toast('Entry deleted');
     await renderCalendar();
@@ -2969,14 +3038,31 @@ async function renderDayPanel(ds) {
     });
   }
 
-  if (!bodyHtml && !wodHtml && !plannedWodHtml) bodyHtml=`<div style="padding:16px 0;text-align:center;color:var(--gray-400);font-size:12.5px">Rest day — nothing logged.</div>`;
+  // General activity log — anything that isn't a Lift or WOD workout
+  // (boxing PT, a class, a walk...). Deliberately unstructured: name +
+  // optional duration + notes, nothing more.
+  const dayActivities = _calActivities[ds] || [];
+  let activityHtml = '';
+  dayActivities.forEach(a => {
+    activityHtml += `<div style="background:var(--activity-dim);border:1.5px solid var(--activity-mid);border-radius:var(--radius);padding:10px 13px;margin-bottom:8px;cursor:pointer" onclick="openLogActivity('${ds}','${a.id}')">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:12px;font-weight:900;text-transform:uppercase;color:var(--activity)">🔵 ${a.activity_name}</div>
+        ${a.duration_min?`<span style="font-size:11px;color:var(--text-muted);font-weight:700">${a.duration_min} min</span>`:''}
+      </div>
+      ${a.notes?`<div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;font-style:italic">"${a.notes}"</div>`:''}
+    </div>`;
+  });
+
+  if (!bodyHtml && !wodHtml && !plannedWodHtml && !activityHtml) bodyHtml=`<div style="padding:16px 0;text-align:center;color:var(--gray-400);font-size:12.5px">Rest day — nothing logged.</div>`;
 
   // Footer: mode-aware log button
   const footerBtns = _cfMode
     ? `<button class="btn btn-primary btn-full btn-sm" onclick="cfPreFillTrackDate('${ds}')">+ Log WOD for this day</button>
-       <button class="btn btn-white btn-full btn-sm" style="margin-top:6px" onclick="openLogModal('${ds}',null)">+ Add Lift Workout</button>`
+       <button class="btn btn-white btn-full btn-sm" style="margin-top:6px" onclick="openLogModal('${ds}',null)">+ Add Lift Workout</button>
+       <button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px" onclick="openLogActivity('${ds}',null)">🔵 + Log Other Activity</button>`
     : `<button class="btn btn-primary btn-full btn-sm" onclick="openLogModal('${ds}',null)">+ Add Lift Workout</button>
-       <button class="btn btn-white btn-full btn-sm" style="margin-top:6px" onclick="cfPreFillTrackDate('${ds}')">+ Log WOD for this day</button>`;
+       <button class="btn btn-white btn-full btn-sm" style="margin-top:6px" onclick="cfPreFillTrackDate('${ds}')">+ Log WOD for this day</button>
+       <button class="btn btn-ghost btn-full btn-sm" style="margin-top:6px" onclick="openLogActivity('${ds}',null)">🔵 + Log Other Activity</button>`;
 
   // Body weight — shared across Lift/WOD mode, same as the rest of this unified day panel
   const bwEntry = _calBodyWeight[ds];
@@ -3000,9 +3086,10 @@ async function renderDayPanel(ds) {
       <div style="display:flex;gap:4px;flex-wrap:wrap">
         ${logs.length>0?`<span class="pill pill-green">✓ ${logs.length} lift</span>`:''}
         ${dayWODs.length>0?`<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3)">⚡ ${dayWODs.length} WOD</span>`:''}
+        ${dayActivities.length>0?`<span class="pill" style="background:var(--activity-dim);color:var(--activity);border:1px solid var(--activity-mid)">🔵 ${dayActivities.length} activity</span>`:''}
       </div>
     </div>
-    <div class="day-panel-body">${wodHtml}${plannedWodHtml}${bodyHtml}${bwHtml}</div>
+    <div class="day-panel-body">${wodHtml}${plannedWodHtml}${bodyHtml}${activityHtml}${bwHtml}</div>
     <div class="day-panel-footer">
       ${footerBtns}
     </div>`;
@@ -6791,6 +6878,11 @@ function getCellDots(ds) {
         title="${p.wod_name} — drag to reschedule">🔥 ${p.wod_name}</span>`;
     });
   }
+  // Show general activity log entries
+  const dayActivities = _calActivities[ds] || [];
+  dayActivities.forEach(a => {
+    html += `<span class="cal-workout-dot" style="background:var(--activity-dim);color:var(--activity);border:1px solid var(--activity-mid)" title="${a.activity_name}${a.duration_min?' — '+a.duration_min+' min':''}">🔵 ${a.activity_name}</span>`;
+  });
   return html;
 }
 
