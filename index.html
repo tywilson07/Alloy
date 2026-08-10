@@ -1441,14 +1441,14 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
             </div>
             <div id="cf-setup-tabata" style="display:none;margin-bottom:12px">
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-                <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--cf-green);margin-bottom:6px;text-align:center">Work (sec)</div>
+                <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--cf-green);margin-bottom:6px;text-align:center">Work</div>
                   <div style="display:flex;align-items:center;justify-content:center;gap:6px">
                     <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-work',-5)">−</button>
                     <div id="cf-setup-tabata-work" style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:36px;text-align:center">20</div>
                     <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-work',5)">+</button>
                   </div>
                 </div>
-                <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;text-align:center">Rest (sec)</div>
+                <div><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;text-align:center">Rest</div>
                   <div style="display:flex;align-items:center;justify-content:center;gap:6px">
                     <button class="cf-round-btn" style="width:30px;height:30px;font-size:14px" onclick="cfAdjustSetup('tabata-rest',-5)">−</button>
                     <div id="cf-setup-tabata-rest" style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text-muted);min-width:36px;text-align:center">10</div>
@@ -11499,7 +11499,8 @@ function wlbUpdatePreview() {
   let header = '';
   if (fmt === 'AMRAP') header = (_cfSetup?.amrapMin||18) + ' Min AMRAP';
   else if (fmt === 'EMOM') header = (_cfSetup?.emomTotal||20) + ' Min EMOM';
-  else if (_wlbRounds > 1) header = _wlbRounds + ' Rounds For Time';
+  else if (fmt === 'Tabata') header = 'Tabata';
+  else if (['For Time','Chipper','Partner'].includes(fmt) && _wlbRounds > 1) header = _wlbRounds + ' Rounds For Time';
   else if (_wlbIsChipper) header = 'Chipper';
   else header = fmt;
 
@@ -11878,7 +11879,7 @@ function wlbPopulateWODCard() {
   let fmtLabel = fmt;
   if (fmt === 'AMRAP') fmtLabel = `${_cfSetup?.amrapMin||18} Min AMRAP`;
   else if (fmt === 'EMOM') fmtLabel = `${_cfSetup?.emomTotal||20} Min EMOM`;
-  else if (_wlbRounds > 1) fmtLabel = `${_wlbRounds} Rounds For Time`;
+  else if (['For Time','Chipper','Partner'].includes(fmt) && _wlbRounds > 1) fmtLabel = `${_wlbRounds} Rounds For Time`;
   if (fmtEl) fmtEl.textContent = fmtLabel;
 
   const mvToCardRow = (mv, highlight) => {
@@ -11973,7 +11974,7 @@ function wlbPopulateWODCard() {
   } else {
     if (rlEl) {
       if (fmt === 'AMRAP') rlEl.textContent = 'Complete as many rounds as possible';
-      else if (_wlbRounds > 1) rlEl.textContent = _wlbRounds + ' Rounds';
+      else if (['For Time','Chipper','Partner'].includes(fmt) && _wlbRounds > 1) rlEl.textContent = _wlbRounds + ' Rounds';
       else rlEl.textContent = '';
     }
     if (mvList) mvList.innerHTML = _wlbMovements.map(mv => mvToCardRow(mv,'var(--cf-green)')).join('');
@@ -12231,7 +12232,7 @@ function cfFsRenderMovements() {
   if (_wlbIsIntervals && _wlbIntervals.length > 0) {
     html = cfBuildIntervalDisplayHTML(_wlbIntervals, _wlbCurrentInterval, _wlbIntervalSplits, wtUnit);
   } else {
-    if (_wlbRounds > 1) html += `<div style="font-size:calc(11px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:calc(12px * var(--fs-scale,1));text-align:center">${_wlbRounds} ROUNDS</div>`;
+    if (['For Time','Chipper','Partner'].includes(_cfCurrentFormat) && _wlbRounds > 1) html += `<div style="font-size:calc(11px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:calc(12px * var(--fs-scale,1));text-align:center">${_wlbRounds} ROUNDS</div>`;
     html += _wlbMovements.map(mv => {
       if (!mv.name) return '';
       const wt = mv.weight ? ` @ ${mv.weight} ${wtUnit}` : '';
@@ -14069,6 +14070,14 @@ function wlbUpdateStructureUI() {
   } else {
     regularBuilder.style.display = 'block';
   }
+
+  // Tabata has its own dedicated round count (cf-setup-tabata-rounds) — the generic
+  // Rounds stepper here is meaningless for it and was producing a misleading
+  // "N Rounds For Time" label; hide it for Tabata specifically. Buy-in/buy-out and
+  // Main Work still apply (e.g. a run buy-in before a Tabata block), so those stay.
+  const roundsRow = document.getElementById('wlb-rounds-row');
+  if (roundsRow) roundsRow.style.display = (_cfCurrentFormat === 'Tabata') ? 'none' : '';
+
   wlbUpdatePreview();
 }
 
@@ -15478,22 +15487,28 @@ function cfAdjustSetup(type, delta) {
       document.getElementById('cf-setup-emom-interval').textContent = _cfSetup.emomInterval;
       cfUpdateEmomSummary();
       break;
-    case 'tabata-work':
-      _cfSetup.tabataWork = Math.max(5, Math.min(60, _cfSetup.tabataWork + delta));
-      document.getElementById('cf-setup-tabata-work').textContent = _cfSetup.tabataWork;
+    case 'tabata-work': {
+      const dir = delta > 0 ? 1 : -1;
+      const step = _cfSetup.tabataWork >= 60 ? 15 : 5;
+      _cfSetup.tabataWork = Math.max(5, Math.min(600, _cfSetup.tabataWork + dir*step));
+      document.getElementById('cf-setup-tabata-work').textContent = cfFmtTabataVal(_cfSetup.tabataWork);
       cfUpdateTabataSummary();
       // Auto-update display
       if (!_cfTimerRunning) {
         const disp = document.getElementById('cf-timer-display');
-        if (disp) disp.textContent = String(_cfSetup.tabataWork).padStart(2,'0');
+        if (disp) disp.textContent = cfFmtTabataVal(_cfSetup.tabataWork);
         _cfTimerSeconds = _cfSetup.tabataWork;
       }
       break;
-    case 'tabata-rest':
-      _cfSetup.tabataRest = Math.max(5, Math.min(60, _cfSetup.tabataRest + delta));
-      document.getElementById('cf-setup-tabata-rest').textContent = _cfSetup.tabataRest;
+    }
+    case 'tabata-rest': {
+      const dir = delta > 0 ? 1 : -1;
+      const step = _cfSetup.tabataRest >= 60 ? 15 : 5;
+      _cfSetup.tabataRest = Math.max(5, Math.min(600, _cfSetup.tabataRest + dir*step));
+      document.getElementById('cf-setup-tabata-rest').textContent = cfFmtTabataVal(_cfSetup.tabataRest);
       cfUpdateTabataSummary();
       break;
+    }
     case 'tabata-rounds':
       _cfSetup.tabataRounds = Math.max(1, Math.min(20, _cfSetup.tabataRounds + delta));
       document.getElementById('cf-setup-tabata-rounds').textContent = _cfSetup.tabataRounds;
@@ -15520,11 +15535,19 @@ function cfUpdateEmomSummary() {
   if (totalEl) totalEl.textContent = totalRounds;
 }
 
+// Under a minute, show plain seconds (matches classic Tabata's 20s/10s); at or
+// above a minute, switch to M:SS so multi-minute work/rest (e.g. 1 min/3 min) reads clearly.
+function cfFmtTabataVal(secs) {
+  if (secs < 60) return String(secs);
+  const m = Math.floor(secs/60), s = secs%60;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+
 function cfUpdateTabataSummary() {
   const totalSecs = _cfSetup.tabataRounds * (_cfSetup.tabataWork + _cfSetup.tabataRest);
   const m = Math.floor(totalSecs/60), s = totalSecs%60;
   const el = document.getElementById('cf-tabata-summary');
-  if (el) el.textContent = `${_cfSetup.tabataRounds} rounds · ${_cfSetup.tabataWork}s work / ${_cfSetup.tabataRest}s rest · ${m}:${String(s).padStart(2,'0')} total`;
+  if (el) el.textContent = `${_cfSetup.tabataRounds} rounds · ${cfFmtTabataVal(_cfSetup.tabataWork)} work / ${cfFmtTabataVal(_cfSetup.tabataRest)} rest · ${m}:${String(s).padStart(2,'0')} total`;
 }
 
 function cfToggleCap() {
@@ -16351,7 +16374,7 @@ function cfResetTimer() {
   if (_cfCurrentFormat === 'AMRAP') {
     displayVal = `${_cfSetup.amrapMin}:00`;
   } else if (_cfCurrentFormat === 'Tabata') {
-    displayVal = `${String(_cfSetup.tabataWork).padStart(2,'0')}`;
+    displayVal = cfFmtTabataVal(_cfSetup.tabataWork);
     cfUpdateTabataDisplay();
   } else if ((_cfCurrentFormat === 'For Time' || _cfCurrentFormat === 'Chipper' || _cfCurrentFormat === 'Partner') && _cfSetup.capEnabled) {
     displayVal = `${_cfSetup.capMin}:00`;
