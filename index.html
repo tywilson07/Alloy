@@ -12772,7 +12772,7 @@ function cfRenderRemoteTVMovements(state) {
       </div>`;
     }).join('');
   } else {
-    if (state.wlbRounds > 1) html += `<div style="font-size:calc(11px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:calc(12px * var(--fs-scale,1));text-align:center">${state.wlbRounds} ROUNDS</div>`;
+    if (['For Time','Chipper','Partner'].includes(state.format) && state.wlbRounds > 1) html += `<div style="font-size:calc(11px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:calc(12px * var(--fs-scale,1));text-align:center">${state.wlbRounds} ROUNDS</div>`;
     html += (state.movements||[]).map(mvToRow).join('');
   }
 
