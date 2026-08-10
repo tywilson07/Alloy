@@ -12523,6 +12523,7 @@ function cfTVDetectAudioCues(prev, curr) {
   if (curr.format === 'Tabata' && prev.setup?.tabataPhase !== curr.setup?.tabataPhase) {
     if (curr.setup?.tabataPhase === 'rest') { cfBeepRest(); cfSpeak('Rest'); }
     else { cfBeepInterval(); cfSpeak('Go!'); }
+    _tvLastRestAnnounced = null; // fresh rest period — clear so 15/3/2/1 can fire again below
   }
   // Intervals work/rest phase transitions
   if (curr.format === 'Intervals' && prev.intervalPhase !== curr.intervalPhase) {
@@ -12545,6 +12546,20 @@ function cfTVDetectAudioCues(prev, curr) {
   // silently never fire "15 seconds" at all. Verified this exact scenario in isolation —
   // exact-match missed it, crossing-detection catches it regardless of the gap.
   if (curr.format === 'Intervals' && curr.intervalPhase === 'rest' && curr.timerRunning && prev.intervalPhase === 'rest') {
+    const prevSecs = Math.abs(prev.timerSeconds || 0);
+    const currSecs = Math.abs(curr.timerSeconds || 0);
+    for (const t of [15, 3, 2, 1]) {
+      if (prevSecs > t && currSecs <= t && _tvLastRestAnnounced !== t) {
+        cfBeepWarning();
+        cfSpeak(t === 15 ? '15 seconds' : String(t));
+        _tvLastRestAnnounced = t;
+        break;
+      }
+    }
+  }
+  // Same rest countdown callouts for Tabata's rest phase — meaningful now that its
+  // duration can run well past a minute (previously capped at 60s).
+  if (curr.format === 'Tabata' && curr.setup?.tabataPhase === 'rest' && curr.timerRunning && prev.setup?.tabataPhase === 'rest') {
     const prevSecs = Math.abs(prev.timerSeconds || 0);
     const currSecs = Math.abs(curr.timerSeconds || 0);
     for (const t of [15, 3, 2, 1]) {
@@ -16274,8 +16289,14 @@ function cfTimerTick() {
 
     const phaseDuration = _cfSetup.tabataPhase === 'work' ? _cfSetup.tabataWork : _cfSetup.tabataRest;
 
-    // Warning beeps last 3 seconds of each phase
-    if (_cfTimerSeconds <= 3 && _cfTimerSeconds > 0) cfBeepWarning();
+    // Warning beeps last 3 seconds of each phase; rest also gets a spoken 15/3/2/1
+    // countdown into the work transition (same pattern as Intervals' rest phase),
+    // since rest can now run well past a minute.
+    if (_cfSetup.tabataPhase === 'rest' && _cfTimerSeconds === 15) { cfBeepWarning(); cfSpeak('15 seconds'); }
+    else if (_cfTimerSeconds <= 3 && _cfTimerSeconds > 0) {
+      cfBeepWarning();
+      if (_cfSetup.tabataPhase === 'rest') cfSpeak(String(_cfTimerSeconds));
+    }
 
     if (_cfTimerSeconds <= 0) {
       if (_cfSetup.tabataPhase === 'work') {
