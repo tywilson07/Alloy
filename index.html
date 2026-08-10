@@ -11310,8 +11310,13 @@ function wlbRenderSection(section) {
       (!mv._measurement && (type === 'reps' || type === 'carry'));
     const repsLabel = unit === 'reps' ? 'Reps' : unit.toUpperCase();
     const repsPh = presets[Math.floor(presets.length / 2)] || '10';
+    // Tabata's Main Work isn't paced to a prescribed rep count — the athlete goes
+    // for max effort each interval and the result is logged via the separate
+    // Reps/Calories/Distance scoring type, not a per-movement target here. Buy-in/
+    // buy-out movements are done once, outside the Tabata clock, so they keep it.
+    const showReps = !(_cfCurrentFormat === 'Tabata' && section === 'main');
 
-    const unitToggle = unitOpts.length > 1
+    const unitToggle = showReps && unitOpts.length > 1
       ? '<div style="display:flex;gap:3px;margin-left:auto">' +
         unitOpts.map(u => '<button class="wod-format-chip' + (unit === u ? ' active' : '') + '" ' +
           'style="padding:2px 7px;font-size:10px;border-radius:4px" ' +
@@ -11330,12 +11335,12 @@ function wlbRenderSection(section) {
       'style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0;flex-shrink:0">✕</button>' +
       '</div>' +
       '<div style="display:flex;gap:8px;align-items:flex-end">' +
-      '<div class="field" style="flex:1;margin:0">' +
+      (showReps ? '<div class="field" style="flex:1;margin:0">' +
       '<label style="font-size:10px">' + repsLabel + '</label>' +
       '<input placeholder="' + repsPh + '" value="' + (mv.reps || '') + '" ' +
       'oninput="wlbMvList(\'' + section + '\')[' + idx + '].reps=this.value;wlbUpdatePreview()" ' +
       'style="font-family:var(--mono);font-size:15px;font-weight:700">' +
-      '</div>' +
+      '</div>' : '') +
       (showWeight ? '<div class="field" style="flex:1;margin:0">' +
         '<label style="font-size:10px">Weight (' + wtUnit + ')</label>' +
         '<input placeholder="e.g. 135/95" value="' + (mv.weight || '') + '" ' +
