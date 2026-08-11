@@ -12894,11 +12894,15 @@ function cfSaveLoggedWODToLibrary() {
     movements,
     builder_state: builderState,
     notes: document.getElementById('cf-score-notes')?.value?.trim() || '',
+    is_public: false,
     created_at: new Date().toISOString()
   };
 
   if (editingId) {
-    const { created_at, ...updateFields } = wod;
+    // is_public is only ever changed via the Library's Public/Private toggle,
+    // never touched by a re-save — otherwise editing a public WOD would silently
+    // flip it back to private every time.
+    const { created_at, is_public, ...updateFields } = wod;
     _wlbEditingWODId = null;
     db('cf_wods','PATCH',updateFields,`?id=eq.${editingId}`).then(() => {
       const idx = _cfWODs.findIndex(w=>String(w.id)===String(editingId));
@@ -15354,8 +15358,13 @@ async function cfLoadData() {
   if (!currentUser) return;
   // Try DB first, fall back to localStorage
   try {
+    // Own WODs + anyone's public ones. Falls back to own-only if the is_public
+    // column isn't there yet (a pending migration, not deployed) — an `or=` filter
+    // referencing a nonexistent column errors PostgREST out entirely, which would
+    // otherwise wipe the whole library instead of degrading gracefully.
     const [wods, scores] = await Promise.all([
-      db('cf_wods','GET',null,`?user_id=eq.${currentUser.id}&select=*&order=created_at.desc&limit=200`).catch(()=>[]),
+      db('cf_wods','GET',null,`?or=(user_id.eq.${currentUser.id},is_public.eq.true)&select=*&order=created_at.desc&limit=200`)
+        .catch(()=>db('cf_wods','GET',null,`?user_id=eq.${currentUser.id}&select=*&order=created_at.desc&limit=200`).catch(()=>[])),
       db('cf_scores','GET',null,`?user_id=eq.${currentUser.id}&select=*&order=logged_at.desc&limit=100`).catch(()=>[])
     ]);
     _cfWODs = wods || [];
@@ -16694,7 +16703,7 @@ function cfRenderLibrary() {
   if (!body) return;
   const q = (document.getElementById('cf-library-search')?.value||'').toLowerCase();
   let all = [
-    ..._cfWODs.map(w=>({...w,_user:true})),
+    ..._cfWODs.map(w=>({...w,_user: w.user_id === currentUser?.id})),
     ...CF_BENCHMARKS.map(b=>({...b,_benchmark:true}))
   ];
 
@@ -16759,6 +16768,7 @@ function cfRenderLibrary() {
         <div style="display:flex;gap:5px;flex-shrink:0">
           <button class="btn btn-primary btn-xs" onclick="cfLoadWODToTrack(${wJson})">Track</button>
           ${w._user?`<button class="btn btn-ghost btn-xs" onclick="cfLoadWODToTrack(${wJson}, true)">✎</button>`:''}
+          ${w._user && currentUser?.role==='admin'?`<button class="btn btn-ghost btn-xs" title="${w.is_public?'Public — visible to everyone. Tap to make private.':'Private — only you can see this. Tap to make public.'}" onclick="cfToggleWODPublic('${w.id}',${!w.is_public})">${w.is_public?'🌐':'🔒'}</button>`:''}
           ${w._user?`<button class="btn btn-danger btn-xs" onclick="cfDeleteWOD('${w.id}')">✕</button>`:''}
         </div>
       </div>
@@ -16771,6 +16781,7 @@ function cfRenderLibrary() {
         ${w.notes?`<div style="font-size:11.5px;color:var(--text-muted);margin-top:6px;font-style:italic">${w.notes}</div>`:''}
         <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
           ${w._benchmark?'<span class="pill pill-amber">Benchmark</span>':''}
+          ${w._user && w.is_public?'<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green)">🌐 Public</span>':''}
           ${w.difficulty?'<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30">'+w.difficulty+'</span>':''}
           ${w.duration_bucket?'<span class="pill" style="background:var(--surface2);color:var(--text-muted)">'+cfDurationLabel(w.duration_bucket)+'</span>':''}
         </div>
@@ -17014,7 +17025,7 @@ async function cfSaveWOD() {
     if (match) return {reps:match[1], name:match[2], detail:''};
     return {reps:'', name:line.trim(), detail:''};
   });
-  const payload = {user_id:currentUser.id, name, format, cap, description, movements, scaling, notes, difficulty, duration_bucket, created_at:new Date().toISOString()};
+  const payload = {user_id:currentUser.id, name, format, cap, description, movements, scaling, notes, difficulty, duration_bucket, is_public:false, created_at:new Date().toISOString()};
   try {
     const saved = await db('cf_wods','POST',payload);
     if (saved?.[0]) _cfWODs.unshift(saved[0]);
@@ -17037,6 +17048,18 @@ async function cfDeleteWOD(id) {
     cfRenderLibrary();
     toast('WOD deleted');
   } catch(e) { toast('Delete failed'); }
+}
+
+async function cfToggleWODPublic(id, makePublic) {
+  const idx = _cfWODs.findIndex(w=>String(w.id)===String(id));
+  try {
+    await db('cf_wods','PATCH',{is_public: makePublic},`?id=eq.${id}`);
+    if (idx>=0) _cfWODs[idx].is_public = makePublic;
+    cfRenderLibrary();
+    toast(makePublic ? 'WOD made public — everyone can see it now' : 'WOD set back to private');
+  } catch(e) {
+    toast('Could not update — try again');
+  }
 }
 
 // ── WOD Athletes ──
