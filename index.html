@@ -1611,7 +1611,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
             <label>Notes <span style="font-size:10px;color:var(--text-muted)">(optional)</span></label>
             <textarea id="cf-score-notes" rows="4" placeholder="What did you scale? How did it go? Any PRs? Things to remember next time..."></textarea>
           </div>
-          <button class="btn btn-primary btn-full" onclick="cfLogScore()" style="margin-bottom:8px">Save Score</button>
+          <button id="cf-log-score-btn" class="btn btn-primary btn-full" onclick="cfLogScore()" style="margin-bottom:8px">Save Score</button>
           <button class="btn btn-ghost btn-full btn-sm" onclick="cfSaveLoggedWODToLibrary()">+ Save this WOD to Library</button>
         </div>
 
@@ -2129,6 +2129,7 @@ function enterApp() {
   loadExLibrary(); // pre-warm the exercise library cache
   checkFirstLogin(); // show onboarding tour for first-time athletes
   cfPreloadVoiceClips(); // background-fetch WOD timer voice clips (routes to TV, unlike speechSynthesis)
+  cfListenForGroupInvites(); // live-only group/Partner WOD invites — see ALLOY — GROUP / PARTNER WOD SESSIONS
 }
 
 // ═══════════════════════════════════════════════════
@@ -10506,7 +10507,13 @@ initTheme(); // Apply theme before anything renders
 if (window.ALLOY_TV_USERNAME) {
   // TV Display mode — the CSS in <head> already hid the whole normal app instantly.
   // Skip login/enterApp entirely; this is a read-only board, not a logged-in session.
-  cfInitTVDisplay(window.ALLOY_TV_USERNAME);
+  // ?tv=session:<id> is a group/Partner WOD board (multiple athletes); plain
+  // ?tv=<username> stays the original single-athlete board, unchanged.
+  if (window.ALLOY_TV_USERNAME.startsWith('session:')) {
+    cfInitTVGroupDisplay(window.ALLOY_TV_USERNAME.slice('session:'.length));
+  } else {
+    cfInitTVDisplay(window.ALLOY_TV_USERNAME);
+  }
 } else {
   const saved=loadSession();
   if(saved){
@@ -11854,6 +11861,11 @@ function wlbExitWODCard() {
   cfReleaseWakeLock(); // WOD card closed — screen can sleep
   if (_wcSyncInterval) clearInterval(_wcSyncInterval);
   if (_cfLiveSyncInterval) clearInterval(_cfLiveSyncInterval);
+  // Backing out of a group/Partner WOD before it ever started fully cancels this
+  // device's participation — but once started, session_id is still needed by the
+  // upcoming score save, so leave it in place until cfLogScore()/cfLeaveGroupSession()
+  // clears it (see ALLOY — GROUP / PARTNER WOD SESSIONS).
+  if (_cfActiveGroupSession && !_wlbWorkoutStarted) cfLeaveGroupSession();
   // On a natural finish, leave the TV Display showing the "Workout Complete" summary
   // (already pushed by cfTimerDone()) rather than resetting it — only a manual/early
   // exit (Reset/Exit tapped without finishing) should send the TV back to idle.
@@ -12274,7 +12286,7 @@ async function cfUpsertLiveState(stateObj) {
         'Content-Type': 'application/json',
         'Prefer': 'resolution=merge-duplicates,return=minimal',
       },
-      body: JSON.stringify({ user_id: String(currentUser.id), state: stateObj, updated_at: new Date().toISOString() })
+      body: JSON.stringify({ user_id: String(currentUser.id), state: stateObj, session_id: _cfActiveGroupSession?.id || null, updated_at: new Date().toISOString() })
     });
   } catch(e) { /* best-effort — a dropped push just means the TV board is briefly stale */ }
 }
@@ -12799,6 +12811,482 @@ function cfRenderRemoteTVMovements(state) {
 
   fsMovements.innerHTML = html;
   cfFitTVMovements();
+}
+
+// ═══════════════════════════════════════════════════
+// ALLOY — GROUP / PARTNER WOD SESSIONS
+// Invite another logged-in user into a shared WOD: everyone's timer starts at the
+// same instant (a Realtime start_at signal drives cfRunLeadinCountdown() on every
+// joined device — see the refactor in cfWODCardStart() above), and depending on
+// format the result is either one shared score (Partner — cfLogPartnerScore()) or
+// each person's own independent score (any other format, tagged with session_id).
+// Same-room/live-only by design: there's no push-notification backend in this app,
+// so an invite only reaches a device that already has Alloy open (see cfListenFor-
+// GroupInvites()) — documented tradeoff, not a bug.
+// ═══════════════════════════════════════════════════
+
+let _cfActiveGroupSession = null;   // the pending/active/finished session this device is part of, or null
+let _cfGroupInviteChannel = null;   // listens for NEW invites naming this user (set up once, at login)
+let _cfGroupSessionChannel = null;  // listens for updates to _cfActiveGroupSession specifically
+let _cfSupaClient = null;           // shared Supabase JS client, lazily created (cfLoadSupabaseClient() already exists above for the TV route)
+
+async function cfGetSupaClient() {
+  if (_cfSupaClient) return _cfSupaClient;
+  await cfLoadSupabaseClient();
+  _cfSupaClient = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+  return _cfSupaClient;
+}
+
+function cfSetInviteButtonVisible(visible) {
+  const btn = document.getElementById('wc-invite-btn');
+  if (btn) btn.style.display = visible ? '' : 'none';
+}
+
+// ── Snapshot: capture / restore the current WOD card's setup, mirroring exactly
+// what cfPushLiveState() already assembles (minus the live timer fields) so a
+// joining participant's device ends up configured identically to the host's. ──
+function cfBuildWODSnapshot() {
+  return {
+    wodName: document.getElementById('cf-score-wod')?.value?.trim() || '',
+    format: _cfCurrentFormat,
+    setup: { ..._cfSetup },
+    isIntervals: _wlbIsIntervals,
+    intervals: _wlbIsIntervals ? _wlbIntervals : [],
+    wlbRounds: _wlbRounds,
+    movements: _wlbIsIntervals ? [] : _wlbMovements,
+    isHeavy: _wlbIsHeavy,
+    heavySets: _wlbIsHeavy ? _wlbHeavySets : [],
+    heavyMovement: _wlbHeavyMovement || '',
+    isEmomStation: _wlbIsEmomStation,
+    emomStations: _wlbIsEmomStation ? _wlbEmomStations : [],
+    showBuyin: _wlbShowBuyin,
+    buyinMovements: _wlbShowBuyin ? _wlbBuyinMovements : [],
+    showBuyout: _wlbShowBuyout,
+    buyoutMovements: _wlbShowBuyout ? _wlbBuyoutMovements : [],
+    weightUnit: wlbGetWeightUnit(),
+  };
+}
+
+// Restores a snapshot into this device's own builder state, then opens the WOD
+// card via wlbStartWOD() — landing the participant on the same pre-start screen
+// the host is looking at. Deliberately writes the internal state vars directly
+// instead of round-tripping through cfLoadWODToTrack()'s wod-object/cap-string
+// parser (built for loading a *saved library WOD*, a lossier shape) — the snapshot
+// already holds these vars' exact values, so restoring them directly is safer.
+function cfApplyGroupSnapshot(snapshot) {
+  nav('cf-track');
+  const nameEl = document.getElementById('cf-score-wod');
+  if (nameEl) nameEl.value = snapshot.wodName || '';
+  document.querySelectorAll('.wod-format-chip').forEach(btn => {
+    if (btn.textContent.trim() === snapshot.format) cfSelectFormat(snapshot.format, btn);
+  });
+  setTimeout(() => {
+    _cfSetup = { ...snapshot.setup };
+    _wlbIsIntervals = snapshot.isIntervals || false;
+    _wlbIntervals = snapshot.intervals || [];
+    _wlbRounds = snapshot.wlbRounds || 1;
+    _wlbIsHeavy = snapshot.isHeavy || false;
+    _wlbHeavySets = snapshot.heavySets || [];
+    _wlbHeavyMovement = snapshot.heavyMovement || '';
+    const heavyInput = document.getElementById('wlb-heavy-movement');
+    if (heavyInput) heavyInput.value = _wlbHeavyMovement;
+    _wlbIsEmomStation = snapshot.isEmomStation || false;
+    _wlbEmomStations = snapshot.emomStations || [];
+    _wlbShowBuyin = snapshot.showBuyin || false;
+    _wlbBuyinMovements = snapshot.buyinMovements || [];
+    _wlbShowBuyout = snapshot.showBuyout || false;
+    _wlbBuyoutMovements = snapshot.buyoutMovements || [];
+    if (!_wlbIsIntervals && !_wlbIsEmomStation && !_wlbIsHeavy) {
+      _wlbMovements = snapshot.movements || [];
+    }
+    wlbRenderSection('main');
+    wlbUpdateStructureUI();
+    wlbUpdatePreview();
+    wlbStartWOD();
+  }, 150);
+}
+
+// ── Host: create + send an invite ──
+async function cfLoadInvitableUsers() {
+  try {
+    const rows = await db('users','GET',null,'?select=id,username&order=username.asc');
+    return (rows||[]).filter(u => String(u.id) !== String(currentUser.id));
+  } catch(e) { return []; }
+}
+
+async function cfOpenInviteModal() {
+  if (!currentUser) return;
+  const users = await cfLoadInvitableUsers();
+  if (!users.length) { toast('No other Alloy users to invite yet'); return; }
+  document.getElementById('modal-title').textContent = '👥 Invite to Workout';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">
+      Invite someone to start this ${_cfCurrentFormat} WOD with you at the same time. They need Alloy open right now to see the invite — there's no push notification yet.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${users.map(u => `
+        <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius);cursor:pointer">
+          <input type="checkbox" value="${u.id}" class="cf-invite-check">
+          <span style="font-weight:700">${u.username}</span>
+        </label>
+      `).join('')}
+    </div>
+  `;
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-white" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="cfSendGroupInvite()">Send Invite</button>
+  `;
+  showModal();
+}
+
+async function cfSendGroupInvite() {
+  const participantIds = Array.from(document.querySelectorAll('.cf-invite-check:checked')).map(c => c.value);
+  if (!participantIds.length) { toast('Select at least one person'); return; }
+  const snapshot = cfBuildWODSnapshot();
+  if (!snapshot.wodName) { toast('Enter a WOD name first'); return; }
+  const payload = {
+    host_id: currentUser.id,
+    wod_name: snapshot.wodName,
+    format: snapshot.format,
+    wod_snapshot: snapshot,
+    participant_ids: [currentUser.id, ...participantIds],
+    joined_ids: [currentUser.id],
+    status: 'pending',
+    created_at: new Date().toISOString()
+  };
+  try {
+    const saved = await db('cf_group_sessions','POST',payload);
+    _cfActiveGroupSession = saved?.[0] || { ...payload, id: null };
+    closeModal();
+    toast('Invite sent — waiting for others to join');
+    cfSetInviteButtonVisible(false);
+    if (_cfActiveGroupSession.id) cfSubscribeToGroupSession(_cfActiveGroupSession.id);
+    cfRenderGroupWaitingPanel();
+  } catch(e) {
+    toast('Could not send invite — run SQL migration first?');
+  }
+}
+
+// ── Participant: hear about + join an invite ──
+async function cfListenForGroupInvites() {
+  if (!currentUser || _cfGroupInviteChannel) return;
+  try {
+    const supa = await cfGetSupaClient();
+    _cfGroupInviteChannel = supa.channel('group-invites')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cf_group_sessions' }, payload => {
+        const session = payload.new;
+        if (String(session.host_id) === String(currentUser.id)) return; // own invite — already handled locally
+        if (!(session.participant_ids || []).some(id => String(id) === String(currentUser.id))) return;
+        cfShowIncomingInvite(session);
+      })
+      .subscribe();
+  } catch(e) { /* best-effort — live invites just won't arrive if this fails */ }
+}
+
+function cfShowIncomingInvite(session) {
+  document.getElementById('cf-invite-banner')?.remove();
+  const el = document.createElement('div');
+  el.id = 'cf-invite-banner';
+  el.style.cssText = 'position:fixed;bottom:90px;left:16px;right:16px;max-width:420px;margin:0 auto;background:var(--surface);border:1px solid var(--cf-green);border-radius:var(--radius-lg);padding:14px 16px;z-index:9998;box-shadow:0 8px 24px rgba(0,0,0,.35)';
+  el.innerHTML = `
+    <div style="font-weight:800;margin-bottom:4px">👥 Workout Invite</div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">You're invited to <strong>${session.wod_name}</strong> (${session.format})</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" style="flex:1" onclick="cfJoinGroupSession(${session.id})">Join</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('cf-invite-banner').remove()">Dismiss</button>
+    </div>
+  `;
+  document.body.appendChild(el);
+}
+
+async function cfJoinGroupSession(sessionId) {
+  document.getElementById('cf-invite-banner')?.remove();
+  try {
+    const rows = await db('cf_group_sessions','GET',null,`?id=eq.${sessionId}&select=*`);
+    const session = rows?.[0];
+    if (!session) { toast('Invite no longer available'); return; }
+    const joined = Array.from(new Set([...(session.joined_ids||[]).map(String), String(currentUser.id)]));
+    await db('cf_group_sessions','PATCH',{joined_ids: joined},`?id=eq.${sessionId}`);
+    _cfActiveGroupSession = { ...session, joined_ids: joined };
+    cfSubscribeToGroupSession(sessionId);
+    cfApplyGroupSnapshot(session.wod_snapshot);
+    cfSetInviteButtonVisible(false);
+    toast('Joined — waiting for host to start');
+  } catch(e) { toast('Could not join — try again'); }
+}
+
+// ── Shared session channel + update handling — drives BOTH the host's own screen
+// (Realtime echoes its own writes back) and every joined participant's, off one
+// code path, rather than a host-specific vs. participant-specific split. ──
+function cfSubscribeToGroupSession(sessionId) {
+  cfGetSupaClient().then(supa => {
+    if (_cfGroupSessionChannel) { try { _cfGroupSessionChannel.unsubscribe(); } catch(e) {} }
+    _cfGroupSessionChannel = supa.channel('group-session-' + sessionId)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'cf_group_sessions', filter: `id=eq.${sessionId}` },
+        payload => cfOnGroupSessionUpdate(payload.new))
+      .subscribe();
+  }).catch(()=>{});
+}
+
+function cfOnGroupSessionUpdate(session) {
+  _cfActiveGroupSession = session;
+  if (session.status === 'active' && session.start_at) cfSyncGroupStart(session.start_at);
+  else if (session.status === 'pending') cfRenderGroupWaitingPanel();
+  else if (session.status === 'finished') cfHandleGroupSessionFinished(session);
+}
+
+function cfRenderGroupWaitingPanel() {
+  const s = _cfActiveGroupSession;
+  const statusEl = document.getElementById('wc-group-status');
+  const startBtn = document.getElementById('wc-start-btn');
+  if (!s || s.status !== 'pending') { if (statusEl) statusEl.style.display = 'none'; return; }
+  const isHost = String(s.host_id) === String(currentUser.id);
+  if (statusEl) {
+    statusEl.style.display = '';
+    statusEl.textContent = `👥 ${(s.joined_ids||[]).length}/${(s.participant_ids||[]).length} joined`;
+  }
+  if (startBtn) {
+    if (isHost) {
+      startBtn.textContent = '▶ Start for Everyone';
+      startBtn.disabled = false;
+      startBtn.style.opacity = '';
+      startBtn.onclick = cfHostStartGroupSession;
+    } else {
+      startBtn.textContent = 'Waiting for host to start…';
+      startBtn.disabled = true;
+      startBtn.style.opacity = '0.5';
+    }
+  }
+}
+
+async function cfHostStartGroupSession() {
+  const s = _cfActiveGroupSession;
+  if (!s || String(s.host_id) !== String(currentUser.id)) return;
+  const startAt = new Date(Date.now() + 5000).toISOString();
+  try {
+    await db('cf_group_sessions','PATCH',{status:'active', start_at:startAt},`?id=eq.${s.id}`);
+    // Realtime delivers the update back to this device too — cfSyncGroupStart() (via
+    // cfOnGroupSessionUpdate) drives the actual countdown/launch, so nothing else here.
+  } catch(e) { toast('Could not start — try again'); }
+}
+
+// Runs on every joined device (host included) once the session flips to 'active' —
+// reuses the exact countdown overlay/audio cfWODCardStart() uses for a solo start,
+// just aimed at a shared wall-clock instant instead of a local button tap.
+function cfSyncGroupStart(startAtIso) {
+  if (_cfTimerRunning || _cfCountdownInterval || _wlbWorkoutStarted) return; // already running locally — ignore a duplicate/late signal
+  const startBtn = document.getElementById('wc-start-btn');
+  if (startBtn) { startBtn.disabled = false; startBtn.style.opacity = ''; }
+  const statusEl = document.getElementById('wc-group-status');
+  if (statusEl) statusEl.style.display = 'none';
+  cfSetInviteButtonVisible(false);
+  cfUnlockIOSAudioSession();
+  cfUnlockSpeechSynthesis();
+  try { cfEnterFullscreen(); } catch(e) {}
+  const msUntil = new Date(startAtIso).getTime() - Date.now();
+  cfRunLeadinCountdown(Math.max(0, Math.round(msUntil / 1000)));
+}
+
+function cfLeaveGroupSession() {
+  if (_cfGroupSessionChannel) { try { _cfGroupSessionChannel.unsubscribe(); } catch(e) {} _cfGroupSessionChannel = null; }
+  _cfActiveGroupSession = null;
+  const startBtn = document.getElementById('wc-start-btn');
+  if (startBtn) { startBtn.onclick = cfWODCardStart; startBtn.textContent = '▶ Start'; startBtn.disabled = false; startBtn.style.opacity = ''; }
+  const statusEl = document.getElementById('wc-group-status');
+  if (statusEl) statusEl.style.display = 'none';
+  cfSetInviteButtonVisible(true);
+}
+
+// ── Partner-format scoring: one shared score, either partner can submit it —
+// first submit wins, the other partner's still-open score screen (if any) flips
+// to read-only via the Realtime 'finished' update instead of double-submitting. ──
+async function cfLogPartnerScore(wodName, score, rx, notes, feel) {
+  const s = _cfActiveGroupSession;
+  try {
+    const rows = await db('cf_group_sessions','GET',null,`?id=eq.${s.id}&select=*`);
+    const fresh = rows?.[0] || s;
+    if (fresh.final_score) {
+      toast(`Already logged by your partner: ${fresh.final_score.score} ${fresh.final_score.rx_scaled||''}`);
+      cfResetTimer();
+      cfLeaveGroupSession();
+      return;
+    }
+    const finalScore = { score, rx_scaled: rx, notes, feel, logged_by: currentUser.id, logged_at: new Date().toISOString() };
+    await db('cf_group_sessions','PATCH',{status:'finished', final_score: finalScore},`?id=eq.${s.id}`);
+    const participantIds = fresh.participant_ids || [currentUser.id];
+    const rowsToInsert = participantIds.map(uid => ({
+      user_id: uid,
+      wod_name: wodName,
+      score,
+      format: _cfCurrentFormat,
+      rx_scaled: rx,
+      notes,
+      feel,
+      interval_splits: null,
+      scoring_type: null,
+      session_id: s.id,
+      logged_at: new Date().toISOString()
+    }));
+    const saved = await db('cf_scores','POST',rowsToInsert);
+    const mine = saved?.find(r => String(r.user_id) === String(currentUser.id));
+    if (mine) _cfScores.unshift(mine);
+  } catch(e) {
+    toast('Could not save shared score — try again');
+    return;
+  }
+  document.getElementById('cf-score-wod').value = '';
+  document.getElementById('cf-score-value').value = '';
+  document.getElementById('cf-score-notes').value = '';
+  document.getElementById('cf-score-feel').value = '';
+  document.querySelectorAll('.cf-feel-btn').forEach(b => {
+    b.style.background = 'var(--surface2)';
+    b.style.borderColor = 'var(--border)';
+    b.style.transform = 'scale(1)';
+  });
+  cfResetTimer();
+  cfLeaveGroupSession();
+  const isPR = wlbCheckPR(wodName, score, _cfCurrentFormat);
+  if (isPR) setTimeout(() => wlbShowPRCelebration(wodName, score), 600);
+  else toast(`${wodName} — ${score} ${rx} saved for both of you ✓`);
+}
+
+// The OTHER partner's device (whichever one didn't just submit) hears this via
+// Realtime — if they're still sitting on the score-entry form for this same WOD,
+// flip it to a read-only view instead of leaving it open to a duplicate submit.
+function cfHandleGroupSessionFinished(session) {
+  _cfActiveGroupSession = session;
+  if (!session.final_score || String(session.final_score.logged_by) === String(currentUser.id)) return;
+  const wodInput = document.getElementById('cf-score-wod');
+  const scoreInput = document.getElementById('cf-score-value');
+  const logBtn = document.getElementById('cf-log-score-btn');
+  if (!wodInput || !scoreInput) return;
+  if (wodInput.value?.trim() !== session.wod_name) return; // this device has already moved on
+  const fs = session.final_score;
+  toast(`Your partner already logged this WOD: ${fs.score} ${fs.rx_scaled||''}`);
+  scoreInput.value = fs.score;
+  scoreInput.disabled = true;
+  if (logBtn) { logBtn.disabled = true; logBtn.textContent = 'Already Logged ✓'; }
+  cfLeaveGroupSession();
+}
+
+// ── TV Display — multi-athlete board (?tv=session:<id>) ──
+// Partner sessions (always 2 people) get a fixed 50/50 split; anything else with
+// multiple participants gets a scaling grid. Deliberately a lighter "scoreboard"
+// view than the solo TV board (name/timer/phase only, no full movements list) —
+// full per-movement detail for several simultaneous athletes wouldn't be legible
+// on a TV anyway, and each athlete's own phone already shows their own full detail.
+// Kept entirely separate from cfRenderRemoteTVState()/cfTVReceiveState() (the solo
+// path) rather than generalizing it, so nothing here can regress the proven solo view.
+async function cfInitTVGroupDisplay(sessionId) {
+  // cfTVShowSoundPrompt() is deliberately NOT called yet here — it appends its button
+  // into #cf-fullscreen-timer, and cfBuildGroupTVLayout() below fully replaces that
+  // element's innerHTML to build the grid, which would silently wipe the button out
+  // before anyone could tap it. Called after the layout exists instead.
+  cfShowTVMessage('Connecting…');
+
+  let session;
+  try {
+    const rows = await db('cf_group_sessions','GET',null,`?id=eq.${sessionId}&select=*`);
+    session = rows?.[0];
+    if (!session) { cfShowTVMessage('Group session not found'); return; }
+  } catch(e) { cfShowTVMessage('Could not reach Alloy'); return; }
+
+  let users = [];
+  try {
+    users = await db('users','GET',null,`?id=in.(${(session.participant_ids||[]).join(',')})&select=id,username`) || [];
+  } catch(e) {}
+  const nameById = {};
+  users.forEach(u => nameById[u.id] = u.username);
+
+  try { await cfLoadSupabaseClient(); } catch(e) { cfShowTVMessage('Could not load live connection'); return; }
+  const supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+
+  cfBuildGroupTVLayout(session, nameById);
+  cfTVShowSoundPrompt();
+
+  const lastUpdateByUser = {};
+  const renderFromRow = (row) => {
+    if (!row) return;
+    lastUpdateByUser[row.user_id] = row.updated_at ? new Date(row.updated_at).getTime() : Date.now();
+    cfRenderGroupAthletePanel(row.user_id, row.state);
+  };
+
+  try {
+    const rows = await db('cf_live_session','GET',null,`?session_id=eq.${sessionId}&select=*`);
+    (rows||[]).forEach(renderFromRow);
+  } catch(e) {}
+
+  supa.channel('tv-group-' + sessionId)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'cf_live_session', filter: `session_id=eq.${sessionId}` },
+      payload => renderFromRow(payload.new))
+    .subscribe();
+
+  setInterval(() => {
+    document.querySelectorAll('.tv-group-panel').forEach(panel => {
+      const last = lastUpdateByUser[panel.dataset.userId];
+      const staleEl = panel.querySelector('.tv-group-stale');
+      if (staleEl) staleEl.style.display = (last && Date.now() - last > 10000) ? '' : 'none';
+    });
+  }, 2000);
+}
+
+function cfBuildGroupTVLayout(session, nameById) {
+  const fs = document.getElementById('cf-fullscreen-timer');
+  if (!fs) return;
+  fs.classList.add('active');
+  const ids = session.participant_ids || [];
+  const cols = session.format === 'Partner' ? 2 : (ids.length <= 2 ? ids.length : ids.length <= 4 ? 2 : 3);
+  let html = `<div id="tv-group-grid" style="display:grid;grid-template-columns:repeat(${cols||1},1fr);gap:2px;height:100%">`;
+  ids.forEach(uid => {
+    html += `<div class="tv-group-panel" data-user-id="${uid}" style="position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0d0d0d;border:1px solid rgba(57,211,83,.15);padding:16px;overflow:hidden">
+      <div class="tv-group-stale" style="display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);background:rgba(255,184,0,.15);border:1px solid #FFB800;color:#FFB800;font-weight:800;font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:4px 10px;border-radius:999px">⚠ Not connected</div>
+      <div class="tv-group-name" style="font-size:calc(18px * var(--fs-scale,1));font-weight:900;text-transform:uppercase;letter-spacing:1px;color:#fff;margin-bottom:6px">${nameById[uid] || 'Athlete'}</div>
+      <div class="tv-group-time" style="font-size:calc(52px * var(--fs-scale,1));font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1">0:00</div>
+      <div class="tv-group-phase" style="font-size:calc(11px * var(--fs-scale,1));font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--cf-green);margin-top:6px;min-height:16px"></div>
+      <div class="tv-group-rounds" style="font-size:calc(13px * var(--fs-scale,1));font-weight:700;color:var(--text-muted);margin-top:2px;min-height:18px"></div>
+    </div>`;
+  });
+  html += '</div>';
+  fs.innerHTML = html;
+}
+
+function cfRenderGroupAthletePanel(userId, state) {
+  const panel = document.querySelector(`.tv-group-panel[data-user-id="${userId}"]`);
+  if (!panel) return;
+  const timeEl = panel.querySelector('.tv-group-time');
+  const phaseEl = panel.querySelector('.tv-group-phase');
+  const roundsEl = panel.querySelector('.tv-group-rounds');
+  if (!state) {
+    if (timeEl) { timeEl.textContent = '0:00'; timeEl.style.color = 'var(--cf-green)'; }
+    if (phaseEl) phaseEl.textContent = 'Not started';
+    if (roundsEl) roundsEl.textContent = '';
+    return;
+  }
+  if (state.finished) {
+    if (timeEl) { timeEl.textContent = state.finalScore || 'DONE'; timeEl.style.color = '#fff'; }
+    if (phaseEl) phaseEl.textContent = 'COMPLETE';
+    if (roundsEl) roundsEl.textContent = '';
+    return;
+  }
+  if (state.leadin?.active) {
+    if (timeEl) { timeEl.textContent = state.leadin.text || ''; timeEl.style.color = 'var(--cf-green)'; }
+    if (phaseEl) phaseEl.textContent = 'STARTING IN';
+    if (roundsEl) roundsEl.textContent = '';
+    return;
+  }
+  const secs = Math.abs(state.timerSeconds || 0);
+  const m = Math.floor(secs/60), sec = secs%60;
+  if (timeEl) { timeEl.textContent = `${m}:${String(sec).padStart(2,'0')}`; timeEl.style.color = 'var(--cf-green)'; }
+  if (phaseEl) {
+    const setup = state.setup || {};
+    if (state.format === 'Tabata') phaseEl.textContent = setup.tabataPhase === 'work' ? `WORK · R${(setup.tabataRoundsDone||0)+1}/${setup.tabataRounds}` : 'REST';
+    else if (state.format === 'EMOM') phaseEl.textContent = `Round ${setup.emomCurrentRound||1}`;
+    else if (state.format === 'Intervals') phaseEl.textContent = state.intervalPhase === 'rest' ? 'REST' : `Interval ${(state.currentInterval||0)+1}`;
+    else phaseEl.textContent = '';
+  }
+  if (roundsEl) {
+    roundsEl.textContent = (state.format === 'AMRAP' && (state.rounds > 0 || state.reps > 0)) ? `${state.rounds} rds + ${state.reps} reps` : '';
+  }
 }
 
 // ═══════════════════════════════════════════════════
@@ -16043,12 +16531,19 @@ function cfWODCardStart() {
   if (_cfTimerRunning) { cfToggleTimer(); return; }
   if (_cfCountdownInterval) { cfCancelCountdown(); return; }
   if (_wlbWorkoutStarted) { cfToggleTimer(); return; }
-  if (_cfLeadinSeconds > 0) {
+  cfRunLeadinCountdown(_cfLeadinSeconds);
+}
+
+// Extracted from cfWODCardStart() so a group/Partner WOD's synced start signal
+// (see ALLOY — GROUP / PARTNER WOD SESSIONS) can drive the exact same countdown
+// overlay/audio, just triggered by a Realtime start_at offset instead of a button tap.
+function cfRunLeadinCountdown(startCount) {
+  if (startCount > 0) {
     var ov=document.getElementById('cf-countdown-overlay');
     var wov=document.getElementById('wc-countdown-overlay');
     if (ov) ov.style.display='flex';
     if (wov) wov.style.display='flex';
-    var count=_cfLeadinSeconds;
+    var count=startCount;
     var setNum=function(n,color){
       var el=document.getElementById('cf-countdown-number');
       var wel=document.getElementById('wc-countdown-number');
@@ -16610,6 +17105,13 @@ async function cfLogScore() {
   const intervalSplits = (_cfCurrentFormat === 'Intervals' && _wlbIntervalSplits.length > 0)
     ? _wlbIntervalSplits.slice()
     : null;
+  // Partner-format group sessions share one score across both people, entered by
+  // whichever partner gets there first — handled entirely separately (see
+  // cfLogPartnerScore in ALLOY — GROUP / PARTNER WOD SESSIONS) since it fans out to
+  // multiple cf_scores rows instead of saving just this device's own.
+  if (_cfActiveGroupSession && _cfCurrentFormat === 'Partner') {
+    return cfLogPartnerScore(wodName, score, rx, notes, feel);
+  }
   const payload = {
     user_id: currentUser.id,
     wod_name: wodName,
@@ -16620,6 +17122,7 @@ async function cfLogScore() {
     feel,
     interval_splits: intervalSplits,
     scoring_type: ['Tabata','EMOM'].includes(_cfCurrentFormat) ? _cfScoringType : null,
+    session_id: _cfActiveGroupSession?.id || null,
     logged_at: new Date().toISOString()
   };
   try {
@@ -16646,6 +17149,7 @@ async function cfLogScore() {
     b.style.transform = 'scale(1)';
   });
   cfResetTimer();
+  if (_cfActiveGroupSession) cfLeaveGroupSession(); // non-Partner group WOD — this device's own score is saved, its part is done
   // Check for PR
   const isPR = wlbCheckPR(wodName, score, _cfCurrentFormat);
   if (isPR) {
@@ -17217,6 +17721,8 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
     <button id="wc-next-interval-btn" onclick="cfEndIntervalWork()" style="display:none;grid-column:1/-1;background:#ff9f4a;border:none;border-radius:var(--radius);color:#0d0d0d;font-weight:900;font-size:15px;padding:14px;cursor:pointer">✓ Done — Start Rest</button>
     <!-- Skip Rest button — shown during Intervals rest phase -->
     <button id="wc-skip-rest-btn" onclick="cfSkipRest()" style="display:none;grid-column:1/-1;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:var(--radius);color:#fff;font-weight:900;font-size:15px;padding:14px;cursor:pointer">⏭ Skip Rest</button>
+    <button id="wc-invite-btn" class="btn btn-ghost" onclick="cfOpenInviteModal()" style="grid-column:1/-1;font-size:13px">👥 Invite to Workout</button>
+    <div id="wc-group-status" style="display:none;grid-column:1/-1;text-align:center;font-size:12px;font-weight:700;color:var(--text-muted);padding:2px 0 6px"></div>
     <button id="wc-start-btn" class="btn btn-primary" onclick="cfWODCardStart()" style="grid-column:1/-1;background:var(--cf-green);color:#0d0d0d;font-weight:900;font-size:16px;padding:14px">▶ Start</button>
     <!-- Redo current interval/rest — shown during an active Intervals workout, doesn't touch other splits or position -->
     <button id="wc-redo-interval-btn" onclick="cfRedoIntervalStage()" style="display:none;grid-column:1/-1;background:none;border:1px solid var(--border);border-radius:var(--radius);color:var(--text-muted);font-weight:700;font-size:13px;padding:10px;cursor:pointer">↺ Redo Interval</button>
