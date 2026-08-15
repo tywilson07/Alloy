@@ -1487,6 +1487,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
               <button class="wod-format-chip active" id="scoretype-reps" onclick="cfSetScoringType('reps')" style="padding:3px 10px;font-size:10px">Reps</button>
               <button class="wod-format-chip" id="scoretype-calories" onclick="cfSetScoringType('calories')" style="padding:3px 10px;font-size:10px">Calories</button>
               <button class="wod-format-chip" id="scoretype-distance" onclick="cfSetScoringType('distance')" style="padding:3px 10px;font-size:10px">Distance</button>
+              <button class="wod-format-chip" id="scoretype-weight" onclick="cfSetScoringType('weight')" style="padding:3px 10px;font-size:10px">Weight</button>
             </div>
           </div>
 
@@ -16669,6 +16670,27 @@ function cfAdjustRounds(delta) {
   el.textContent = next;
   _cfRoundCount = next;
   _cfRounds = next;
+  cfUpdateEmomWeightTotal();
+}
+
+// EMOM "Weight" scoring — for a single fixed-weight movement done once (or a fixed
+// rep count) each round, e.g. one clean every minute: total weight = that movement's
+// weight × rounds completed. Uses the manually-tapped round counter (_cfRounds), not
+// the clock-driven _cfSetup.emomCurrentRound — same distinction AMRAP already relies
+// on for its own rounds+reps score, since the clock keeps advancing even on a round
+// you fail/skip. Mirrors cfUpdateHeavyScoreTotal()'s live-running-total pattern; only
+// handles a single station/movement (today's ask) — a multi-station EMOM with
+// different weights per station still needs the total typed in manually.
+function cfUpdateEmomWeightTotal() {
+  if (_cfCurrentFormat !== 'EMOM' || _cfScoringType !== 'weight') return;
+  const mv = _wlbEmomStations?.[0]?.movements?.[0];
+  const wt = parseFloat(mv?.weight);
+  const sv = document.getElementById('cf-score-value');
+  if (!wt || !sv) return;
+  const reps = parseFloat(mv?.reps) || 1;
+  const total = Math.round(wt * reps * _cfRounds);
+  const wtUnit = wlbGetWeightUnit();
+  sv.value = `${total.toLocaleString()} ${wtUnit} total (${_cfRounds} round${_cfRounds===1?'':'s'} @ ${wt} ${wtUnit}${reps>1?' x'+reps:''})`;
 }
 
 function cfAdjustReps(delta) {
@@ -16981,8 +17003,8 @@ function cfUpdateScoreHint() {
   const fmt = _cfCurrentFormat;
   const hint = document.getElementById('cf-score-format-hint');
   const sv = document.getElementById('cf-score-value');
-  const scoreTypeHint = { reps: null, calories: 'total calories', distance: 'total distance (m)' };
-  const scoreTypePlaceholder = { reps: null, calories: 'e.g. 42', distance: 'e.g. 850' };
+  const scoreTypeHint = { reps: null, calories: 'total calories', distance: 'total distance (m)', weight: 'total weight lifted' };
+  const scoreTypePlaceholder = { reps: null, calories: 'e.g. 42', distance: 'e.g. 850', weight: 'e.g. 2220' };
 
   if (['For Time','Chipper','Partner'].includes(fmt)) {
     if (hint) hint.textContent = 'MM:SS';
