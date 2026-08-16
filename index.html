@@ -1918,6 +1918,15 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
 
 <script>
 // ═══════════════════════════════════════════════════
+// APP VERSION — bumped on every commit (date.N for same-day releases). Shown in
+// Settings and logged on load so a stale PWA cache (this app's phone-side cache has
+// lagged behind a deployed commit before) can be confirmed/ruled out in one glance
+// instead of diffing the raw deployed file against the repo.
+// ═══════════════════════════════════════════════════
+const APP_VERSION = '2026-08-15.1';
+console.log('Alloy', APP_VERSION);
+
+// ═══════════════════════════════════════════════════
 // SUPABASE CONFIG
 // ═══════════════════════════════════════════════════
 const SUPA_URL = 'https://mjlmktglhpwrfxconicy.supabase.co';
@@ -10184,7 +10193,7 @@ function renderSettings() {
       </div>
 
       <div style="text-align:center;padding:20px 0;font-size:11px;color:var(--text-muted)">
-        Alloy — Lift &amp; WOD<br>Built by Tyler Wilson
+        Alloy — Lift &amp; WOD<br>Built by Tyler Wilson<br><span style="font-family:var(--mono);opacity:.7">v${APP_VERSION}</span>
       </div>
     </div>`;
 }
