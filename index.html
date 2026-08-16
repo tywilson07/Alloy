@@ -1923,7 +1923,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
 // lagged behind a deployed commit before) can be confirmed/ruled out in one glance
 // instead of diffing the raw deployed file against the repo.
 // ═══════════════════════════════════════════════════
-const APP_VERSION = '2026-08-16.2';
+const APP_VERSION = '2026-08-16.3';
 console.log('Alloy', APP_VERSION);
 
 // ═══════════════════════════════════════════════════
@@ -9840,7 +9840,11 @@ async function updateMonthlyGoal(userId, year, month) {
 
     // Upsert monthly record
     const existing = await db('monthly_goal_records','GET',null,
-      `?user_id=eq.${userId}&year_month=eq.${yearMonth}&select=id`);
+      `?user_id=eq.${userId}&year_month=eq.${yearMonth}&select=id,goal_hit`);
+    // Was this goal NOT already hit before this update? Used below to only celebrate
+    // the moment it's actually crossed, not every single time the goal bar re-renders
+    // for the rest of the month (every calendar load calls this).
+    const justHitGoal = hit && !existing?.[0]?.goal_hit;
     if (existing?.length) {
       await db('monthly_goal_records','PATCH',
         {workouts_logged:count,goal,goal_hit:hit},
@@ -9866,7 +9870,7 @@ async function updateMonthlyGoal(userId, year, month) {
     // Also count current month if hit
     if (hit) streak++;
 
-    return {count, goal, pct, hit, streak};
+    return {count, goal, pct, hit, streak, justHitGoal};
   } catch(e) {
     console.error('Monthly goal error:', e);
     return null;
@@ -9877,12 +9881,20 @@ async function renderMonthlyGoal(userId, year, month) {
   const data = await updateMonthlyGoal(userId, year, month);
   if (!data) return;
 
-  const {count, goal, pct, hit, streak} = data;
+  const {count, goal, pct, hit, streak, justHitGoal} = data;
   const monthName = new Date(year, month, 1).toLocaleString('en-US',{month:'long'});
   // Show athlete name if viewing an athlete's goal
   const isAthlete = _activeAthleteId && userId !== currentUser?.id;
   const ath = isAthlete ? _athleteList.find(a=>a.id===userId) : null;
   const goalLabel = ath ? `${ath.username}'s ${monthName} Goal` : `${monthName} Goal`;
+
+  // Only celebrate on the viewer's OWN goal, for the real current month (not a coach
+  // glancing at an athlete's dashboard, and not browsing back through past months
+  // where the goal happened to be hit already).
+  const now = new Date();
+  if (justHitGoal && !isAthlete && year === now.getFullYear() && month === now.getMonth()) {
+    cfShowGoalCelebration(count, goal, streak);
+  }
 
   // Update calendar bar
   const bar = document.getElementById('monthly-goal-bar');
@@ -11861,6 +11873,22 @@ function wlbShowPRCelebration(wodName, score) {
     + '<div style="font-size:22px;font-weight:900;font-family:var(--mono);color:#fff">' + wodName + '</div>'
     + '<div style="font-size:36px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">' + score + '</div>'
     + '<button class="btn btn-primary" onclick="this.parentElement.remove()" style="margin-top:12px;background:var(--cf-green);color:#0d0d0d;font-weight:900;padding:12px 32px;font-size:16px">Lets Go! 💪</button>';
+  document.body.appendChild(overlay);
+  setTimeout(() => { if (overlay.parentElement) overlay.remove(); }, 8000);
+}
+
+// Fires the moment the monthly goal is actually crossed (see justHitGoal in
+// updateMonthlyGoal()/renderMonthlyGoal()) — same visual language as
+// wlbShowPRCelebration(), plus the existing confetti burst.
+function cfShowGoalCelebration(count, goal, streak) {
+  launchConfetti();
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px';
+  overlay.innerHTML = '<div style="font-size:64px">🎯</div>'
+    + '<div style="font-size:28px;font-weight:900;text-transform:uppercase;letter-spacing:1px;color:var(--lime)">Monthly Goal Hit!</div>'
+    + '<div style="font-size:36px;font-weight:900;font-family:var(--mono);color:#fff">' + count + ' / ' + goal + '</div>'
+    + (streak >= 2 ? '<div style="font-size:16px;font-weight:700;color:var(--orange)">🔥 ' + streak + ' months in a row</div>' : '')
+    + '<button class="btn btn-primary" onclick="this.parentElement.remove()" style="margin-top:12px;background:var(--lime);color:#0d0d0d;font-weight:900;padding:12px 32px;font-size:16px">Lets Go! 💪</button>';
   document.body.appendChild(overlay);
   setTimeout(() => { if (overlay.parentElement) overlay.remove(); }, 8000);
 }
