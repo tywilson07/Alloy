@@ -1923,7 +1923,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
 // lagged behind a deployed commit before) can be confirmed/ruled out in one glance
 // instead of diffing the raw deployed file against the repo.
 // ═══════════════════════════════════════════════════
-const APP_VERSION = '2026-08-15.4';
+const APP_VERSION = '2026-08-15.5';
 console.log('Alloy', APP_VERSION);
 
 // ═══════════════════════════════════════════════════
@@ -12630,12 +12630,16 @@ function cfTVDetectAudioCues(prev, curr) {
   // own cfTimerTick() already speaks this locally, but that's phone-only audio, so the
   // TV needs its own independent detection, same reasoning as the rest-countdown above.
   if (curr.format === 'EMOM' && curr.timerRunning) {
-    const prevSecsLeft = (prev.setup?.emomInterval||1)*60 - (prev.setup?.emomSecondsInRound||0);
-    const currSecsLeft = (curr.setup?.emomInterval||1)*60 - (curr.setup?.emomSecondsInRound||0);
-    for (const t of [3, 2, 1]) {
+    const intervalSecs = (curr.setup?.emomInterval||1)*60;
+    const prevSecsLeft = intervalSecs - (prev.setup?.emomSecondsInRound||0);
+    const currSecsLeft = intervalSecs - (curr.setup?.emomSecondsInRound||0);
+    // 15s only worth announcing on intervals long enough for it to be advance
+    // warning rather than firing right after Go — matches the phone's own guard.
+    const thresholds = intervalSecs >= 60 ? [15, 3, 2, 1] : [3, 2, 1];
+    for (const t of thresholds) {
       if (prevSecsLeft > t && currSecsLeft <= t && _tvLastEmomAnnounced !== t) {
         cfBeepWarning();
-        cfSpeak(String(t));
+        cfSpeak(t === 15 ? '15 seconds' : String(t));
         _tvLastEmomAnnounced = t;
         break;
       }
@@ -16855,6 +16859,11 @@ function cfTimerTick() {
 
     // 3-2-1 countdown beeps before interval
     if (secsLeft <= 3 && secsLeft > 0) cfBeepWarning();
+    // "15 seconds" callout — only worth it on intervals long enough for 15s to mean
+    // real advance warning rather than firing almost immediately after Go (the EMOM
+    // interval adjuster is already 1-5 min, so this is always true today, but the
+    // >=60 guard keeps it correct if that range ever changes).
+    if (intervalSecs >= 60 && secsLeft === 15) { cfBeepWarning(); cfSpeak('15 seconds'); }
 
     if (_cfSetup.emomSecondsInRound >= intervalSecs) {
       _cfSetup.emomCurrentRound++;
