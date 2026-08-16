@@ -1923,7 +1923,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
 // lagged behind a deployed commit before) can be confirmed/ruled out in one glance
 // instead of diffing the raw deployed file against the repo.
 // ═══════════════════════════════════════════════════
-const APP_VERSION = '2026-08-15.2';
+const APP_VERSION = '2026-08-15.3';
 console.log('Alloy', APP_VERSION);
 
 // ═══════════════════════════════════════════════════
@@ -12421,7 +12421,13 @@ function cfTVShowSoundPrompt() {
   btn.textContent = '🔊 Click to Enable Sound';
   btn.style.cssText = 'position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:var(--cf-green,#39d353);color:#0d0d0d;font-weight:900;font-size:18px;border:none;border-radius:999px;padding:14px 28px;cursor:pointer;z-index:20';
   btn.onclick = () => {
+    // Web Audio (beeps) and SpeechSynthesis (spoken cues) gate playback behind
+    // separate user-gesture unlocks in some browsers — unlocking one does NOT
+    // also unlock the other. This button used to only unlock cfGetAudioCtx(),
+    // which is why the TV's beeps worked but cfSpeak()'s "3-2-1-GO" never did:
+    // speechSynthesis.speak() was silently getting ignored, never actually unlocked.
     try { cfGetAudioCtx(); cfBeep(880, 0.1, 0.3); } catch(e) {}
+    try { cfUnlockSpeechSynthesis(); } catch(e) {}
     btn.remove();
   };
   document.getElementById('cf-fullscreen-timer')?.appendChild(btn);
