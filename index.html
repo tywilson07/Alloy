@@ -1923,7 +1923,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
 // lagged behind a deployed commit before) can be confirmed/ruled out in one glance
 // instead of diffing the raw deployed file against the repo.
 // ═══════════════════════════════════════════════════
-const APP_VERSION = '2026-08-15.3';
+const APP_VERSION = '2026-08-15.4';
 console.log('Alloy', APP_VERSION);
 
 // ═══════════════════════════════════════════════════
@@ -12498,6 +12498,7 @@ let _tvSyncedAtMs = 0;
 let _tvPrevState = null;
 let _tvLastRestAnnounced = null; // last rest-countdown second (15/3/2/1) already spoken, so a value isn't repeated across syncs that happen to land on it more than once
 let _tvLastLeadinNum = null; // lowest lead-in count (3/2/1/0=GO) already spoken for the current countdown, same crossing pattern as the rest countdown
+let _tvLastEmomAnnounced = null; // last EMOM pre-round second (3/2/1) already spoken, same crossing pattern as the rest countdown — reset each round so the next one announces fresh
 
 function cfTVReceiveState(state) {
   _tvSyncedState = state;
@@ -12625,9 +12626,26 @@ function cfTVDetectAudioCues(prev, curr) {
       }
     }
   }
+  // EMOM: spoken 3-2-1-Go each round, same cadence as the workout lead-in — the phone's
+  // own cfTimerTick() already speaks this locally, but that's phone-only audio, so the
+  // TV needs its own independent detection, same reasoning as the rest-countdown above.
+  if (curr.format === 'EMOM' && curr.timerRunning) {
+    const prevSecsLeft = (prev.setup?.emomInterval||1)*60 - (prev.setup?.emomSecondsInRound||0);
+    const currSecsLeft = (curr.setup?.emomInterval||1)*60 - (curr.setup?.emomSecondsInRound||0);
+    for (const t of [3, 2, 1]) {
+      if (prevSecsLeft > t && currSecsLeft <= t && _tvLastEmomAnnounced !== t) {
+        cfBeepWarning();
+        cfSpeak(String(t));
+        _tvLastEmomAnnounced = t;
+        break;
+      }
+    }
+  }
   // EMOM round changes
   if (curr.format === 'EMOM' && prev.setup?.emomCurrentRound !== curr.setup?.emomCurrentRound) {
     cfBeepInterval();
+    cfSpeak('Go!');
+    _tvLastEmomAnnounced = null; // fresh round — clear so 3/2/1 can announce again for it
   }
   // Workout just finished
   if (prev.timerRunning && !curr.timerRunning && prev.timerSeconds !== curr.timerSeconds) {
@@ -16842,6 +16860,7 @@ function cfTimerTick() {
       _cfSetup.emomCurrentRound++;
       _cfSetup.emomSecondsInRound = 0;
       cfBeepInterval();
+      cfSpeak('Go!'); // matches the lead-in's spoken 3-2-1-GO cadence, now every round
       const roundNumEl = document.getElementById('cf-emom-round-num');
       if (roundNumEl) roundNumEl.textContent = _cfSetup.emomCurrentRound;
       if (_cfSetup.emomCurrentRound > totalRounds) { cfTimerDone(); return; }
