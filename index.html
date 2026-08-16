@@ -1923,7 +1923,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
 // lagged behind a deployed commit before) can be confirmed/ruled out in one glance
 // instead of diffing the raw deployed file against the repo.
 // ═══════════════════════════════════════════════════
-const APP_VERSION = '2026-08-16.1';
+const APP_VERSION = '2026-08-16.2';
 console.log('Alloy', APP_VERSION);
 
 // ═══════════════════════════════════════════════════
@@ -9824,15 +9824,17 @@ async function updateMonthlyGoal(userId, year, month) {
     const userRows = await db('users','GET',null,`?id=eq.${userId}&select=monthly_goal`);
     const goal = userRows?.[0]?.monthly_goal || 12;
 
-    // Count workouts this month — Lift-side (`workouts`, a plain `date` column) and
-    // WOD-side (`cf_scores`, a timestamptz `logged_at` column) are two entirely
-    // separate tables. This used to only ever query `workouts`, so any CrossFit-side
-    // activity silently never counted toward the goal at all.
-    const [liftWorkouts, wodScores] = await Promise.all([
+    // Count workouts this month across all three logging tables — Lift-side
+    // (`workouts`), WOD-side (`cf_scores`, timestamptz `logged_at`), and the general
+    // Activity Log (`activity_log`, plain `date` column, same shape as `workouts`) —
+    // a catch-all for classes/workouts not tracked in Alloy's own builders (e.g.
+    // boxing PT), which still count as real training and earn credit toward the goal.
+    const [liftWorkouts, wodScores, otherActivity] = await Promise.all([
       db('workouts','GET',null,`?user_id=eq.${userId}&date=gte.${monthStart}&date=lte.${monthEndStr}&select=id`).catch(()=>[]),
-      db('cf_scores','GET',null,`?user_id=eq.${userId}&logged_at=gte.${monthStart}&logged_at=lt.${nextMonthStart}&select=id`).catch(()=>[])
+      db('cf_scores','GET',null,`?user_id=eq.${userId}&logged_at=gte.${monthStart}&logged_at=lt.${nextMonthStart}&select=id`).catch(()=>[]),
+      db('activity_log','GET',null,`?user_id=eq.${userId}&date=gte.${monthStart}&date=lte.${monthEndStr}&select=id`).catch(()=>[])
     ]);
-    const count = (liftWorkouts||[]).length + (wodScores||[]).length;
+    const count = (liftWorkouts||[]).length + (wodScores||[]).length + (otherActivity||[]).length;
     const pct = Math.min(100, Math.round((count/goal)*100));
     const hit = count >= goal;
 
