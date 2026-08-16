@@ -1923,7 +1923,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
 // lagged behind a deployed commit before) can be confirmed/ruled out in one glance
 // instead of diffing the raw deployed file against the repo.
 // ═══════════════════════════════════════════════════
-const APP_VERSION = '2026-08-16.4';
+const APP_VERSION = '2026-08-16.5';
 console.log('Alloy', APP_VERSION);
 
 // ═══════════════════════════════════════════════════
@@ -3409,10 +3409,14 @@ function getProgressionSuggestion(name, setIdx, targetReps) {
       : prevR >= 10;
 
   let suggestedW, suggestedR;
+  // Squat/deadlift (and their variants — Front Squat, Romanian Deadlift, Sumo
+  // Deadlift, etc.) tolerate faster load increases than smaller upper-body lifts,
+  // so they get a bigger jump when it's time to progress.
+  const weightIncrement = /squat|deadlift/i.test(name) ? 10 : 5;
 
   if (hitTop) {
     // Ready to increase weight
-    suggestedW = prevW > 0 ? prevW + 5 : prevW;
+    suggestedW = prevW > 0 ? prevW + weightIncrement : prevW;
     suggestedR = targetLower > 0 ? targetLower : prevR; // reset to bottom of range
   } else if (targetUpper > 0 && targetLower > 0 && prevR >= targetLower) {
     // Within range — nudge toward top (suggest 2 more reps, capped at targetUpper)
