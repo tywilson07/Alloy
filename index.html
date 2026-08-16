@@ -1923,7 +1923,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
 // lagged behind a deployed commit before) can be confirmed/ruled out in one glance
 // instead of diffing the raw deployed file against the repo.
 // ═══════════════════════════════════════════════════
-const APP_VERSION = '2026-08-15.7';
+const APP_VERSION = '2026-08-16.1';
 console.log('Alloy', APP_VERSION);
 
 // ═══════════════════════════════════════════════════
@@ -9814,15 +9814,25 @@ async function updateMonthlyGoal(userId, year, month) {
     const monthStart = `${year}-${String(month+1).padStart(2,'0')}-01`;
     const monthEnd = new Date(year, month+1, 0);
     const monthEndStr = `${year}-${String(month+1).padStart(2,'0')}-${String(monthEnd.getDate()).padStart(2,'0')}`;
+    // First-of-next-month, for a half-open range against cf_scores' timestamptz
+    // logged_at — a plain date string compared with `lte` against a timestamp would
+    // silently exclude anything logged after midnight on the last day of the month.
+    const nextMonthDate = new Date(year, month+1, 1);
+    const nextMonthStart = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth()+1).padStart(2,'0')}-01`;
 
     // Get user's goal
     const userRows = await db('users','GET',null,`?id=eq.${userId}&select=monthly_goal`);
     const goal = userRows?.[0]?.monthly_goal || 12;
 
-    // Count workouts this month
-    const workouts = await db('workouts','GET',null,
-      `?user_id=eq.${userId}&date=gte.${monthStart}&date=lte.${monthEndStr}&select=id`);
-    const count = (workouts||[]).length;
+    // Count workouts this month — Lift-side (`workouts`, a plain `date` column) and
+    // WOD-side (`cf_scores`, a timestamptz `logged_at` column) are two entirely
+    // separate tables. This used to only ever query `workouts`, so any CrossFit-side
+    // activity silently never counted toward the goal at all.
+    const [liftWorkouts, wodScores] = await Promise.all([
+      db('workouts','GET',null,`?user_id=eq.${userId}&date=gte.${monthStart}&date=lte.${monthEndStr}&select=id`).catch(()=>[]),
+      db('cf_scores','GET',null,`?user_id=eq.${userId}&logged_at=gte.${monthStart}&logged_at=lt.${nextMonthStart}&select=id`).catch(()=>[])
+    ]);
+    const count = (liftWorkouts||[]).length + (wodScores||[]).length;
     const pct = Math.min(100, Math.round((count/goal)*100));
     const hit = count >= goal;
 
