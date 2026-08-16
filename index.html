@@ -1923,7 +1923,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
 // lagged behind a deployed commit before) can be confirmed/ruled out in one glance
 // instead of diffing the raw deployed file against the repo.
 // ═══════════════════════════════════════════════════
-const APP_VERSION = '2026-08-15.6';
+const APP_VERSION = '2026-08-15.7';
 console.log('Alloy', APP_VERSION);
 
 // ═══════════════════════════════════════════════════
@@ -13104,10 +13104,39 @@ function cfSubscribeToGroupSession(sessionId) {
 }
 
 function cfOnGroupSessionUpdate(session) {
+  const prevStoppedElapsed = _cfActiveGroupSession?.stopped_elapsed;
   _cfActiveGroupSession = session;
   if (session.status === 'active' && session.start_at) cfSyncGroupStart(session.start_at);
   else if (session.status === 'pending') cfRenderGroupWaitingPanel();
   else if (session.status === 'finished') cfHandleGroupSessionFinished(session);
+  // Partner format: one shared clock, not two independently-running ones that happen
+  // to start together — whoever stops it first broadcasts the exact elapsed seconds,
+  // and this makes the other device snap to that same number and stop too, rather than
+  // each partner's timer ticking on its own between the synced start and whenever THEY
+  // happen to tap Pause (which could differ by a second or two from their partner's).
+  if (session.format === 'Partner' && session.stopped_elapsed != null && session.stopped_elapsed !== prevStoppedElapsed) {
+    cfReceivePartnerStop(session.stopped_elapsed);
+  }
+}
+
+// Set right before calling cfToggleTimer() from cfReceivePartnerStop(), so applying a
+// partner's stop signal doesn't itself trigger ANOTHER broadcast back at them — without
+// this guard the two devices would ping-pong the same stop event back and forth forever.
+let _cfSuppressPartnerBroadcast = false;
+
+async function cfBroadcastPartnerStop() {
+  const s = _cfActiveGroupSession;
+  if (!s) return;
+  try { await db('cf_group_sessions','PATCH',{stopped_elapsed: _cfTimerSeconds},`?id=eq.${s.id}`); } catch(e) {}
+}
+
+function cfReceivePartnerStop(elapsedSeconds) {
+  if (!_cfTimerRunning) return; // already stopped locally — this device either triggered it or stopped independently first
+  _cfTimerSeconds = elapsedSeconds; // snap to the exact same value as whoever stopped it, not just "stop around now"
+  _cfSuppressPartnerBroadcast = true;
+  cfToggleTimer(); // runs the normal pause path (clears interval, cfAutoFillScore(), etc.) without rebroadcasting
+  const m = Math.floor(elapsedSeconds/60), s2 = elapsedSeconds%60;
+  toast(`Your partner stopped the clock at ${m}:${String(s2).padStart(2,'0')}`);
 }
 
 function cfRenderGroupWaitingPanel() {
@@ -16858,6 +16887,16 @@ function cfToggleTimer() {
     cfReleaseWakeLock(); // allow screen to sleep when paused
     clearInterval(_cfTimerInterval);
     cfAutoFillScore();
+    // Partner group WOD: this pause tap IS "I'm done" for an open-ended format (no
+    // auto-finish the way a cap/AMRAP/EMOM has) — broadcast the exact elapsed seconds
+    // so the other partner's device stops at the identical number instead of ticking
+    // on independently until they separately tap Pause. Skipped when this pause is
+    // itself the result of applying an incoming stop (see cfReceivePartnerStop()) —
+    // otherwise the two devices would just echo the same stop back and forth forever.
+    if (_cfActiveGroupSession && _cfCurrentFormat === 'Partner' && _cfActiveGroupSession.status === 'active' && !_cfSuppressPartnerBroadcast) {
+      cfBroadcastPartnerStop();
+    }
+    _cfSuppressPartnerBroadcast = false;
   }
 }
 
