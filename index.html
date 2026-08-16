@@ -1923,7 +1923,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
 // lagged behind a deployed commit before) can be confirmed/ruled out in one glance
 // instead of diffing the raw deployed file against the repo.
 // ═══════════════════════════════════════════════════
-const APP_VERSION = '2026-08-15.5';
+const APP_VERSION = '2026-08-15.6';
 console.log('Alloy', APP_VERSION);
 
 // ═══════════════════════════════════════════════════
@@ -15735,6 +15735,13 @@ function cfRenderDashboard() {
 // ── CF State ──
 let _cfMode = false;
 let _cfTimerRunning = false;
+// True only for the very first cfToggleTimer() call after the lead-in finishes — set
+// by cfRunLeadinCountdown(), consumed once by cfToggleTimer(). cfToggleTimer() is also
+// how Pause/Resume works (same function, _cfTimerRunning just flips back to true), so
+// without this flag every resume was re-running the per-format "fresh start" init below
+// and silently resetting AMRAP's clock / EMOM's round counter / Tabata's phase back to
+// the very beginning instead of picking back up where it was paused.
+let _cfFreshStart = false;
 let _cfTimerSeconds = 0;
 let _cfTimerInterval = null;
 let _cfRounds = 0;
@@ -16647,11 +16654,13 @@ function cfRunLeadinCountdown(startCount) {
         var wl2=document.getElementById('wc-countdown-display');if(wl2)wl2.style.display='none';
         var wt2=document.getElementById('wc-timer');if(wt2)wt2.style.color='var(--cf-green)';
         _wlbWorkoutStarted=true;
+        _cfFreshStart=true;
         cfToggleTimer();
       }
     },1000);
   } else {
     _wlbWorkoutStarted=true;
+    _cfFreshStart=true;
     cfToggleTimer();
   }
 }
@@ -16803,36 +16812,44 @@ function cfToggleTimer() {
     const setup = document.getElementById('cf-timer-setup');
     if (setup) setup.style.opacity = '0.4';
 
-    // Init special timer states
-    if (_cfCurrentFormat === 'AMRAP') {
-      _cfTimerSeconds = _cfSetup.amrapMin * 60; // countdown
-    } else if (_cfCurrentFormat === 'EMOM') {
-      _cfTimerSeconds = 0;
-      _cfSetup.emomCurrentRound = 1;
-      _cfSetup.emomSecondsInRound = 0;
-      const totalRounds = Math.floor(_cfSetup.emomTotal / _cfSetup.emomInterval);
-      document.getElementById('cf-emom-indicator').style.display = '';
-      document.getElementById('cf-emom-round-num').textContent = '1';
-      document.getElementById('cf-emom-total-rounds').textContent = totalRounds;
-    } else if (_cfCurrentFormat === 'Tabata') {
-      _cfTimerSeconds = _cfSetup.tabataWork;
-      _cfSetup.tabataPhase = 'work';
-      _cfSetup.tabataRoundsDone = 0;
-      _cfSetup.tabataSecondsInPhase = 0;
-      document.getElementById('cf-tabata-phase').style.display = '';
-      cfUpdateTabataDisplay();
-    } else {
-      // For Time/Chipper/Partner always start at 0 and count up (elapsed time),
-      // whether or not a cap is set — a cap just auto-ends the clock and cues as it
-      // approaches, tracked in the background by cfTimerTick(). It used to start
-      // pre-loaded at capMin*60 and count down instead, which looked like the cap
-      // value itself was the starting time rather than a background limit.
-      _cfTimerSeconds = 0;
-    }
+    // Init special timer states — ONLY on a genuine fresh start (_cfFreshStart, set
+    // by cfRunLeadinCountdown() right before this call), never on a plain Resume.
+    // This whole block used to run unconditionally on every _cfTimerRunning flip to
+    // true, which included Resume (same function handles both) — silently resetting
+    // AMRAP's clock back to the full duration, EMOM's round counter back to 1, and
+    // Tabata's phase back to round-1-work every time you paused and resumed.
+    if (_cfFreshStart) {
+      _cfFreshStart = false;
+      if (_cfCurrentFormat === 'AMRAP') {
+        _cfTimerSeconds = _cfSetup.amrapMin * 60; // countdown
+      } else if (_cfCurrentFormat === 'EMOM') {
+        _cfTimerSeconds = 0;
+        _cfSetup.emomCurrentRound = 1;
+        _cfSetup.emomSecondsInRound = 0;
+        const totalRounds = Math.floor(_cfSetup.emomTotal / _cfSetup.emomInterval);
+        document.getElementById('cf-emom-indicator').style.display = '';
+        document.getElementById('cf-emom-round-num').textContent = '1';
+        document.getElementById('cf-emom-total-rounds').textContent = totalRounds;
+      } else if (_cfCurrentFormat === 'Tabata') {
+        _cfTimerSeconds = _cfSetup.tabataWork;
+        _cfSetup.tabataPhase = 'work';
+        _cfSetup.tabataRoundsDone = 0;
+        _cfSetup.tabataSecondsInPhase = 0;
+        document.getElementById('cf-tabata-phase').style.display = '';
+        cfUpdateTabataDisplay();
+      } else {
+        // For Time/Chipper/Partner always start at 0 and count up (elapsed time),
+        // whether or not a cap is set — a cap just auto-ends the clock and cues as it
+        // approaches, tracked in the background by cfTimerTick(). It used to start
+        // pre-loaded at capMin*60 and count down instead, which looked like the cap
+        // value itself was the starting time rather than a background limit.
+        _cfTimerSeconds = 0;
+      }
 
-    // Init Intervals on fresh start
-    if (_cfCurrentFormat === 'Intervals' && _cfTimerSeconds === 0 && _wlbIntervalPhase === 'work') {
-      cfStartIntervals();
+      // Init Intervals on fresh start
+      if (_cfCurrentFormat === 'Intervals' && _wlbIntervalPhase === 'work') {
+        cfStartIntervals();
+      }
     }
     _cfTimerInterval = setInterval(cfTimerTick, 1000);
   } else {
