@@ -1923,7 +1923,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
 // lagged behind a deployed commit before) can be confirmed/ruled out in one glance
 // instead of diffing the raw deployed file against the repo.
 // ═══════════════════════════════════════════════════
-const APP_VERSION = '2026-08-16.3';
+const APP_VERSION = '2026-08-16.4';
 console.log('Alloy', APP_VERSION);
 
 // ═══════════════════════════════════════════════════
@@ -3530,7 +3530,22 @@ async function editLog(ds, id) {
       if (ex.targetReps || ex.targetSets) return ex; // already has targets
       const match = allPlannedExs.find(p => (typeof p === 'object' ? p.name : p) === ex.name);
       if (match && typeof match === 'object' && (match.sets || match.reps)) {
-        return {...ex, targetSets: parseInt(match.sets)||null, targetReps: match.reps||null};
+        const targetSets = parseInt(match.sets)||null;
+        // This exercise had no target when it was originally saved (that's exactly
+        // why it needed re-attaching above), which also means it was given zero set
+        // rows to log against at the time — only the hint text was missing a target,
+        // the actual "X/Y sets" count was stuck at 0/0 too. Since a genuinely-empty
+        // sets array means nothing has been logged for it either way, it's safe to
+        // regenerate the row count to match the newly-found target — this only ever
+        // runs on an exercise with nothing in it yet, never one with real logged data.
+        const needsSetRows = targetSets && (!ex.sets || !ex.sets.length);
+        return {
+          ...ex,
+          targetSets, targetReps: match.reps||null,
+          sets: needsSetRows
+            ? Array.from({length:targetSets}, () => ({w:'', r:'', bw: ex.setType==='bodyweight', assisted: ex.setType==='assisted', done:false}))
+            : ex.sets
+        };
       }
       return ex;
     });
