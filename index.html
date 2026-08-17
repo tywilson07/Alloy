@@ -1923,7 +1923,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
 // lagged behind a deployed commit before) can be confirmed/ruled out in one glance
 // instead of diffing the raw deployed file against the repo.
 // ═══════════════════════════════════════════════════
-const APP_VERSION = '2026-08-16.5';
+const APP_VERSION = '2026-08-17.1';
 console.log('Alloy', APP_VERSION);
 
 // ═══════════════════════════════════════════════════
@@ -2234,7 +2234,18 @@ function dateStr(y,m,d) {
   return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 }
 
+// Bumped on every renderCalendar() call so an overlapping/duplicate call (e.g. the
+// navToCalendar() bug fixed alongside this — it was calling renderCalendar() twice,
+// once directly and once via _liftNav()) can tell whether it's still the latest
+// request by the time its fetch resolves. Two concurrent calls writing the exact
+// same globals (_calWorkouts, _calWODScores, etc.) racing each other is exactly the
+// kind of bug that produces "calendar looks wrong until I force a refresh" — whichever
+// call happens to resolve LAST wins, regardless of which one actually started last or
+// fetched correctly, and a page reload is the only thing that resets the corrupted state.
+let _calRenderToken = 0;
+
 async function renderCalendar() {
+  const myToken = ++_calRenderToken;
   document.getElementById('cal-month-title').textContent = `${MONTHS[currentMonth]} ${currentYear}`;
   try {
     const startDate = dateStr(currentYear, currentMonth, 1);
@@ -2245,10 +2256,15 @@ async function renderCalendar() {
     // Load programs first (getVisiblePrograms may do sequential calls for athletes)
     const progs = await getVisiblePrograms();
     const wodProgs = await getVisibleWODPrograms();
+    // Every one of these now has a .catch() fallback — previously three of them
+    // (workouts/program_assignments/workout_assignments) didn't, so a transient
+    // failure in just ONE would reject the whole Promise.all and silently abort the
+    // entire refresh (caught below, logged, nothing else) — leaving every OTHER data
+    // type stale too instead of just the one that actually failed.
     const [wkts, assigns, assigned, overrides, wodScores, weighIns, wodAssigns, wodOverrides, activities] = await Promise.all([
-      db('workouts','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
-      db('program_assignments','GET',null,`?user_id=eq.${currentUser.id}&select=*`),
-      db('workout_assignments','GET',null,`?assigned_to=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
+      db('workouts','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[]),
+      db('program_assignments','GET',null,`?user_id=eq.${currentUser.id}&select=*`).catch(()=>[]),
+      db('workout_assignments','GET',null,`?assigned_to=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[]),
       db('workout_schedule_overrides','GET',null,`?user_id=eq.${currentUser.id}&select=*`).catch(()=>[]),
       db('cf_scores','GET',null,`?user_id=eq.${currentUser.id}&logged_at=gte.${queryStart}T00:00:00&logged_at=lte.${queryEnd}T23:59:59&select=*`).catch(()=>[]),
       db('body_weight','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[]),
@@ -2256,6 +2272,9 @@ async function renderCalendar() {
       db('wod_schedule_overrides','GET',null,`?user_id=eq.${currentUser.id}&select=*`).catch(()=>[]),
       db('activity_log','GET',null,`?user_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[])
     ]);
+    // A newer renderCalendar() call has since started — this response is now stale.
+    // Don't let it clobber whatever the newer call writes (or already wrote).
+    if (myToken !== _calRenderToken) return;
     _calWorkouts = {};
     (wkts||[]).forEach(w => {
       if (!_calWorkouts[w.date]) _calWorkouts[w.date] = [];
@@ -2294,6 +2313,7 @@ async function renderCalendar() {
       _calWODOverrides[o.original_date] = {newDate:o.new_date, wodName:o.wod_name, id:o.id, programId:o.program_id||null};
     });
   } catch(e) { console.error('Calendar load error', e); }
+  if (myToken !== _calRenderToken) return; // stale — a newer call is handling the render
   if (_calView === 'week') {
     buildWeekView();
   } else {
@@ -10595,14 +10615,17 @@ function calQuickLog() {
 }
 
 function navToCalendar(btn) {
-  // Use the lift-side calendar view — it's now the unified one
+  // Use the lift-side calendar view — it's now the unified one. _liftNav('calendar',...)
+  // already calls renderCalendar() itself (it already includes WOD scores — the
+  // calendar has been unified for a while), so calling it again here was firing two
+  // overlapping renderCalendar() calls on every single nav-to-calendar tap, racing
+  // each other to write the same shared cache — a real source of "calendar shows
+  // stale/wrong data until I force a refresh." Removed the redundant second call.
   _liftNav('calendar', btn);
   // Sync active state on both navs
   document.querySelectorAll('.bnav-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('[onclick*="navToCalendar"]').forEach(b => b.classList.add('active'));
   document.querySelectorAll('[onclick*="calendar"]').forEach(b => b.classList.add('active'));
-  // Reload calendar to include WOD scores
-  renderCalendar();
 }
 
 // ═══════════════════════════════════════════════════
