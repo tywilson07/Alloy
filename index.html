@@ -8565,6 +8565,7 @@ let _activeAthleteId = null;
 let _athleteList = []; // [{id, username, color}]
 let _athCalWorkouts = {};   // athlete's logged workouts
 let _athCalAssigned = {};   // athlete's assigned workouts
+let _athCalWODScores = {};  // athlete's logged WOD scores {date: [score,...]}
 let _athCalPrograms = [];
 let _athActiveProgAssignments = []; // [{id, program_id, start_date}] — supports multiple simultaneous programs
 let _athCalOverrides = {};  // athlete's planned workout moves {originalDate: {newDate, workoutName, programId}}
@@ -8637,18 +8638,26 @@ async function renderAthleteCalendar() {
     const endDate   = dateStr(currentYear, currentMonth, new Date(currentYear,currentMonth+1,0).getDate());
     const queryStart = (() => { const d = new Date(startDate+'T12:00:00'); d.setDate(d.getDate()-6); return d.toISOString().slice(0,10); })();
     const queryEnd   = (() => { const d = new Date(endDate+'T12:00:00');   d.setDate(d.getDate()+6); return d.toISOString().slice(0,10); })();
-    const [wkts, progs, assigns, assigned, coachNotes, overrides] = await Promise.all([
+    const [wkts, progs, assigns, assigned, coachNotes, overrides, wodScores] = await Promise.all([
       db('workouts','GET',null,`?user_id=eq.${_activeAthleteId}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
       db('programs','GET',null,'?select=*'),
       db('program_assignments','GET',null,`?user_id=eq.${_activeAthleteId}&select=*`),
       db('workout_assignments','GET',null,`?assigned_to=eq.${_activeAthleteId}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
       db('workout_coach_notes','GET',null,`?athlete_id=eq.${_activeAthleteId}&coach_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
-      db('workout_schedule_overrides','GET',null,`?user_id=eq.${_activeAthleteId}&select=*`).catch(()=>[])
+      db('workout_schedule_overrides','GET',null,`?user_id=eq.${_activeAthleteId}&select=*`).catch(()=>[]),
+      db('cf_scores','GET',null,`?user_id=eq.${_activeAthleteId}&logged_at=gte.${queryStart}T00:00:00&logged_at=lte.${queryEnd}T23:59:59&select=*`).catch(()=>[])
     ]);
     _athCalWorkouts = {};
     (wkts||[]).forEach(w => { if(!_athCalWorkouts[w.date])_athCalWorkouts[w.date]=[]; _athCalWorkouts[w.date].push(w); });
     _athCalAssigned = {};
     (assigned||[]).forEach(a => { if(!_athCalAssigned[a.date])_athCalAssigned[a.date]=[]; _athCalAssigned[a.date].push(a); });
+    _athCalWODScores = {};
+    (wodScores||[]).forEach(s => {
+      const date = s.logged_at?.slice(0,10);
+      if (!date) return;
+      if (!_athCalWODScores[date]) _athCalWODScores[date] = [];
+      _athCalWODScores[date].push(s);
+    });
     _athCalPrograms = progs||[];
     _athActiveProgAssignments = (assigns||[]).filter(a=>a.active).map(a=>({id:a.id, program_id:a.program_id, start_date:a.start_date||null}));
     _athCoachNotes = {};
@@ -8735,18 +8744,23 @@ function buildAthleteWeekView() {
     const logs = _athCalWorkouts[ds]||[];
     const plannedList = getAthletePlannedWorkouts(ds);
     const assigned = _athCalAssigned[ds]||[];
+    const wodScores = _athCalWODScores[ds]||[];
 
     let chips = '';
-    if (logs.length) {
-      logs.forEach(w=>{
-        chips += `<div class="week-workout-chip week-workout-logged" style="background:${color.dim};color:${color.hex};border:1px solid ${color.hex}30">✓ ${w.day_name||w.name||'Workout'}</div>`;
-      });
-    } else if (assigned.length) {
-      chips += `<div class="week-workout-chip" style="background:var(--purple-light);color:var(--purple)">📤 ${assigned[0].workout_name}</div>`;
-    } else {
-      plannedList.forEach(p=>{
-        chips += `<div class="week-workout-chip week-workout-planned" style="background:${color.dim};color:${color.hex}">· ${p.name}</div>`;
-      });
+    logs.forEach(w=>{
+      chips += `<div class="week-workout-chip week-workout-logged" style="background:${color.dim};color:${color.hex};border:1px solid ${color.hex}30">✓ ${w.day_name||w.name||'Workout'}</div>`;
+    });
+    wodScores.forEach(s=>{
+      chips += `<div class="week-workout-chip" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.25)">⚡ ${s.wod_name}</div>`;
+    });
+    if (!logs.length && !wodScores.length) {
+      if (assigned.length) {
+        chips += `<div class="week-workout-chip" style="background:var(--purple-light);color:var(--purple)">📤 ${assigned[0].workout_name}</div>`;
+      } else {
+        plannedList.forEach(p=>{
+          chips += `<div class="week-workout-chip week-workout-planned" style="background:${color.dim};color:${color.hex}">· ${p.name}</div>`;
+        });
+      }
     }
     if (!chips) chips = `<div class="week-day-empty">Rest</div>`;
 
@@ -8795,6 +8809,7 @@ function buildAthleteCalGrid() {
     const logs = _athCalWorkouts[ds]||[];
     const assigned = _athCalAssigned[ds]||[];
     const plannedList = getAthletePlannedWorkouts(ds);
+    const wodScores = _athCalWODScores[ds]||[];
     const hasNote = !!_athCoachNotes[ds];
     // Dot logic same as personal calendar
     let dot = '';
@@ -8808,10 +8823,13 @@ function buildAthleteCalGrid() {
     } else if (plannedList.length) {
       dot = plannedList.map(p=>`<span style="display:block;font-size:10px;border-radius:3px;padding:1px 5px;margin-bottom:2px;background:${color.dim};color:${color.hex}">· ${p.name}</span>`).join('');
     }
+    // WOD dot is independent of the lift dot above — an athlete can log both on the same day
+    const wodDot = wodScores.map(s=>`<span style="display:block;font-size:10px;font-weight:700;border-radius:3px;padding:1px 5px;margin-bottom:2px;background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.3)">⚡ ${s.wod_name}</span>`).join('');
     const noteIndicator = hasNote ? `<span style="position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--purple)"></span>` : '';
     html+=`<div class="cal-cell ${isToday?'today':''} ${isSel?'selected':''}" onclick="selectAthleteDay('${ds}')" style="position:relative">
       <div class="cal-day-num">${d}</div>
       ${dot}
+      ${wodDot}
       ${noteIndicator}
     </div>`;
   }
@@ -8857,6 +8875,7 @@ async function renderAthleteDayPanel(ds) {
   const label = d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
   const logs = _athCalWorkouts[ds]||[];
   const assigned = _athCalAssigned[ds]||[];
+  const wodScores = _athCalWODScores[ds]||[];
   const plannedList = getAthletePlannedWorkouts(ds);
   const existingNote = _athCoachNotes[ds];
   let bodyHtml = '';
@@ -8890,6 +8909,15 @@ async function renderAthleteDayPanel(ds) {
     }).join('');
     // Show coach_note on workout record if set
     const wNote = w.coach_note ? `<div style="background:var(--purple-light);border:1px solid #C4B5FD;border-radius:5px;padding:6px 9px;margin-top:6px;font-size:12px;color:var(--purple)">📝 ${w.coach_note}</div>` : '';
+    // The athlete's own notes typed while logging — separate from feedback_note (the
+    // post-workout "how did it feel" note) and coach_note (this coach's own note).
+    // Previously only feedback_note showed here, so these were invisible to the coach.
+    const athleteNotes = [
+      w.warmup_notes   ? {label:'Warm-Up',   color:'#D97706', bg:'rgba(251,191,36,.08)', text:w.warmup_notes}   : null,
+      w.main_notes     ? {label:'Main',      color:'var(--orange)', bg:'rgba(255,92,0,.08)', text:w.main_notes} : null,
+      w.cooldown_notes ? {label:'Cool Down', color:'var(--lime)', bg:'rgba(170,255,0,.08)', text:w.cooldown_notes} : null,
+      w.notes          ? {label:'Notes',     color:'var(--text-secondary)', bg:'var(--surface3)', text:w.notes} : null
+    ].filter(Boolean).map(n => `<div style="font-size:11.5px;color:${n.color};background:${n.bg};border-radius:5px;padding:5px 8px;margin-top:4px"><strong>${n.label}:</strong> ${n.text}</div>`).join('');
     bodyHtml += `<div class="workout-entry" style="border-color:${ath.color.hex}40;border-width:2px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <div class="workout-entry-name" style="color:${ath.color.hex}">${w.day_name||'Workout'}</div>
@@ -8899,8 +8927,26 @@ async function renderAthleteDayPanel(ds) {
         </div>
       </div>
       ${exList}
+      ${athleteNotes}
       ${w.feedback_note?`<div style="font-size:11.5px;color:var(--text-secondary);margin-top:4px;font-style:italic">"${w.feedback_note}"</div>`:''}
       ${wNote}
+    </div>`;
+  });
+
+  // Logged WOD scores
+  wodScores.forEach(s => {
+    const isPR = s.notes?.toLowerCase().includes('pr') || s.rx_scaled === 'RX+';
+    bodyHtml += `<div class="workout-entry" style="border-color:${isPR?'#FFB800':'var(--cf-green)'};border-width:2px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="workout-entry-name" style="color:var(--cf-green)">⚡ ${s.wod_name}</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${isPR?'<span class="pill pill-amber" style="font-size:10px">🏆 PR</span>':''}
+          <span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);font-size:10px">${s.rx_scaled||'RX'}</span>
+        </div>
+      </div>
+      <div style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--cf-green)">${s.score} ${s.feel||''}</div>
+      <div style="font-size:11px;color:var(--text-muted)">${s.format||'WOD'}</div>
+      ${s.notes?`<div style="font-size:11.5px;color:var(--text-secondary);margin-top:4px;font-style:italic">"${s.notes}"</div>`:''}
     </div>`;
   });
 
@@ -8941,6 +8987,7 @@ async function renderAthleteDayPanel(ds) {
         <span style="width:8px;height:8px;border-radius:50%;background:${ath.color.hex}"></span>
         <span style="font-size:12px;font-weight:700;color:${ath.color.hex}">${ath.username}</span>
         ${logs.length?`<span class="pill pill-green" style="font-size:10px">✓ Logged</span>`:''}
+        ${wodScores.length?`<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);font-size:10px">⚡ WOD</span>`:''}
       </div>
     </div>
     <div class="day-panel-body">
