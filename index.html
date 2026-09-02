@@ -6290,7 +6290,9 @@ function renderWorkoutMode() {
       </button>`;
   } else {
     const globalIdx=_logExercises.indexOf(cur.ex);
-    document.getElementById('wm-body').innerHTML=cur.ex.type==='cardio'?buildWMCardio(cur.ex,globalIdx):cur.ex.type==='carry'?buildWMCarry(cur.ex,globalIdx):buildWMStrength(cur.ex,globalIdx);
+    // 'simple' (warmup/cooldown mark-done items) fell through to buildWMStrength before this
+    // check existed — a simple checkbox item was showing a full set/rep/weight logging UI.
+    document.getElementById('wm-body').innerHTML=cur.ex.type==='cardio'?buildWMCardio(cur.ex,globalIdx):cur.ex.type==='carry'?buildWMCarry(cur.ex,globalIdx):cur.ex.type==='simple'?buildWMSimple(cur.ex,globalIdx):buildWMStrength(cur.ex,globalIdx);
   }
 
   document.getElementById('wm-prev-btn').style.opacity=_wmCurrentIdx===0?'0.3':'1';
@@ -15148,10 +15150,21 @@ function wlbRenderEmomStations() {
       const wtUnit = wlbGetWeightUnit();
       const showWeight = type === 'reps' || type === 'carry';
       const ph = wlbGetPresets(type, unit)[2] || '10';
+      // Unit toggle (miles/meters/calories/etc for run/machine/carry movements) — EMOM never
+      // rendered this, unlike the identical Intervals builder; wlbEmomSetUnit() existed but had
+      // no button calling it. Ported from wlbRenderIntervals()'s unitToggle below.
+      const unitOpts = wlbUnitOptions(type);
+      const unitToggle = unitOpts.length > 1
+        ? '<div style="display:flex;gap:2px">' + unitOpts.map(u =>
+            '<button class="wod-format-chip' + (unit===u?' active':'') + '" style="padding:1px 5px;font-size:9px;border-radius:3px"'
+            + ' onclick="wlbEmomSetUnit(' + sIdx + ',' + mIdx + ',\'' + u + '\')">' + u + '</button>'
+          ).join('') + '</div>'
+        : '';
       return '<div style="display:flex;gap:6px;align-items:center;margin-top:5px">'
         + '<input placeholder="Movement..." value="' + (mv.name||'') + '" autocomplete="off"'
         + ' oninput="_wlbEmomStations[' + sIdx + '].movements[' + mIdx + '].name=this.value;wlbUpdatePreview();wlbShowEmomSuggestions(this,' + sIdx + ',' + mIdx + ')"'
         + ' style="flex:2;font-size:12px;font-weight:700">'
+        + unitToggle
         + '<input placeholder="' + ph + '" value="' + (mv.reps||'') + '"'
         + ' oninput="_wlbEmomStations[' + sIdx + '].movements[' + mIdx + '].reps=this.value;wlbUpdatePreview()"'
         + ' style="flex:1;font-family:var(--mono);font-size:13px;font-weight:700">'
@@ -16841,15 +16854,9 @@ function cfBeepTone(freq, duration, volume) {
   cfBeep(freq, duration, volume || 0.5);
 }
 
-function cfBeepCountdown(n) {
-  // High beep for 3-2-1, double beep for GO
-  if (n === 0) {
-    cfBeepTone(880, 0.15, 0.7);
-    setTimeout(() => cfBeepTone(1100, 0.3, 0.8), 180);
-  } else {
-    cfBeepTone(660, 0.12, 0.6);
-  }
-}
+// cfBeepCountdown() removed — dead code with zero callers, leftover from the same
+// superseded countdown implementation as cfStartWithCountdown() (see above).
+// cfRunLeadinCountdown(), the live countdown, beeps via cfBeep() directly instead.
 
 // ═══════════════════════════════════════════════════
 // ALLOY — PRE-GENERATED VOICE CLIPS
