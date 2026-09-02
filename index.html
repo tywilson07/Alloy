@@ -16454,9 +16454,17 @@ async function cfLoadData() {
 }
 
 // ── Dashboard ──
+// "WODs" in the More menu, and the redirect after saving a WOD score, land here via
+// nav('cf-dashboard'). This used to populate #cf-featured-wod/#cf-recent-scores —
+// containers that don't exist anywhere in the HTML (view-cf-dashboard's real markup
+// is a separate, now-vestigial CF-only calendar — #cf-cal-grid etc. — that nothing
+// else populates either), so this screen was always blank underneath its header
+// chrome. Per explicit product direction (one unified calendar covering Lift + WOD,
+// not two calendars), redirect to the same unified calendar every other "go to
+// calendar" path in the app already uses instead of trying to resurrect the
+// separate CF-only one.
 function cfRenderDashboard() {
-  cfRenderFeaturedWOD();
-  cfRenderRecentScores();
+  navToCalendar();
 }
 
 function cfRenderFeaturedWOD() {
@@ -18297,7 +18305,7 @@ const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
 
   <!-- Countdown overlay inside WOD card -->
   <div id="wc-countdown-overlay" style="display:none;position:fixed;inset:0;background:#0d0d0d;z-index:1000;flex-direction:column;align-items:center;justify-content:center;gap:8px">
-    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted)">Starting in</div>
+    <div id="wc-countdown-display" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:var(--text-muted)">Starting in</div>
     <div id="wc-countdown-number" style="font-size:96px;font-weight:900;font-family:var(--mono);color:var(--cf-green);line-height:1">3</div>
     <button class="btn btn-ghost btn-sm" onclick="cfCancelCountdown()" style="margin-top:8px">Cancel</button>
   </div>
