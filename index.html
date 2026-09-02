@@ -16407,11 +16407,17 @@ function nav(view, btn) {
       // Ensure no stale suggestion dropdown is blocking clicks
       wlbHideSuggestions();
     }
-    if (view === 'cf-assign')    cfRenderAssignWOD();
     if (view === 'cf-builder')   cfRenderWODBuilder();
     if (view === 'cf-history')   cfRenderHistory();
     if (view === 'cf-prs')       renderWODPRs();
     if (view === 'cf-programs')  renderWODPrograms();
+    // Two independent `if (view === 'cf-assign')` branches used to both fire here — this one
+    // (cfRenderAssignWOD, pick-one-WOD-then-multi-select-athletes) hasn't been touched since
+    // literally the first commits in this repo's history, and cfRenderAssign (athlete-first,
+    // richer form, shows existing assignments) is the actively-developed one. Both fetched from
+    // the DB and wrote into the same #cf-assign-body container on every nav('cf-assign') — a
+    // real race condition where whichever fetch happened to resolve last silently won, so the
+    // Assign WOD screen could show either flow unpredictably depending on network timing.
     if (view === 'cf-assign')    cfRenderAssign();
     if (view === 'cf-movement-library') cfRenderMovementLibrary();
     return;
