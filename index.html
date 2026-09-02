@@ -1189,6 +1189,12 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
       <div class="content-area" id="settings-body"></div>
     </div>
 
+    <!-- MESSAGES -->
+    <div class="view" id="view-messages">
+      <div class="view-header"><div class="view-title">💬 Messages</div></div>
+      <div class="content-area" id="messages-body"></div>
+    </div>
+
 
     <!-- ════════════════════════════════════════
          ALLOY — CROSSFIT MODE VIEWS
@@ -1789,6 +1795,11 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
           </button>
         </div>
       </div>
+      <!-- MESSAGES — mode-agnostic, always visible -->
+      <button class="more-menu-item" onclick="nav('messages');closeMoreMenu()" style="display:flex;align-items:center;justify-content:space-between">
+        <span><span>💬</span>Messages</span>
+        <span class="msg-unread-badge pill pill-green" style="display:none;font-size:10px;flex-shrink:0"></span>
+      </button>
       <!-- CF MORE MENU SECTION — shown when in WOD mode -->
       <div id="cf-more-menu-section">
         <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--cf-green)">WOD Mode</div>
@@ -1995,6 +2006,7 @@ function toggleMoreMenu() {
     overlay.style.display = 'block';
     menu.classList.add('open');
     document.getElementById('more-nav-btn').classList.add('active');
+    msgRefreshUnreadBadge();
   }
 }
 
@@ -2147,6 +2159,7 @@ function enterApp() {
   checkFirstLogin(); // show onboarding tour for first-time athletes
   cfPreloadVoiceClips(); // background-fetch WOD timer voice clips (routes to TV, unlike speechSynthesis)
   cfListenForGroupInvites(); // live-only group/Partner WOD invites — see ALLOY — GROUP / PARTNER WOD SESSIONS
+  msgRefreshUnreadBadge();
 }
 
 // ═══════════════════════════════════════════════════
@@ -2173,6 +2186,7 @@ function _liftNav(view, btn) {
   if (view==='assign')   renderAssignWorkout();
   if (view==='help')     renderHelp();
   if (view==='settings') renderSettings();
+  if (view==='messages') renderMessagesView();
 }
 
 // ═══════════════════════════════════════════════════
@@ -6998,6 +7012,259 @@ function getCellDots(ds) {
       title="${a.activity_name}${a.duration_min?' — '+a.duration_min+' min':''} — drag to move">🔵 ${a.activity_name}</span>`;
   });
   return html;
+}
+
+// ═══════════════════════════════════════════════════
+// ALLOY — MESSAGES (coach ↔ athlete DM)
+// Schema: conversations / conversation_participants / messages (see the migration
+// run in Supabase). Only type:'dm' conversations are created today — the schema is
+// already group-ready (type:'group' + a name, same three tables, N participants)
+// for when group messaging gets built, so nothing here needs to change for that.
+// Realtime delivery reuses cfLoadSupabaseClient() / the same postgres_changes
+// pattern the TV Display and Group WOD sync already use.
+// ═══════════════════════════════════════════════════
+let _msgActiveConvId = null;
+let _msgActiveOtherUser = null; // {id, username}
+let _msgChannel = null;         // realtime channel for the open thread
+let _msgDayLabels = {};         // {date: workoutLabel} for the active thread's athlete
+
+// Find an existing 1:1 conversation between the current user and otherUserId, or null.
+async function msgFindDM(otherUserId) {
+  const mine = await db('conversation_participants','GET',null,`?user_id=eq.${currentUser.id}&select=conversation_id`);
+  const myConvIds = (mine||[]).map(r=>r.conversation_id);
+  if (!myConvIds.length) return null;
+  const shared = await db('conversation_participants','GET',null,
+    `?user_id=eq.${otherUserId}&conversation_id=in.(${myConvIds.join(',')})&select=conversation_id`);
+  if (!shared?.length) return null;
+  const convs = await db('conversations','GET',null,
+    `?id=in.(${shared.map(s=>s.conversation_id).join(',')})&type=eq.dm&select=id&limit=1`);
+  return convs?.[0]?.id || null;
+}
+
+async function msgGetOrCreateDM(otherUserId) {
+  const existing = await msgFindDM(otherUserId);
+  if (existing) return existing;
+  const [conv] = await db('conversations','POST',{type:'dm', created_by:currentUser.id});
+  await db('conversation_participants','POST',[
+    {conversation_id:conv.id, user_id:currentUser.id},
+    {conversation_id:conv.id, user_id:otherUserId}
+  ]);
+  return conv.id;
+}
+
+// Who this user can message: coach sees every athlete, athlete sees every coach (admin)
+async function msgLoadCounterparts() {
+  if (currentUser.role === 'admin') {
+    return await db('users','GET',null,'?select=id,username&role=neq.admin&order=username');
+  }
+  return await db('users','GET',null,'?select=id,username&role=eq.admin&order=username');
+}
+
+async function renderMessagesView() {
+  const body = document.getElementById('messages-body');
+  if (!body) return;
+  body.innerHTML = '<div class="loading">Loading...</div>';
+  const counterparts = await msgLoadCounterparts().catch(()=>[]);
+  if (!counterparts.length) {
+    body.innerHTML = `<div style="padding:16px 0;text-align:center;color:var(--text-muted);font-size:12.5px">${currentUser.role==='admin'?'No athletes yet.':'No coach assigned yet.'}</div>`;
+    return;
+  }
+  // Athlete with exactly one coach: skip the picker list, open the thread directly
+  if (currentUser.role !== 'admin' && counterparts.length === 1) {
+    return msgOpenThread(counterparts[0].id, counterparts[0].username);
+  }
+  msgRenderList(counterparts);
+}
+
+async function msgRenderList(counterparts) {
+  const body = document.getElementById('messages-body');
+  if (!body) return;
+  const mine = await db('conversation_participants','GET',null,`?user_id=eq.${currentUser.id}&select=conversation_id`).catch(()=>[]);
+  const myConvIds = (mine||[]).map(r=>r.conversation_id);
+  let rows = counterparts.map(c => ({...c, lastMessage:null, lastAt:null, unread:0}));
+  if (myConvIds.length) {
+    const [participants, msgs] = await Promise.all([
+      db('conversation_participants','GET',null,`?conversation_id=in.(${myConvIds.join(',')})&user_id=neq.${currentUser.id}&select=conversation_id,user_id`).catch(()=>[]),
+      db('messages','GET',null,`?conversation_id=in.(${myConvIds.join(',')})&select=*&order=created_at.desc`).catch(()=>[])
+    ]);
+    const convToUser = {};
+    (participants||[]).forEach(p => { convToUser[p.conversation_id] = p.user_id; });
+    const byUser = {};
+    (msgs||[]).forEach(m => {
+      const uid = convToUser[m.conversation_id];
+      if (!uid) return;
+      if (!byUser[uid]) byUser[uid] = {last:null, unread:0};
+      if (!byUser[uid].last) byUser[uid].last = m; // messages are already newest-first, so the first hit per user is the latest
+      if (!m.read_at && m.sender_id !== currentUser.id) byUser[uid].unread++;
+    });
+    rows = rows.map(r => {
+      const info = byUser[r.id];
+      return info ? {...r, lastMessage:info.last.body, lastAt:info.last.created_at, unread:info.unread} : r;
+    });
+  }
+  rows.sort((a,b) => (b.lastAt||'').localeCompare(a.lastAt||'') || a.username.localeCompare(b.username));
+  body.innerHTML = rows.map(r => `
+    <div class="workout-entry" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px" onclick="msgOpenThread('${r.id}','${r.username.replace(/'/g,"\\'")}')">
+      <div style="min-width:0">
+        <div class="workout-entry-name">${r.username}</div>
+        <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${r.lastMessage ? r.lastMessage.replace(/</g,'&lt;') : 'No messages yet'}</div>
+      </div>
+      ${r.unread ? `<span class="pill pill-green" style="font-size:10px;flex-shrink:0">${r.unread}</span>` : ''}
+    </div>`).join('');
+}
+
+async function msgOpenThread(otherUserId, otherUsername) {
+  msgUnsubscribe();
+  _msgActiveOtherUser = {id:otherUserId, username:otherUsername};
+  const body = document.getElementById('messages-body');
+  if (!body) return;
+  body.innerHTML = '<div class="loading">Loading...</div>';
+  try {
+    _msgActiveConvId = await msgGetOrCreateDM(otherUserId);
+    await msgLoadThread();
+    msgSubscribe();
+    msgMarkRead();
+    msgRefreshUnreadBadge();
+  } catch(e) {
+    body.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-muted)">Couldn't load messages. ${e.message||''}</div>`;
+  }
+}
+
+async function msgLoadThread() {
+  if (!_msgActiveConvId) return;
+  const msgs = await db('messages','GET',null,`?conversation_id=eq.${_msgActiveConvId}&select=*&order=created_at.asc`);
+  await msgLoadDayLabels(msgs||[]);
+  msgRenderThread(msgs||[]);
+}
+
+// Tag each day header with what the athlete in this DM logged that day (e.g. "Leg Day"
+// or a WOD name), pulled from their existing calendar data, so an old message stays
+// legible without anyone having to spell out what day/workout it was about.
+async function msgLoadDayLabels(msgs) {
+  _msgDayLabels = {};
+  if (!msgs.length) return;
+  const athleteId = currentUser.role === 'admin' ? _msgActiveOtherUser.id : currentUser.id;
+  const dates = msgs.map(m => m.created_at.slice(0,10));
+  const minDate = dates.reduce((a,b)=>a<b?a:b);
+  const maxDate = dates.reduce((a,b)=>a>b?a:b);
+  try {
+    const [wkts, scores] = await Promise.all([
+      db('workouts','GET',null,`?user_id=eq.${athleteId}&date=gte.${minDate}&date=lte.${maxDate}&select=date,day_name`).catch(()=>[]),
+      db('cf_scores','GET',null,`?user_id=eq.${athleteId}&logged_at=gte.${minDate}T00:00:00&logged_at=lte.${maxDate}T23:59:59&select=logged_at,wod_name`).catch(()=>[])
+    ]);
+    (scores||[]).forEach(s => { const d=s.logged_at?.slice(0,10); if (d) _msgDayLabels[d] = s.wod_name; });
+    (wkts||[]).forEach(w => { _msgDayLabels[w.date] = w.day_name || _msgDayLabels[w.date]; }); // a lift day name wins if both were logged
+  } catch(e) {}
+}
+
+function msgDayHeaderLabel(ds) {
+  const d = new Date(ds+'T12:00:00');
+  const today = todayStr();
+  const yestD = new Date(); yestD.setDate(yestD.getDate()-1);
+  const yest = `${yestD.getFullYear()}-${String(yestD.getMonth()+1).padStart(2,'0')}-${String(yestD.getDate()).padStart(2,'0')}`;
+  const base = ds===today ? 'Today' : ds===yest ? 'Yesterday' : d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const workout = _msgDayLabels[ds];
+  return workout ? `${base} · ${workout}` : base;
+}
+
+function msgRenderThread(msgs) {
+  const body = document.getElementById('messages-body');
+  if (!body) return;
+  let lastDay = null;
+  const rows = msgs.map(m => {
+    const day = m.created_at.slice(0,10);
+    let header = '';
+    if (day !== lastDay) {
+      lastDay = day;
+      header = `<div style="text-align:center;margin:14px 0 8px;font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">${msgDayHeaderLabel(day)}</div>`;
+    }
+    const mine = m.sender_id === currentUser.id;
+    const time = new Date(m.created_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    return `${header}
+      <div style="display:flex;justify-content:${mine?'flex-end':'flex-start'};margin-bottom:6px">
+        <div style="max-width:75%;background:${mine?'var(--orange)':'var(--surface2)'};color:${mine?'#fff':'var(--text-primary)'};border-radius:14px;padding:8px 12px;font-size:13.5px;line-height:1.4">
+          ${m.body.replace(/</g,'&lt;')}
+          <div style="font-size:10px;opacity:.65;margin-top:3px;text-align:right">${time}</div>
+        </div>
+      </div>`;
+  }).join('');
+  body.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <button class="btn btn-ghost btn-sm" onclick="msgUnsubscribe();renderMessagesView()">←</button>
+      <div style="font-weight:800;font-size:14px">${_msgActiveOtherUser.username}</div>
+    </div>
+    <div id="msg-thread-scroll" style="max-height:50vh;overflow-y:auto;padding:4px 2px">
+      ${rows || '<div style="padding:16px 0;text-align:center;color:var(--text-muted);font-size:12.5px">No messages yet — say hi.</div>'}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;position:sticky;bottom:0;background:var(--bg);padding-top:6px">
+      <input id="msg-input" type="text" placeholder="Message ${_msgActiveOtherUser.username}..." style="flex:1" onkeydown="if(event.key==='Enter')msgSend()">
+      <button class="btn btn-primary" onclick="msgSend()">Send</button>
+    </div>`;
+  const scroll = document.getElementById('msg-thread-scroll');
+  if (scroll) scroll.scrollTop = scroll.scrollHeight;
+}
+
+async function msgSend() {
+  const input = document.getElementById('msg-input');
+  const text = input?.value?.trim();
+  if (!text || !_msgActiveConvId) return;
+  input.value = '';
+  try {
+    await db('messages','POST',{conversation_id:_msgActiveConvId, sender_id:currentUser.id, body:text});
+    // Realtime will also echo this back and re-render — reload directly too so the
+    // sender sees their own message immediately even if Realtime is slow/unavailable.
+    await msgLoadThread();
+  } catch(e) { toast('Message failed to send'); input.value = text; }
+}
+
+async function msgMarkRead() {
+  if (!_msgActiveConvId) return;
+  try {
+    await db('messages','PATCH',{read_at:new Date().toISOString()},
+      `?conversation_id=eq.${_msgActiveConvId}&sender_id=neq.${currentUser.id}&read_at=is.null`);
+  } catch(e) {}
+}
+
+async function msgSubscribe() {
+  if (!_msgActiveConvId) return;
+  const convId = _msgActiveConvId;
+  try {
+    await cfLoadSupabaseClient();
+    const supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+    _msgChannel = supa.channel('messages-' + convId)
+      .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages', filter:`conversation_id=eq.${convId}`}, () => {
+        if (_msgActiveConvId !== convId) return; // thread was switched/closed before this arrived
+        msgLoadThread();
+        msgMarkRead();
+        msgRefreshUnreadBadge();
+      })
+      .subscribe();
+  } catch(e) { /* Realtime unavailable — thread still works, just won't live-update */ }
+}
+
+function msgUnsubscribe() {
+  if (_msgChannel) { try { _msgChannel.unsubscribe(); } catch(e) {} _msgChannel = null; }
+  _msgActiveConvId = null;
+  _msgActiveOtherUser = null;
+}
+
+// Total unread messages across every conversation this user is in, shown on the
+// More-menu "Messages" row. Best-effort — if the migration hasn't been run yet
+// (tables don't exist), this just fails quietly and the badge stays hidden.
+async function msgRefreshUnreadBadge() {
+  const badgeEls = document.querySelectorAll('.msg-unread-badge');
+  if (!badgeEls.length || !currentUser) return;
+  try {
+    const mine = await db('conversation_participants','GET',null,`?user_id=eq.${currentUser.id}&select=conversation_id`);
+    const convIds = (mine||[]).map(r=>r.conversation_id);
+    let count = 0;
+    if (convIds.length) {
+      const unread = await db('messages','GET',null,
+        `?conversation_id=in.(${convIds.join(',')})&sender_id=neq.${currentUser.id}&read_at=is.null&select=id`);
+      count = unread?.length || 0;
+    }
+    badgeEls.forEach(el => { el.textContent = count>0?String(count):''; el.style.display = count>0?'':'none'; });
+  } catch(e) { /* messaging tables not migrated yet, or offline — leave badge hidden */ }
 }
 
 // ═══════════════════════════════════════════════════
@@ -16118,6 +16385,11 @@ function alloySwitchMode(mode) {
 
 // ── Extend nav() to handle CF views ──
 function nav(view, btn) {
+  // Drop any open message thread's realtime subscription on every navigation —
+  // re-established fresh by renderMessagesView()/msgOpenThread() if we're headed
+  // back into Messages, otherwise it just stays torn down. Prevents a leaked
+  // socket every time the user leaves the Messages view.
+  msgUnsubscribe();
   const cfViews = ['cf-dashboard','cf-track','cf-library','cf-athletes','cf-assign','cf-builder','cf-history','cf-prs','cf-programs','cf-movement-library'];
   if (cfViews.includes(view)) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
