@@ -154,7 +154,7 @@ label{font-size:11px;font-weight:800;color:var(--text-muted);display:block;margi
 .cal-dot-logged-partial{background:var(--amber-light);color:var(--amber);cursor:grab;display:block;border:1px solid var(--amber)30}
 .cal-dot-logged-full:active,.cal-dot-logged-partial:active{cursor:grabbing;opacity:.5}
 .cal-dot-planned{background:var(--orange-dim);color:var(--orange);display:block;border:1px solid var(--orange)30}
-.cal-dot-assigned{background:var(--purple-light);color:var(--purple);display:block;font-size:10px;font-weight:700;border-radius:3px;padding:1px 5px;margin-bottom:2px;border:1px solid var(--purple)30}
+.cal-dot-assigned{background:var(--purple-light);color:var(--purple);display:block;border:1px solid rgba(139,92,246,.3)}
 .cf-cal-dot-score{background:var(--cf-green-dim);color:var(--cf-green);cursor:grab;display:block;border:1px solid rgba(57,211,83,.3)}
 .cf-cal-dot-pr{background:var(--cf-green);color:#0d0d0d;font-weight:900;cursor:grab;display:block;border:1px solid var(--cf-green)}
 .cf-cal-dot-planned{background:var(--purple-light);color:var(--purple);cursor:grab;display:block;border:1px solid rgba(139,92,246,.3)}
@@ -321,9 +321,8 @@ button.set-type-btn.active[onclick*="assisted"]{background:var(--purple);border-
 .athlete-detail-info h2{font-size:17px;font-weight:700;margin-bottom:3px}
 .coach-section{margin-bottom:20px}
 .coach-section-title{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border)}
-
-/* Assigned workout indicators on calendar */
-.cal-dot-assigned{background:var(--purple-light);color:var(--purple);display:block;font-size:10.5px;font-weight:600;border-radius:4px;padding:1px 5px;margin-bottom:2px}
+/* .cal-dot-assigned lives near the other .cal-dot-* rules above — this was a second,
+   slightly different definition of the same class (accidental duplicate); consolidated. */
 
 /* Assign workout form */
 .assign-athlete-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:6px}
@@ -8835,6 +8834,8 @@ let _athleteList = []; // [{id, username, color}]
 let _athCalWorkouts = {};   // athlete's logged workouts
 let _athCalAssigned = {};   // athlete's assigned workouts
 let _athCalWODScores = {};  // athlete's logged WOD scores {date: [score,...]}
+let _athCalBodyWeight = {}; // athlete's body weight log {date: {weight, unit, note}}
+let _athCalActivities = {}; // athlete's general activity log {date: [{id, activity_name, duration_min, notes}]}
 let _athCalPrograms = [];
 let _athActiveProgAssignments = []; // [{id, program_id, start_date}] — supports multiple simultaneous programs
 let _athCalOverrides = {};  // athlete's planned workout moves {originalDate: {newDate, workoutName, programId}}
@@ -8907,14 +8908,16 @@ async function renderAthleteCalendar() {
     const endDate   = dateStr(currentYear, currentMonth, new Date(currentYear,currentMonth+1,0).getDate());
     const queryStart = (() => { const d = new Date(startDate+'T12:00:00'); d.setDate(d.getDate()-6); return d.toISOString().slice(0,10); })();
     const queryEnd   = (() => { const d = new Date(endDate+'T12:00:00');   d.setDate(d.getDate()+6); return d.toISOString().slice(0,10); })();
-    const [wkts, progs, assigns, assigned, coachNotes, overrides, wodScores] = await Promise.all([
+    const [wkts, progs, assigns, assigned, coachNotes, overrides, wodScores, weighIns, activities] = await Promise.all([
       db('workouts','GET',null,`?user_id=eq.${_activeAthleteId}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
       db('programs','GET',null,'?select=*'),
       db('program_assignments','GET',null,`?user_id=eq.${_activeAthleteId}&select=*`),
       db('workout_assignments','GET',null,`?assigned_to=eq.${_activeAthleteId}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
       db('workout_coach_notes','GET',null,`?athlete_id=eq.${_activeAthleteId}&coach_id=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`),
       db('workout_schedule_overrides','GET',null,`?user_id=eq.${_activeAthleteId}&select=*`).catch(()=>[]),
-      db('cf_scores','GET',null,`?user_id=eq.${_activeAthleteId}&logged_at=gte.${queryStart}T00:00:00&logged_at=lte.${queryEnd}T23:59:59&select=*`).catch(()=>[])
+      db('cf_scores','GET',null,`?user_id=eq.${_activeAthleteId}&logged_at=gte.${queryStart}T00:00:00&logged_at=lte.${queryEnd}T23:59:59&select=*`).catch(()=>[]),
+      db('body_weight','GET',null,`?user_id=eq.${_activeAthleteId}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[]),
+      db('activity_log','GET',null,`?user_id=eq.${_activeAthleteId}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[])
     ]);
     _athCalWorkouts = {};
     (wkts||[]).forEach(w => { if(!_athCalWorkouts[w.date])_athCalWorkouts[w.date]=[]; _athCalWorkouts[w.date].push(w); });
@@ -8927,6 +8930,10 @@ async function renderAthleteCalendar() {
       if (!_athCalWODScores[date]) _athCalWODScores[date] = [];
       _athCalWODScores[date].push(s);
     });
+    _athCalBodyWeight = {};
+    (weighIns||[]).forEach(w => { _athCalBodyWeight[w.date] = w; });
+    _athCalActivities = {};
+    (activities||[]).forEach(a => { if(!_athCalActivities[a.date])_athCalActivities[a.date]=[]; _athCalActivities[a.date].push(a); });
     _athCalPrograms = progs||[];
     _athActiveProgAssignments = (assigns||[]).filter(a=>a.active).map(a=>({id:a.id, program_id:a.program_id, start_date:a.start_date||null}));
     _athCoachNotes = {};
@@ -9228,6 +9235,19 @@ async function renderAthleteDayPanel(ds) {
     </div>`;
   });
 
+  // General activity log (read-only — this coach view doesn't log on the athlete's behalf,
+  // it only shows what they logged themselves, same as their body weight below)
+  const dayActivities = _athCalActivities[ds] || [];
+  dayActivities.forEach(a => {
+    bodyHtml += `<div class="workout-entry" style="border-color:var(--activity-mid);background:var(--activity-dim)">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:12px;font-weight:900;text-transform:uppercase;color:var(--activity)">🔵 ${a.activity_name}</div>
+        ${a.duration_min?`<span style="font-size:11px;color:var(--text-muted);font-weight:700">${a.duration_min} min</span>`:''}
+      </div>
+      ${a.notes?`<div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;font-style:italic">"${a.notes}"</div>`:''}
+    </div>`;
+  });
+
   // Planned (not yet logged) — supports multiple simultaneously active programs
   if (!logs.length) {
     plannedList.forEach(planned => {
@@ -9249,6 +9269,20 @@ async function renderAthleteDayPanel(ds) {
 
   if (!bodyHtml) bodyHtml = `<div style="padding:16px 0;text-align:center;color:var(--text-muted);font-size:12.5px">No workout scheduled</div>`;
 
+  // Body weight — read-only (this coach view shows what the athlete logged, same as
+  // the activity log above; only rendered when there's actually an entry, unlike the
+  // athlete's own panel which always shows a "Not logged / + Log" prompt — a "Not
+  // logged" line on every empty day here would just be noise for the coach).
+  const bwEntry = _athCalBodyWeight[ds];
+  const bwHtml = bwEntry ? `
+    <div style="border:1px solid var(--border);border-radius:var(--radius);padding:10px 13px;margin-bottom:10px;display:flex;align-items:center;gap:8px">
+      <span style="font-size:16px">⚖️</span>
+      <div>
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#0E7490">Body Weight</div>
+        <div style="font-size:13px;font-weight:700;color:var(--text-primary)">${bwEntry.weight} ${bwEntry.unit||'lb'}${bwEntry.note?` <span style="font-weight:400;color:var(--text-muted);font-size:11px">· ${bwEntry.note}</span>`:''}</div>
+      </div>
+    </div>` : '';
+
   panel.innerHTML = `
     <div class="day-panel-header">
       <div class="day-panel-date">${label}</div>
@@ -9261,6 +9295,7 @@ async function renderAthleteDayPanel(ds) {
     </div>
     <div class="day-panel-body">
       ${noteHtml}
+      ${bwHtml}
       ${bodyHtml}
     </div>`;
 }
