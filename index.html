@@ -155,6 +155,10 @@ label{font-size:11px;font-weight:800;color:var(--text-muted);display:block;margi
 .cal-dot-logged-full:active,.cal-dot-logged-partial:active{cursor:grabbing;opacity:.5}
 .cal-dot-planned{background:var(--orange-dim);color:var(--orange);display:block;border:1px solid var(--orange)30}
 .cal-dot-assigned{background:var(--purple-light);color:var(--purple);display:block;font-size:10px;font-weight:700;border-radius:3px;padding:1px 5px;margin-bottom:2px;border:1px solid var(--purple)30}
+.cf-cal-dot-score{background:var(--cf-green-dim);color:var(--cf-green);cursor:grab;display:block;border:1px solid rgba(57,211,83,.3)}
+.cf-cal-dot-pr{background:var(--cf-green);color:#0d0d0d;font-weight:900;cursor:grab;display:block;border:1px solid var(--cf-green)}
+.cf-cal-dot-planned{background:var(--purple-light);color:var(--purple);cursor:grab;display:block;border:1px solid rgba(139,92,246,.3)}
+.cf-cal-dot-score:active,.cf-cal-dot-pr:active,.cf-cal-dot-planned:active{cursor:grabbing;opacity:.5}
 
 /* ── DAY PANEL ── */
 #day-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;display:flex;flex-direction:column;flex:1}
@@ -384,6 +388,9 @@ button.set-type-btn.active[onclick*="assisted"]{background:var(--purple);border-
 .week-day-col:hover{border-color:var(--orange)}
 .week-day-col.today{border-color:var(--orange);background:var(--orange-dim)}
 .week-day-col.selected{border-color:var(--orange);outline:2px solid var(--orange);outline-offset:-2px}
+.week-day-col.drag-over{background:var(--lime-dim)!important;outline:2px dashed var(--lime);outline-offset:-3px}
+.week-workout-chip[draggable="true"]{cursor:grab}
+.week-workout-chip[draggable="true"]:active{cursor:grabbing;opacity:.5}
 .week-day-header{padding:6px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .week-day-dow{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted)}
 .week-day-num{font-size:14px;font-weight:700;color:var(--text-primary)}
@@ -2788,26 +2795,36 @@ function buildWeekView() {
     const planned = getPlannedWorkouts(ds);
     const assigned = _calAssigned[ds]||[];
 
-    // Build workout chips
+    // Build workout chips — draggable="true"/ondragstart etc. mirror getCellDots()
+    // in the month view so a chip can be dragged to another day column here too.
     let chips = '';
     logs.forEach(w=>{
-      chips += `<div class="week-workout-chip week-workout-logged" title="${w.day_name||w.name||'Workout'}">✓ ${w.day_name||w.name||'Workout'}</div>`;
+      chips += `<div class="week-workout-chip week-workout-logged" draggable="true"
+        ondragstart="calDragStart(event,'${ds}','${w.id}')" ondragend="calDragEnd(event)"
+        title="${w.day_name||w.name||'Workout'} — drag to move">✓ ${w.day_name||w.name||'Workout'}</div>`;
     });
     // Add WOD scores in green
     (_calWODScores[ds]||[]).forEach(s=>{
-      chips += `<div class="week-workout-chip" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.25)" title="WOD: ${s.wod_name}">⚡ ${s.wod_name}</div>`;
+      chips += `<div class="week-workout-chip" draggable="true"
+        ondragstart="calDragStartLoggedItem(event,'${ds}','${s.id}','cf_scores','logged_at',true)" ondragend="calDragEnd(event)"
+        style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.25)" title="WOD: ${s.wod_name} — drag to move">⚡ ${s.wod_name}</div>`;
     });
     if (!logs.length && !(_calWODScores[ds]||[]).length) {
       planned.forEach(p=>{
-        chips += `<div class="week-workout-chip week-workout-planned" title="${p.name}">· ${p.name}</div>`;
+        chips += `<div class="week-workout-chip week-workout-planned" draggable="true"
+          ondragstart="calDragStartPlanned(event,'${ds}')" ondragend="calDragEnd(event)"
+          title="${p.name} — drag to reschedule">· ${p.name}</div>`;
       });
       assigned.forEach(a=>{
-        chips += `<div class="week-workout-chip" style="background:var(--purple-light);color:var(--purple);border:1px solid var(--purple)30" title="${a.name}">· ${a.name}</div>`;
+        chips += `<div class="week-workout-chip" draggable="true"
+          ondragstart="calDragStartLoggedItem(event,'${ds}','${a.id}','workout_assignments','date',false,'assigned_to')" ondragend="calDragEnd(event)"
+          style="background:var(--purple-light);color:var(--purple);border:1px solid var(--purple)30" title="${a.workout_name} — drag to reschedule">📤 ${a.workout_name}</div>`;
       });
     }
     if (!chips) chips = `<div class="week-day-empty">Rest</div>`;
 
-    html += `<div class="week-day-col ${isToday?'today':''} ${isSelected?'selected':''}" onclick="selectDay('${ds}')">
+    html += `<div class="week-day-col ${isToday?'today':''} ${isSelected?'selected':''}" onclick="selectDay('${ds}')"
+      ondragover="calDragOver(event,'${ds}')" ondragleave="calDragLeave(event)" ondrop="calDrop(event,'${ds}')">
       <div class="week-day-header">
         <div class="week-day-dow">${dows[d.getDay()]}</div>
         <div class="week-day-num ${isToday?'':''}">
@@ -3180,13 +3197,15 @@ function calDragStart(e,fromDate,id){
 
 // Generic "move a logged entry to another date" drag — same PATCH-the-date
 // pattern as calDragStart()/the logged-workout branch in calDrop() below,
-// but table-agnostic so WOD scores and Activity Log entries don't each need
-// their own near-duplicate drag lifecycle. isTimestamp:true means dateField
-// is a timestamptz column (cf_scores.logged_at) — the new value gets a T12:00:00
-// anchor, same defensive pattern used everywhere else in this file to avoid a
-// bare date string resolving to the wrong calendar day across timezones.
-function calDragStartLoggedItem(e, fromDate, id, table, dateField, isTimestamp) {
-  _dragLoggedItem = {fromDate, id, table, dateField, isTimestamp};
+// but table-agnostic so WOD scores, Activity Log entries, and coach-assigned
+// workouts don't each need their own near-duplicate drag lifecycle. isTimestamp:true
+// means dateField is a timestamptz column (cf_scores.logged_at) — the new value gets
+// a T12:00:00 anchor, same defensive pattern used everywhere else in this file to
+// avoid a bare date string resolving to the wrong calendar day across timezones.
+// userField is the owner column to filter the PATCH by — defaults to 'user_id'
+// (workouts/cf_scores/activity_log), pass 'assigned_to' for workout_assignments.
+function calDragStartLoggedItem(e, fromDate, id, table, dateField, isTimestamp, userField) {
+  _dragLoggedItem = {fromDate, id, table, dateField, isTimestamp, userField: userField || 'user_id'};
   _dragFromDate = null; _dragWorkoutId = null; _dragPlannedDate = null; _dragPlannedWODDate = null; // clear other drag state
   e.dataTransfer.effectAllowed = 'move';
   e.dataTransfer.setData('text/plain', JSON.stringify({fromDate, id, table}));
@@ -3196,7 +3215,7 @@ function calDragStartLoggedItem(e, fromDate, id, table, dateField, isTimestamp) 
 function calDragEnd(e){
   if(e.target)e.target.style.opacity='';
   _dragFromDate=null; _dragWorkoutId=null; _dragPlannedDate=null; _dragPlannedWODDate=null; _dragLoggedItem=null;
-  document.querySelectorAll('.cal-cell.drag-over').forEach(el=>el.classList.remove('drag-over'));
+  document.querySelectorAll('.cal-cell.drag-over, .week-day-col.drag-over').forEach(el=>el.classList.remove('drag-over'));
 }
 function calDragOver(e,toDate){
   e.preventDefault(); e.dataTransfer.dropEffect='move';
@@ -3208,13 +3227,13 @@ function calDragLeave(e){
 async function calDrop(e,toDate){
   e.preventDefault(); e.currentTarget.classList.remove('drag-over');
 
-  // Handle a generic logged-item drag (WOD scores, Activity Log entries)
+  // Handle a generic logged-item drag (WOD scores, Activity Log entries, assigned workouts)
   if (_dragLoggedItem && _dragLoggedItem.fromDate !== toDate) {
-    const {id, table, dateField, isTimestamp} = _dragLoggedItem;
+    const {id, table, dateField, isTimestamp, userField} = _dragLoggedItem;
     _dragLoggedItem = null;
     const newVal = isTimestamp ? (toDate + 'T12:00:00') : toDate;
     try {
-      await db(table,'PATCH',{[dateField]:newVal},`?id=eq.${id}&user_id=eq.${currentUser.id}`);
+      await db(table,'PATCH',{[dateField]:newVal},`?id=eq.${id}&${userField||'user_id'}=eq.${currentUser.id}`);
       toast(`Moved to ${new Date(toDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} ✓`);
       selectedDate = toDate;
       renderCalendar();
@@ -6864,7 +6883,7 @@ function initTouchDrag() {
     _touchClone.style.left = (t.clientX - 30) + 'px';
     _touchClone.style.top  = (t.clientY - 15) + 'px';
     // Highlight cell under finger
-    document.querySelectorAll('.cal-cell.drag-over').forEach(el=>el.classList.remove('drag-over'));
+    document.querySelectorAll('.cal-cell.drag-over, .week-day-col.drag-over').forEach(el=>el.classList.remove('drag-over'));
     const el = document.elementFromPoint(t.clientX, t.clientY);
     const cell = el?.closest('.cal-cell');
     if (cell) cell.classList.add('drag-over');
@@ -6876,7 +6895,7 @@ function initTouchDrag() {
     const t = e.changedTouches[0];
     if (_touchEl) _touchEl.style.opacity = '';
     _touchClone.remove(); _touchClone = null;
-    document.querySelectorAll('.cal-cell.drag-over').forEach(el=>el.classList.remove('drag-over'));
+    document.querySelectorAll('.cal-cell.drag-over, .week-day-col.drag-over').forEach(el=>el.classList.remove('drag-over'));
     const el = document.elementFromPoint(t.clientX, t.clientY);
     const cell = el?.closest('.cal-cell');
     const toDate = cell?.getAttribute('data-date') || cell?.querySelector('[data-date]')?.getAttribute('data-date');
@@ -6931,7 +6950,11 @@ function getCellDots(ds) {
   }
   // Show coach-assigned workouts in purple
   assigned.forEach(a => {
-    html += `<span class="cal-workout-dot cal-dot-assigned" title="Assigned by coach">📤 ${a.workout_name}</span>`;
+    html += `<span class="cal-workout-dot cal-dot-assigned" data-date="${ds}" data-id="${a.id}"
+      draggable="true"
+      ondragstart="calDragStartLoggedItem(event,'${ds}','${a.id}','workout_assignments','date',false,'assigned_to')"
+      ondragend="calDragEnd(event)"
+      title="Assigned by coach — drag to reschedule">📤 ${a.workout_name}</span>`;
   });
   // Show WOD scores in green
   const wodScores = _calWODScores[ds] || [];
@@ -15461,6 +15484,45 @@ function cfGoToday() {
   }
 }
 
+// ── CF Calendar Drag & Drop ──
+// Same generic "move a logged entry to another date" pattern as calDragStartLoggedItem()/
+// calDrop() on the Lift-side calendar, kept as its own cf-prefixed copy (own drag state,
+// refreshes via cfRenderCalendar() instead of renderCalendar()) so a drag on one calendar
+// never interferes with a drag on the other.
+let _cfDragLoggedItem = null; // {fromDate, id, table, dateField, isTimestamp, userField}
+
+function cfDragStartLoggedItem(e, fromDate, id, table, dateField, isTimestamp, userField) {
+  _cfDragLoggedItem = {fromDate, id, table, dateField, isTimestamp, userField: userField || 'user_id'};
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', JSON.stringify({fromDate, id, table}));
+  setTimeout(()=>{ if(e.target) e.target.style.opacity = '.4'; }, 0);
+}
+function cfDragEnd(e) {
+  if (e.target) e.target.style.opacity = '';
+  _cfDragLoggedItem = null;
+  document.querySelectorAll('.cal-cell.drag-over, .week-day-col.drag-over').forEach(el=>el.classList.remove('drag-over'));
+}
+function cfDragOver(e, toDate) {
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  if (toDate !== _cfDragLoggedItem?.fromDate) e.currentTarget.classList.add('drag-over');
+}
+function cfDragLeave(e) {
+  if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('drag-over');
+}
+async function cfDrop(e, toDate) {
+  e.preventDefault(); e.currentTarget.classList.remove('drag-over');
+  if (!_cfDragLoggedItem || _cfDragLoggedItem.fromDate === toDate) { _cfDragLoggedItem = null; return; }
+  const {id, table, dateField, isTimestamp, userField} = _cfDragLoggedItem;
+  _cfDragLoggedItem = null;
+  const newVal = isTimestamp ? (toDate + 'T12:00:00') : toDate;
+  try {
+    await db(table,'PATCH',{[dateField]:newVal},`?id=eq.${id}&${userField}=eq.${currentUser.id}`);
+    toast(`Moved to ${new Date(toDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} ✓`);
+    _cfSelectedDate = toDate;
+    cfRenderCalendar();
+  } catch(err) { toast('Move failed — try again'); console.error(err); }
+}
+
 function cfGetCellDots(ds) {
   const scores  = _cfCalScores[ds]  || [];
   const assigned = _cfCalAssigned[ds] || [];
@@ -15468,11 +15530,17 @@ function cfGetCellDots(ds) {
   scores.forEach(s => {
     const isPR = s.notes?.toLowerCase().includes('pr') || s.rx_scaled === 'RX+';
     const dotClass = isPR ? 'cf-cal-dot-pr' : 'cf-cal-dot-score';
-    html += `<span class="cal-workout-dot ${dotClass}">✓ ${s.wod_name}</span>`;
+    html += `<span class="cal-workout-dot ${dotClass}" draggable="true"
+      ondragstart="cfDragStartLoggedItem(event,'${ds}','${s.id}','cf_scores','logged_at',true,'user_id')"
+      ondragend="cfDragEnd(event)"
+      title="${s.wod_name} — drag to move">✓ ${s.wod_name}</span>`;
   });
   if (!scores.length) {
     assigned.forEach(a => {
-      html += `<span class="cal-workout-dot cf-cal-dot-planned">· ${a.workout_name}</span>`;
+      html += `<span class="cal-workout-dot cf-cal-dot-planned" draggable="true"
+        ondragstart="cfDragStartLoggedItem(event,'${ds}','${a.id}','workout_assignments','date',false,'assigned_to')"
+        ondragend="cfDragEnd(event)"
+        title="Assigned by coach — drag to reschedule">· ${a.workout_name}</span>`;
     });
   }
   return html;
@@ -15497,7 +15565,8 @@ function cfBuildCalGrid() {
     const ds = cfDateStr(year,month,day);
     const isToday = ds===today, isSel = ds===_cfSelectedDate;
     cells += `<div class="cal-cell ${otherMonth?'other-month':''} ${isToday?'today':''} ${isSel?'selected':''}"
-      onclick="cfSelectDay('${ds}')">
+      onclick="cfSelectDay('${ds}')"
+      ondragover="cfDragOver(event,'${ds}')" ondragleave="cfDragLeave(event)" ondrop="cfDrop(event,'${ds}')">
       <div class="cal-day-num">${day}</div>
       ${cfGetCellDots(ds)}
     </div>`;
@@ -15546,15 +15615,20 @@ function cfBuildWeekView() {
     const assigned = _cfCalAssigned[ds] || [];
     let chips = '';
     scores.forEach(s => {
-      chips += `<div class="week-workout-chip" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30">✓ ${s.wod_name} <span style="font-family:var(--mono);font-size:10px">${s.score}</span></div>`;
+      chips += `<div class="week-workout-chip" draggable="true"
+        ondragstart="cfDragStartLoggedItem(event,'${ds}','${s.id}','cf_scores','logged_at',true,'user_id')" ondragend="cfDragEnd(event)"
+        style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30" title="${s.wod_name} — drag to move">✓ ${s.wod_name} <span style="font-family:var(--mono);font-size:10px">${s.score}</span></div>`;
     });
     if (!scores.length) {
       assigned.forEach(a => {
-        chips += `<div class="week-workout-chip" style="background:var(--purple-light);color:var(--purple)">· ${a.workout_name}</div>`;
+        chips += `<div class="week-workout-chip" draggable="true"
+          ondragstart="cfDragStartLoggedItem(event,'${ds}','${a.id}','workout_assignments','date',false,'assigned_to')" ondragend="cfDragEnd(event)"
+          style="background:var(--purple-light);color:var(--purple)" title="${a.workout_name} — drag to reschedule">📤 ${a.workout_name}</div>`;
       });
     }
     if (!chips) chips = `<div class="week-day-empty">Rest</div>`;
-    html += `<div class="week-day-col ${isToday?'today':''} ${isSel?'selected':''}" onclick="cfSelectDay('${ds}')">
+    html += `<div class="week-day-col ${isToday?'today':''} ${isSel?'selected':''}" onclick="cfSelectDay('${ds}')"
+      ondragover="cfDragOver(event,'${ds}')" ondragleave="cfDragLeave(event)" ondrop="cfDrop(event,'${ds}')">
       <div class="week-day-header">
         <div class="week-day-dow">${DOWS[d.getDay()]}</div>
         <div class="week-day-num">${isToday?`<div style="background:var(--cf-green);color:#0d0d0d;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">${d.getDate()}</div>`:d.getDate()}</div>
