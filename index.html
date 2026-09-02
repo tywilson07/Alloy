@@ -11224,7 +11224,7 @@ function cfBuilderLoadToTrack(wod) {
 let _cfFsActive = false;
 let _cfFsTotalSeconds = 0; // for progress bar
 
-function cfEnterFullscreen() {
+function _cfEnterFullscreenCore() {
   const fs = document.getElementById('cf-fullscreen-timer');
   if (!fs) return;
 
@@ -11785,48 +11785,13 @@ function wlbRenderSection(section) {
 }
 
 
-function wlbRerenderRow(section, idx) {
-  const list = wlbMvList(section);
-  const mv = list[idx];
-  if (!mv) return;
-
-  // Check library definition first, fall back to keyword detection
-  const def = typeof cfGetMovementDef === 'function' ? cfGetMovementDef(mv.name) : null;
-  if (def) {
-    if (def.measurement === 'dist_run') mv.unit = 'miles';
-    else if (def.measurement === 'dist_carry' || def.measurement === 'dist_carry_wt') mv.unit = 'meters';
-    else if (def.measurement === 'machine') mv.unit = 'calories';
-    else if (def.measurement === 'time') mv.unit = 'seconds';
-    else mv.unit = 'reps';
-    mv._measurement = def.measurement;
-  } else {
-    const type = wlbGetMovementType(mv.name || '');
-    mv.unit = wlbDefaultUnit(type);
-    mv._measurement = null;
-  }
-
-  // Suppress blur-triggered hide while we rebuild the DOM
-  _wlbSuppressHide = true;
-  wlbRenderSection(section);
-  wlbUpdatePreview();
-
-  // Re-focus and re-show suggestions
-  setTimeout(() => {
-    _wlbSuppressHide = false;
-    const container = document.getElementById(wlbMvContainerId(section));
-    const inputs = container?.querySelectorAll('.wlb-mv-name');
-    if (inputs?.[idx]) {
-      const input = inputs[idx];
-      input.focus();
-      const len = input.value.length;
-      input.setSelectionRange(len, len);
-      // Re-show suggestions if still typing
-      if (input.value.length >= 2) {
-        wlbShowSuggestions(input, section, idx);
-      }
-    }
-  }, 30);
-}
+// wlbRerenderRow() used to have a first definition here — dead on arrival (a duplicate
+// declaration further down silently shadowed it via hoisting, same as the other
+// duplicates found in this file). Verified harmless before removing: this dead copy's
+// only caller is wlbPickSuggestion(), which already wraps the call in its own
+// _wlbSuppressHide handling — so this copy's internal suppress/re-show-suggestions
+// logic was both redundant AND would have reopened the suggestions dropdown
+// immediately after every pick, which the live copy correctly does not do.
 
 function wlbRenderMovements() {
   wlbRenderSection('main');
@@ -12614,10 +12579,19 @@ function wlbSyncWODCard() {
   if (wcProgress && fsProgress) wcProgress.style.width = fsProgress.style.width;
 }
 
-// Also update fullscreen TV to show movements
-const _origCfEnterFullscreen = cfEnterFullscreen;
+// Also update fullscreen TV to show movements.
+// NOTE: this used to read `const _origCfEnterFullscreen = cfEnterFullscreen` to capture the
+// original implementation above before redefining the same name — but JS hoists ALL
+// function declarations in a scope before any code runs, so a second `function
+// cfEnterFullscreen(){}` here means the name already resolved to THIS function by the time
+// that const line executed. It was capturing itself, not the original — every call to
+// cfEnterFullscreen() recursed into itself infinitely (stack overflow), silently swallowed
+// by the `try{cfEnterFullscreen()}catch(e){}` at every call site. TV/fullscreen mode has
+// never actually activated as a result. Fixed by renaming the original to
+// _cfEnterFullscreenCore() (above) so this wrapper calls a distinctly-named function instead
+// of relying on hoisting to preserve "the old version of a redeclared name" — it can't.
 function cfEnterFullscreen() {
-  _origCfEnterFullscreen();
+  _cfEnterFullscreenCore();
   cfFsRenderMovements();
 }
 
@@ -16192,39 +16166,10 @@ function cfPickCustomWOD(ds, name) {
 }
 
 // cfRenderDashboard now redirects to unified calendar
-function cfRenderDashboard() {
-  navToCalendar();
-  return;
-  // Always force week view on entry
-  _cfCalView = 'week';
-
-  // Init week start anchored to today
-  const now = new Date();
-  const sunday = new Date(now);
-  sunday.setDate(now.getDate() - now.getDay());
-  _cfCalWeekStart = sunday.toISOString().slice(0,10);
-  _cfSelectedDate = cfTodayStr();
-
-  // Force correct display states immediately — before any async
-  const monthView = document.getElementById('cf-month-view');
-  const weekView  = document.getElementById('cf-week-view');
-  const weekStrip = document.getElementById('cf-week-strip');
-  const title     = document.getElementById('cf-cal-month-title');
-  if (monthView) monthView.style.display = 'none';
-  if (weekView)  weekView.style.display  = 'block';
-  if (weekStrip) weekStrip.style.display = 'none';
-
-  // Sync toggle buttons
-  document.getElementById('cf-view-month-btn')?.classList.remove('active');
-  document.getElementById('cf-view-week-btn')?.classList.add('active');
-
-  // Render week grid immediately with empty data (instant paint)
-  cfBuildWeekView();
-  cfRenderDayPanel(_cfSelectedDate);
-
-  // Then load data async and re-render with scores
-  cfRenderCalendar();
-}
+// cfRenderDashboard() used to live here as an early-return shim (its whole body past
+// `navToCalendar();return;` was already dead on arrival) — a duplicate declaration
+// further down silently shadowed it anyway, so removed as dead code. See the live
+// definition below (renders the featured-WOD dashboard, not a calendar redirect).
 
 // ═══════════════════════════════════════════════════
 // ALLOY — CROSSFIT MODE
@@ -17010,84 +16955,15 @@ function cfSpeak(text) {
   } catch(e) {}
 }
 
-function cfStartWithCountdown() {
-  const overlay = document.getElementById('cf-countdown-overlay');
-  const numEl = document.getElementById('cf-countdown-number');
-  if (!overlay || !numEl) { cfToggleTimer(); return; }
-  if (_cfLeadinSeconds === 0) { cfToggleTimer(); return; }
-
-  let count = _cfLeadinSeconds;
-  numEl.textContent = count;
-  numEl.style.color = 'var(--text-muted)';
-  numEl.style.fontSize = '96px';
-  numEl.style.transform = 'scale(1)';
-  // Show BOTH overlays — cf-countdown-overlay is position:fixed so covers everything
-  overlay.style.display = 'flex';
-  const wcOverlay = document.getElementById('wc-countdown-overlay');
-  const wcNum = document.getElementById('wc-countdown-number');
-  if (wcOverlay) {
-    wcOverlay.style.display = 'flex';
-    if (wcNum) { wcNum.textContent = count; wcNum.style.color = 'rgba(255,255,255,.5)'; wcNum.style.fontSize = '120px'; }
-  }
-
-  if (_cfCountdownInterval) clearInterval(_cfCountdownInterval);
-
-  _cfCountdownInterval = setInterval(() => {
-    count--;
-    if (count > 3) {
-      numEl.textContent = count;
-      numEl.style.color = 'var(--text-muted)';
-      const wcNP = document.getElementById('wc-countdown-number'); if (wcNP) wcNP.textContent = count;
-    } else if (count === 3) {
-      numEl.textContent = '3';
-      numEl.style.color = 'var(--cf-green)';
-      numEl.style.transform = 'scale(1.3)';
-      setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 200);
-      cfSpeak('3');
-      const wn3 = document.getElementById('wc-countdown-number'); if (wn3) { wn3.textContent='3'; wn3.style.color='var(--cf-green)'; }
-    } else if (count === 2) {
-      numEl.textContent = '2';
-      numEl.style.transform = 'scale(1.3)';
-      setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 200);
-      cfSpeak('2');
-      const wn2 = document.getElementById('wc-countdown-number'); if (wn2) { wn2.textContent='2'; }
-    } else if (count === 1) {
-      numEl.textContent = '1';
-      numEl.style.transform = 'scale(1.3)';
-      setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 200);
-      cfSpeak('1');
-      const wn1 = document.getElementById('wc-countdown-number'); if (wn1) { wn1.textContent='1'; }
-    } else if (count === 0) {
-      numEl.textContent = 'GO!';
-      numEl.style.color = '#fff';
-      numEl.style.fontSize = '72px';
-      cfSpeak('Go!');
-      const wn0 = document.getElementById('wc-countdown-number'); if (wn0) { wn0.textContent='GO!'; wn0.style.color='#fff'; wn0.style.fontSize='72px'; }
-    } else {
-      clearInterval(_cfCountdownInterval);
-      _cfCountdownInterval = null;
-      overlay.style.display = 'none';
-      numEl.style.fontSize = '96px';
-      // Hide WOD card countdown too
-      const wcOv = document.getElementById('wc-countdown-overlay');
-      if (wcOv) wcOv.style.display = 'none';
-      cfToggleTimer();
-    }
-  }, 1000);
-}
-
-function cfCancelCountdown() {
-  if (_cfCountdownInterval) {
-    clearInterval(_cfCountdownInterval);
-    _cfCountdownInterval = null;
-  }
-  if (window.speechSynthesis) window.speechSynthesis.cancel();
-  const overlay = document.getElementById('cf-countdown-overlay');
-  if (overlay) overlay.style.display = 'none';
-  const wcOverlay = document.getElementById('wc-countdown-overlay');
-  if (wcOverlay) wcOverlay.style.display = 'none';
-}
-
+// cfStartWithCountdown() and its only caller cfTimerStartOrPause() removed here —
+// both were unreachable dead code (a duplicate `function cfStartWithCountdown(){}`
+// declared later in the file silently shadowed this one via JS hoisting, and nothing
+// in the live UI ever called cfTimerStartOrPause() in the first place; both real Start
+// buttons call cfWODCardStart() -> cfRunLeadinCountdown(), which already has this same
+// countdown logic — configurable lead-in, spoken+beeped countdown, WOD card sync — done
+// correctly). The duplicate cfCancelCountdown() below this point (which IS reachable,
+// from cfWODCardStart()) was also missing this one's speechSynthesis.cancel() call —
+// fixed at its live definition further down instead of restoring this dead copy.
 
 // Single entry point for starting timer from WOD card or timer block
 
@@ -17236,6 +17112,11 @@ function cfCancelCountdown() {
     clearInterval(_cfCountdownInterval);
     _cfCountdownInterval = null;
   }
+  // Without this, cancelling the countdown hid the overlay but left the spoken
+  // "3... 2... 1..." utterance still talking — the countdown looked cancelled but
+  // kept counting down out loud. Lost when a duplicate declaration of this same
+  // function (this one) silently shadowed an earlier copy that had this line.
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
   const overlay = document.getElementById('cf-countdown-overlay');
   if (overlay) overlay.style.display = 'none';
   const wcOverlay = document.getElementById('wc-countdown-overlay');
