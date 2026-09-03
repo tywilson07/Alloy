@@ -1948,6 +1948,9 @@ console.log('Alloy', APP_VERSION);
 // ═══════════════════════════════════════════════════
 const SUPA_URL = 'https://mjlmktglhpwrfxconicy.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qbG1rdGdsaHB3cmZ4Y29uaWN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5NjAyMzksImV4cCI6MjEwMDUzNjIzOX0.81LRaeiZ0Zl0YdiARTcPuJp1hrmsLR-_eZSDGDjmeHw';
+// Public VAPID key for Web Push — meant to be public, same treatment as the anon key above.
+// Paired private key lives only as a Supabase Edge Function secret (send-push), never in the repo.
+const VAPID_PUBLIC_KEY = 'BEyMlUF0tqOT6vcjbePf82ViGtBv49zynDODxP5s4lOecUEdTeJ9WxwuOzhinFV36Ohvhny4L44Z-lzb7ljFDR8';
 const AI_WORKER_URL = 'https://alloy-ai.tywilson07.workers.dev';
 
 // Call the Alloy AI Worker
@@ -7223,7 +7226,19 @@ async function msgSend() {
     // Realtime will also echo this back and re-render — reload directly too so the
     // sender sees their own message immediately even if Realtime is slow/unavailable.
     await msgLoadThread();
+    msgTriggerPush(_msgActiveConvId, currentUser.id, text);
   } catch(e) { toast('Message failed to send'); input.value = text; }
+}
+
+// Fire-and-forget call to the send-push Edge Function — actually delivering the push
+// notification server-side (so it works even if the recipient's app is closed) is
+// its job, not this one's. Never allowed to affect whether the message itself sent.
+function msgTriggerPush(conversationId, senderId, body) {
+  fetch(`${SUPA_URL}/functions/v1/send-push`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${SUPA_KEY}`, 'apikey': SUPA_KEY},
+    body: JSON.stringify({conversationId, senderId, body})
+  }).catch(()=>{}); // best-effort — push not landing should never surface as an error to the sender
 }
 
 async function msgMarkRead() {
@@ -7314,6 +7329,111 @@ async function msgHandleGlobalInsert(m) {
     const name = sender?.[0]?.username || 'Someone';
     toast(`💬 New message from ${name}`);
   } catch(e) { toast('💬 New message'); }
+}
+
+// ── Push notifications ──
+// Delivery when the app is closed/backgrounded — msgHandleGlobalInsert() above only covers
+// "the app happens to be open right now". Actually sending the push is server-side (the
+// send-push Edge Function, triggered by msgTriggerPush() in msgSend()); everything here is
+// just the browser-side half: asking permission, subscribing, and remembering the
+// subscription so the server has somewhere to send to.
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const arr = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) arr[i] = rawData.charCodeAt(i);
+  return arr;
+}
+
+async function renderPushStatus() {
+  const el = document.getElementById('push-status-section');
+  if (!el) return;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    el.innerHTML = `<div style="font-size:12px;color:var(--text-muted)">Push notifications aren't available in this browser.${isIOS ? ' On iPhone: open Alloy from its Home Screen icon (Share → Add to Home Screen) — notifications only work from the installed app, not a regular Safari tab.' : ''}</div>`;
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      el.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:14px;font-weight:600;color:var(--text-primary)">✓ Enabled</div>
+            <div style="font-size:12px;color:var(--text-muted)">You'll be notified of new messages even when Alloy is closed</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="pushDisable()">Turn Off</button>
+        </div>`;
+    } else {
+      el.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:14px;font-weight:600;color:var(--text-primary)">Message Alerts</div>
+            <div style="font-size:12px;color:var(--text-muted)">Get notified when you receive a new message, even if Alloy isn't open</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="pushSubscribe()">Enable</button>
+        </div>`;
+    }
+  } catch(e) {
+    el.innerHTML = `<div style="font-size:12px;color:var(--text-muted)">Couldn't check notification status.</div>`;
+  }
+}
+
+async function pushSubscribe() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    toast('Push notifications not supported in this browser');
+    return;
+  }
+  try {
+    // Must be requested from a real user tap (this function is only ever called from one) —
+    // iOS silently ignores a permission request that isn't inside a user-gesture call stack.
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { toast(perm === 'denied' ? 'Notifications blocked — check your browser/device settings' : 'Notifications not enabled'); return; }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    const raw = sub.toJSON();
+    try {
+      await db('push_subscriptions','POST',{
+        user_id: currentUser.id, endpoint: raw.endpoint,
+        p256dh: raw.keys.p256dh, auth: raw.keys.auth, user_agent: navigator.userAgent
+      });
+    } catch(e) {
+      // endpoint already on file (re-enabling on a device that was already subscribed, possibly
+      // under a different account before) — update it to point at this user instead of erroring.
+      await db('push_subscriptions','PATCH',{
+        user_id: currentUser.id, p256dh: raw.keys.p256dh, auth: raw.keys.auth, user_agent: navigator.userAgent
+      },`?endpoint=eq.${encodeURIComponent(raw.endpoint)}`);
+    }
+    toast('Notifications enabled ✓');
+    renderPushStatus();
+  } catch(e) {
+    toast('Could not enable notifications');
+    console.error(e);
+  }
+}
+
+async function pushDisable() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await db('push_subscriptions','DELETE',null,`?endpoint=eq.${encodeURIComponent(sub.endpoint)}`).catch(()=>{});
+      await sub.unsubscribe();
+    }
+    toast('Notifications turned off');
+    renderPushStatus();
+  } catch(e) {
+    toast('Could not turn off notifications');
+  }
 }
 
 // ═══════════════════════════════════════════════════
@@ -10658,6 +10778,12 @@ function renderSettings() {
         </div>
       </div>
 
+      <!-- Notifications -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:12px">Notifications</div>
+        <div id="push-status-section"><div style="font-size:12px;color:var(--text-muted)">Checking...</div></div>
+      </div>
+
       <!-- Tour -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px">
         <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:12px">Help</div>
@@ -10681,6 +10807,7 @@ function renderSettings() {
         Alloy — Lift &amp; WOD<br>Built by Tyler Wilson<br><span style="font-family:var(--mono);opacity:.7">v${APP_VERSION}</span>
       </div>
     </div>`;
+  renderPushStatus();
 }
 
 // ═══════════════════════════════════════════════════
