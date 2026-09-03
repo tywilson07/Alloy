@@ -78,6 +78,14 @@ html,body{height:100%;background:var(--bg);color:var(--text-primary);font-family
 #sidebar{width:var(--sidebar);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 
+/* ── MESSAGES FLOATING BUBBLE ── */
+/* Sits above #bottom-nav (z-index 50) but well below .modal-overlay (600) — an open modal
+   correctly covers it — and below the Partner/Group WOD invite banner (9998, see
+   cfShowIncomingInvite) — the one real position conflict found (that banner spans nearly full
+   width around the same corner), so it correctly wins if both are ever on screen at once. */
+#msg-fab{position:fixed;bottom:80px;right:16px;width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;z-index:90;display:none;align-items:center;justify-content:center;font-size:24px;background:var(--orange);color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.35);transition:background .2s}
+body.cf-mode #msg-fab{background:var(--cf-green);color:#0d0d0d}
+
 /* ── BOTTOM NAV ── */
 #bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:var(--surface);border-top:1px solid var(--border);z-index:50}
 .bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:none;border:none;color:var(--text-muted);font-family:var(--font);font-size:9.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;padding-bottom:4px;transition:color .12s}
@@ -1842,6 +1850,13 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
   </div>
 </div>
 
+<!-- MESSAGES FLOATING BUBBLE — persistent across every view (see the CSS block for #msg-fab
+     for layering notes). Visibility driven entirely by msgBubbleUpdateVisibility(). -->
+<button id="msg-fab" onclick="nav('messages')" title="Messages">
+  💬
+  <span class="msg-unread-dot" style="display:none;position:absolute;top:2px;right:2px;width:12px;height:12px;border-radius:50%;background:#ff3b30;border:2px solid var(--surface)"></span>
+</button>
+
 <!-- ONBOARDING TOUR OVERLAY -->
 <div id="tour-overlay" style="display:none;position:fixed;inset:0;z-index:10000">
   <div id="tour-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);transition:clip-path .3s"></div>
@@ -2117,6 +2132,7 @@ function doLogout() {
   msgUnsubscribe();
   clearSession();
   currentUser = null;
+  msgBubbleUpdateVisibility(); // hide the floating bubble immediately rather than waiting for the interval
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('login-pass').value = '';
 }
@@ -2170,6 +2186,7 @@ function enterApp() {
   cfListenForGroupInvites(); // live-only group/Partner WOD invites — see ALLOY — GROUP / PARTNER WOD SESSIONS
   msgStartGlobalListener(); // live "you have a new message" badge+toast for the rest of this session — refreshes the badge itself on start
   checkNotificationPrompt(); // one-time "enable notifications?" soft-ask — see its own comment for why this isn't just an instant native permission request
+  msgBubbleUpdateVisibility(); // show the floating Messages bubble right away, not up to 1s late
 }
 
 // ═══════════════════════════════════════════════════
@@ -7304,6 +7321,21 @@ async function msgRefreshUnreadBadge() {
 // can't do anything once the app itself is closed or backgrounded on a locked phone — that
 // needs real push notifications (a server-side trigger + push subscriptions), which is a
 // separate, bigger piece of infrastructure this isn't attempting.
+// Shows/hides the floating Messages bubble (#msg-fab). Re-checked once a second for the whole
+// session rather than hooked into every individual timer/countdown/fullscreen transition
+// function — simpler and more robust than trying to enumerate every place a WOD can start,
+// pause, or end, at a cost too small to matter (one boolean check a second).
+function msgBubbleUpdateVisibility() {
+  const bubble = document.getElementById('msg-fab');
+  if (!bubble) return;
+  if (!currentUser) { bubble.style.display = 'none'; return; }
+  // Suppressed during an active WOD (timer running, mid-countdown, or the fullscreen TV
+  // display) — Tyler's call: a floating icon shouldn't sit on top of or distract from that.
+  const wodActive = !!(_cfTimerRunning || _cfCountdownInterval || _cfFsActive);
+  bubble.style.display = wodActive ? 'none' : 'flex';
+}
+setInterval(msgBubbleUpdateVisibility, 1000);
+
 async function msgStartGlobalListener() {
   if (_msgGlobalChannel || !currentUser) return;
   try {
