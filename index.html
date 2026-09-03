@@ -16593,7 +16593,7 @@ function alloySwitchMode(mode) {
   // Update calendar log button label + color
   const calLogBtn = document.getElementById('cal-log-btn');
   if (calLogBtn) {
-    calLogBtn.textContent = _cfMode ? '+ Log WOD' : '+ Log';
+    calLogBtn.textContent = '+ Log'; // was '+ Log WOD' in CF mode — wrapped to two lines next to the date range, unlike the Lift side's shorter label
     calLogBtn.style.background = _cfMode ? 'var(--cf-green)' : '';
     calLogBtn.style.color = _cfMode ? '#0d0d0d' : '';
     calLogBtn.style.boxShadow = _cfMode ? '0 0 16px rgba(57,211,83,.25)' : '';
