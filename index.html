@@ -2167,6 +2167,7 @@ function enterApp() {
   cfPreloadVoiceClips(); // background-fetch WOD timer voice clips (routes to TV, unlike speechSynthesis)
   cfListenForGroupInvites(); // live-only group/Partner WOD invites — see ALLOY — GROUP / PARTNER WOD SESSIONS
   msgStartGlobalListener(); // live "you have a new message" badge+toast for the rest of this session — refreshes the badge itself on start
+  checkNotificationPrompt(); // one-time "enable notifications?" soft-ask — see its own comment for why this isn't just an instant native permission request
 }
 
 // ═══════════════════════════════════════════════════
@@ -7434,6 +7435,56 @@ async function pushDisable() {
   } catch(e) {
     toast('Could not turn off notifications');
   }
+}
+
+// One-time "enable notifications?" prompt on login — our own explainer modal first, THEN the
+// real OS permission dialog if they say yes. Cold-triggering the native permission prompt with
+// no context tends to get reflexively denied; asking why first (this modal) and only then
+// calling pushSubscribe() (which is what actually fires Notification.requestPermission())
+// tends to land much better. Shown at most once ever per user per device — tracked in
+// localStorage, same pattern as the per-device mode/weight-unit preferences elsewhere in this
+// file — never re-nagged after that; Settings is always there if they change their mind later.
+async function checkNotificationPrompt() {
+  if (!currentUser) return;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return; // not supported here at all
+  if (typeof Notification !== 'undefined' && Notification.permission === 'denied') return; // already said no at the OS level — asking again would be pointless noise
+  const seenKey = 'alloy_notif_prompt_seen_' + currentUser.id;
+  try { if (localStorage.getItem(seenKey)) return; } catch(e) {}
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) return; // already enabled
+  } catch(e) { return; }
+
+  // Small delay so this doesn't slap the user the instant the calendar starts rendering
+  setTimeout(() => {
+    try { if (localStorage.getItem(seenKey)) return; } catch(e) {} // could've been set by another tab/flow in the meantime
+    const isCoach = currentUser.role === 'admin';
+    document.getElementById('modal-title').textContent = '🔔 Stay in the loop';
+    document.getElementById('modal-body').innerHTML = `
+      <div style="text-align:center;padding:8px 0 4px">
+        <div style="font-size:44px;margin-bottom:10px">🔔</div>
+        <div style="font-size:14px;color:var(--text-secondary);line-height:1.5">
+          Get notified the instant ${isCoach ? 'an athlete messages you' : 'your coach messages you'} —
+          even when Alloy is closed. You can turn this off anytime in Settings.
+        </div>
+      </div>`;
+    document.getElementById('modal-footer').innerHTML = `
+      <button class="btn btn-ghost" onclick="notifPromptDismiss()">Maybe Later</button>
+      <button class="btn btn-primary" onclick="notifPromptAccept()">Enable Notifications</button>`;
+    showModal();
+  }, 1500);
+}
+
+function notifPromptDismiss() {
+  try { localStorage.setItem('alloy_notif_prompt_seen_' + currentUser.id, '1'); } catch(e) {}
+  closeModal();
+}
+
+function notifPromptAccept() {
+  try { localStorage.setItem('alloy_notif_prompt_seen_' + currentUser.id, '1'); } catch(e) {}
+  closeModal();
+  pushSubscribe(); // this is what actually triggers the real OS permission dialog
 }
 
 // ═══════════════════════════════════════════════════
