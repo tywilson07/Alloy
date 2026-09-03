@@ -891,7 +891,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
     </div>
     <div class="login-sub" style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:var(--cf-green);margin-bottom:28px">Lift. Train. Perform.</div>
     <div id="login-error" class="error-msg" style="display:none"></div>
-    <div class="field"><label>Username</label><input id="login-user" placeholder="e.g. tyler" autocapitalize="none" autocomplete="username"></div>
+    <div class="field"><label>Username or Email</label><input id="login-user" placeholder="e.g. tyler" autocapitalize="none" autocomplete="username"></div>
     <div class="field"><label>Password</label><input id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
     <div style="text-align:right;margin:-6px 0 12px">
       <button onclick="openForgotPassword()" style="background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;text-decoration:underline;padding:0">Forgot password?</button>
@@ -899,7 +899,8 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
     <button class="btn btn-primary btn-full" onclick="doLogin()" style="margin-bottom:12px">Sign In</button>
     <div class="divider"></div>
     <div style="font-size:12px;color:var(--gray-500);text-align:center;margin-bottom:10px">New here? Create an account.</div>
-    <div class="field"><label>Username</label><input id="reg-user" placeholder="Choose a username" autocapitalize="none"></div>
+    <div class="field"><label>Username</label><input id="reg-user" placeholder="Choose a username" autocapitalize="none" autocomplete="username"></div>
+    <div class="field"><label>Email</label><input id="reg-email" type="email" placeholder="you@example.com" autocapitalize="none" autocomplete="email"></div>
     <div class="field"><label>Password</label><input id="reg-pass" type="password" placeholder="Choose a password"></div>
     <button class="btn btn-white btn-full" onclick="doRegister()">Create Account</button>
   </div>
@@ -2077,12 +2078,15 @@ function saveSession(u) { localStorage.setItem('notch_user', JSON.stringify(u));
 function clearSession() { localStorage.removeItem('notch_user'); }
 
 async function doLogin() {
-  const username = document.getElementById('login-user').value.trim().toLowerCase();
+  const identifier = document.getElementById('login-user').value.trim().toLowerCase();
   const pass     = document.getElementById('login-pass').value;
-  if (!username || !pass) { showLoginError('Enter username and password'); return; }
+  if (!identifier || !pass) { showLoginError('Enter username and password'); return; }
   try {
     const hash = await hashPassword(pass);
-    const rows = await db('users','GET',null,`?username=eq.${encodeURIComponent(username)}&password_hash=eq.${hash}&select=*`);
+    // Accepts either username or email in the same field — lets people log in with
+    // whichever they remember, without needing two separate login forms.
+    const idEnc = encodeURIComponent(identifier);
+    const rows = await db('users','GET',null,`?or=(username.eq.${idEnc},email.eq.${idEnc})&password_hash=eq.${hash}&select=*`);
     if (!rows || rows.length === 0) { showLoginError('Incorrect username or password'); return; }
     currentUser = rows[0];
     // Load display_name if not already in row
@@ -2104,15 +2108,22 @@ async function doLogin() {
 
 async function doRegister() {
   const username = document.getElementById('reg-user').value.trim().toLowerCase();
+  const email    = document.getElementById('reg-email').value.trim().toLowerCase();
   const pass     = document.getElementById('reg-pass').value;
-  if (!username || !pass) { showLoginError('Fill in both fields to register'); return; }
+  if (!username || !email || !pass) { showLoginError('Fill in all fields to register'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showLoginError('Enter a valid email address'); return; }
   if (pass.length < 6) { showLoginError('Password must be at least 6 characters'); return; }
   try {
     const hash = await hashPassword(pass);
-    // Check if username taken
-    const existing = await db('users','GET',null,`?username=eq.${encodeURIComponent(username)}&select=id`);
-    if (existing && existing.length > 0) { showLoginError('That username is already taken'); return; }
-    const rows = await db('users','POST',{username, password_hash:hash, role:'athlete'});
+    // Check if username or email is taken (email uniqueness matters here too — a reset
+    // request by email couldn't tell whose password to reset otherwise).
+    const existing = await db('users','GET',null,`?or=(username.eq.${encodeURIComponent(username)},email.eq.${encodeURIComponent(email)})&select=username,email`);
+    if (existing && existing.length > 0) {
+      const taken = existing.find(u => u.username === username);
+      showLoginError(taken ? 'That username is already taken' : 'That email is already registered');
+      return;
+    }
+    const rows = await db('users','POST',{username, email, password_hash:hash, role:'athlete'});
     currentUser = rows[0];
     saveSession(currentUser);
     enterApp();
@@ -4780,7 +4791,7 @@ async function renderPrograms(){
     // Admin: assign panel — multi-program chips per athlete
     const assignPanel=document.getElementById('assign-panel');
     if(isAdmin){
-      const allUsers=await db('users','GET',null,'?select=id,username,role');
+      const allUsers=await db('users','GET',null,'?select=id,username,role,display_name');
       const athletes=(allUsers||[]).filter(u=>u.id!==currentUser.id);
       if(athletes.length){
         const allAssigns=await db('program_assignments','GET',null,'?select=*');
@@ -4796,8 +4807,8 @@ async function renderPrograms(){
           }).join('');
           return `<div style="padding:10px 0;border-bottom:1px solid var(--gray-100)">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
-              <div style="font-size:13px;font-weight:600">👤 ${u.username}</div>
-              <button class="btn btn-xs btn-white" onclick="openAssignProgramPicker('${u.id}','${u.username}')">+ Add Program</button>
+              <div style="font-size:13px;font-weight:600">👤 ${u.display_name||u.username}</div>
+              <button class="btn btn-xs btn-white" onclick="openAssignProgramPicker('${u.id}','${(u.display_name||u.username).replace(/'/g,"\\'")}')">+ Add Program</button>
             </div>
             <div>${chips || `<span style="font-size:11.5px;color:var(--text-muted);font-style:italic">No active programs</span>`}</div>
           </div>`;
@@ -5388,7 +5399,7 @@ async function renderWODPrograms(){
     const assignPanel = document.getElementById('wod-assign-panel');
     if (assignPanel) {
       if (isAdmin) {
-        const allUsers = await db('users','GET',null,'?select=id,username,role');
+        const allUsers = await db('users','GET',null,'?select=id,username,role,display_name');
         const athletes = (allUsers||[]).filter(u=>u.id!==currentUser.id);
         if (athletes.length) {
           const allAssigns = await db('wod_program_assignments','GET',null,'?select=*');
@@ -5404,8 +5415,8 @@ async function renderWODPrograms(){
             }).join('');
             return `<div style="padding:10px 0;border-bottom:1px solid var(--gray-100)">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
-                <div style="font-size:13px;font-weight:600">👤 ${u.username}</div>
-                <button class="btn btn-xs btn-white" onclick="openAssignWODProgramPicker('${u.id}','${u.username}')">+ Add Program</button>
+                <div style="font-size:13px;font-weight:600">👤 ${u.display_name||u.username}</div>
+                <button class="btn btn-xs btn-white" onclick="openAssignWODProgramPicker('${u.id}','${(u.display_name||u.username).replace(/'/g,"\\'")}')">+ Add Program</button>
               </div>
               <div>${chips || `<span style="font-size:11.5px;color:var(--text-muted);font-style:italic">No active programs</span>`}</div>
             </div>`;
@@ -5922,7 +5933,7 @@ async function renderAthletes() {
   const body = document.getElementById('athletes-body');
   body.innerHTML = '<div class="loading">Loading athletes...</div>';
   try {
-    const allUsers = await db('users','GET',null,'?select=id,username,role');
+    const allUsers = await db('users','GET',null,'?select=id,username,role,display_name');
     const athletes = (allUsers||[]).filter(u=>u.id!==currentUser.id);
     if (athletes.length === 0) {
       body.innerHTML = `<div class="empty-state"><span class="emo">👥</span><h3>No athletes yet</h3><p>Share your app URL so others can sign up. They'll appear here automatically.</p></div>`;
@@ -5945,8 +5956,8 @@ async function renderAthletes() {
         const thirtyDaysAgo = new Date(Date.now()-30*86400e3).toISOString().slice(0,10);
         const recentCount = (recent||[]).filter(w=>w.date>=thirtyDaysAgo).length;
         return `<div class="athlete-card" onclick="viewAthlete('${u.id}')">
-          <div class="athlete-avatar-lg">${u.username.slice(0,2).toUpperCase()}</div>
-          <div class="athlete-name">${u.username}</div>
+          <div class="athlete-avatar-lg">${(u.display_name||u.username).slice(0,2).toUpperCase()}</div>
+          <div class="athlete-name">${u.display_name||u.username}</div>
           <div class="athlete-meta">Last: ${lastDate}</div>
           <div class="athlete-stats">
             <div class="athlete-stat"><div class="athlete-stat-val">${recentCount}</div><div class="athlete-stat-label">30d workouts</div></div>
@@ -5955,8 +5966,8 @@ async function renderAthletes() {
         </div>`;
       } catch(e) {
         return `<div class="athlete-card" onclick="viewAthlete('${u.id}')">
-          <div class="athlete-avatar-lg">${u.username.slice(0,2).toUpperCase()}</div>
-          <div class="athlete-name">${u.username}</div>
+          <div class="athlete-avatar-lg">${(u.display_name||u.username).slice(0,2).toUpperCase()}</div>
+          <div class="athlete-name">${u.display_name||u.username}</div>
         </div>`;
       }
     }));
@@ -6021,9 +6032,9 @@ async function renderAthleteDetail(athlete, body) {
         <button class="btn btn-primary btn-sm" onclick="openAssignFor('${athlete.id}')">+ Assign Workout</button>
       </div>
       <div class="athlete-detail-header">
-        <div class="athlete-avatar-lg">${athlete.username.slice(0,2).toUpperCase()}</div>
+        <div class="athlete-avatar-lg">${(athlete.display_name||athlete.username).slice(0,2).toUpperCase()}</div>
         <div class="athlete-detail-info">
-          <h2>${athlete.username}</h2>
+          <h2>${athlete.display_name||athlete.username}</h2>
           <div style="font-size:12.5px;color:var(--text-secondary)">${assigns?.length ? `On ${assigns.length} program${assigns.length!==1?'s':''}` : 'No active program'}</div>
         </div>
         <div style="display:flex;gap:16px;margin-left:auto">
@@ -6170,7 +6181,7 @@ async function renderAssignWorkout() {
   const body = document.getElementById('assign-body');
   body.innerHTML = '<div class="loading">Loading...</div>';
   try {
-    const allUsers = await db('users','GET',null,'?select=id,username');
+    const allUsers = await db('users','GET',null,'?select=id,username,display_name');
     const athletes = (allUsers||[]).filter(u=>u.id!==currentUser.id);
     if (athletes.length === 0) {
       body.innerHTML = `<div class="empty-state"><span class="emo">📤</span><h3>No athletes yet</h3><p>Athletes need to sign up first before you can assign workouts.</p></div>`;
@@ -6180,8 +6191,8 @@ async function renderAssignWorkout() {
       const preSelected = u.id === _assignTargetId;
       return `<label class="assign-athlete-chip ${preSelected?'selected':''}" onclick="toggleAssignAthlete(this)">
         <input type="checkbox" value="${u.id}" ${preSelected?'checked':''} style="display:none">
-        <div class="user-avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${u.username.slice(0,2).toUpperCase()}</div>
-        <span>${u.username}</span>
+        <div class="user-avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${(u.display_name||u.username).slice(0,2).toUpperCase()}</div>
+        <span>${u.display_name||u.username}</span>
       </label>`;
     }).join('');
     const today = todayStr();
@@ -7218,9 +7229,9 @@ async function msgGetOrCreateDM(otherUserId) {
 // Who this user can message: coach sees every athlete, athlete sees every coach (admin)
 async function msgLoadCounterparts() {
   if (currentUser.role === 'admin') {
-    return await db('users','GET',null,'?select=id,username&role=neq.admin&order=username');
+    return await db('users','GET',null,'?select=id,username,display_name&role=neq.admin&order=username');
   }
-  return await db('users','GET',null,'?select=id,username&role=eq.admin&order=username');
+  return await db('users','GET',null,'?select=id,username,display_name&role=eq.admin&order=username');
 }
 
 async function renderMessagesView() {
@@ -7234,7 +7245,7 @@ async function renderMessagesView() {
   }
   // Athlete with exactly one coach: skip the picker list, open the thread directly
   if (currentUser.role !== 'admin' && counterparts.length === 1) {
-    return msgOpenThread(counterparts[0].id, counterparts[0].username);
+    return msgOpenThread(counterparts[0].id, counterparts[0].display_name||counterparts[0].username);
   }
   msgRenderList(counterparts);
 }
@@ -7265,11 +7276,11 @@ async function msgRenderList(counterparts) {
       return info ? {...r, lastMessage:info.last.body, lastAt:info.last.created_at, unread:info.unread} : r;
     });
   }
-  rows.sort((a,b) => (b.lastAt||'').localeCompare(a.lastAt||'') || a.username.localeCompare(b.username));
+  rows.sort((a,b) => (b.lastAt||'').localeCompare(a.lastAt||'') || (a.display_name||a.username).localeCompare(b.display_name||b.username));
   body.innerHTML = rows.map(r => `
-    <div class="workout-entry" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px" onclick="msgOpenThread('${r.id}','${r.username.replace(/'/g,"\\'")}')">
+    <div class="workout-entry" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px" onclick="msgOpenThread('${r.id}','${(r.display_name||r.username).replace(/'/g,"\\'")}')">
       <div style="min-width:0">
-        <div class="workout-entry-name">${r.username}</div>
+        <div class="workout-entry-name">${r.display_name||r.username}</div>
         <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${r.lastMessage ? r.lastMessage.replace(/</g,'&lt;') : 'No messages yet'}</div>
       </div>
       ${r.unread ? `<span class="pill pill-green" style="font-size:10px;flex-shrink:0">${r.unread}</span>` : ''}
@@ -7493,8 +7504,8 @@ async function msgHandleGlobalInsert(m) {
   // subscription (msgSubscribe/msgLoadThread) handle rendering it — just avoid a redundant toast.
   if (m.conversation_id === _msgActiveConvId) return;
   try {
-    const sender = await db('users','GET',null,`?id=eq.${m.sender_id}&select=username`);
-    const name = sender?.[0]?.username || 'Someone';
+    const sender = await db('users','GET',null,`?id=eq.${m.sender_id}&select=username,display_name`);
+    const name = sender?.[0]?.display_name || sender?.[0]?.username || 'Someone';
     toast(`💬 New message from ${name}`);
   } catch(e) { toast('💬 New message'); }
 }
@@ -7613,19 +7624,19 @@ async function pushDisable() {
 // file — never re-nagged after that; Settings is always there if they change their mind later.
 async function checkNotificationPrompt() {
   if (!currentUser) return;
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return; // not supported here at all
-  if (typeof Notification !== 'undefined' && Notification.permission === 'denied') return; // already said no at the OS level — asking again would be pointless noise
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) { checkEmailPrompt(); return; } // not supported here at all
+  if (typeof Notification !== 'undefined' && Notification.permission === 'denied') { checkEmailPrompt(); return; } // already said no at the OS level — asking again would be pointless noise
   const seenKey = 'alloy_notif_prompt_seen_' + currentUser.id;
-  try { if (localStorage.getItem(seenKey)) return; } catch(e) {}
+  try { if (localStorage.getItem(seenKey)) { checkEmailPrompt(); return; } } catch(e) {}
   try {
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
-    if (sub) return; // already enabled
-  } catch(e) { return; }
+    if (sub) { checkEmailPrompt(); return; } // already enabled
+  } catch(e) { checkEmailPrompt(); return; }
 
   // Small delay so this doesn't slap the user the instant the calendar starts rendering
   setTimeout(() => {
-    try { if (localStorage.getItem(seenKey)) return; } catch(e) {} // could've been set by another tab/flow in the meantime
+    try { if (localStorage.getItem(seenKey)) { checkEmailPrompt(); return; } } catch(e) {} // could've been set by another tab/flow in the meantime
     const isCoach = currentUser.role === 'admin';
     document.getElementById('modal-title').textContent = '🔔 Stay in the loop';
     document.getElementById('modal-body').innerHTML = `
@@ -7646,12 +7657,48 @@ async function checkNotificationPrompt() {
 function notifPromptDismiss() {
   try { localStorage.setItem('alloy_notif_prompt_seen_' + currentUser.id, '1'); } catch(e) {}
   closeModal();
+  checkEmailPrompt();
 }
 
 function notifPromptAccept() {
   try { localStorage.setItem('alloy_notif_prompt_seen_' + currentUser.id, '1'); } catch(e) {}
   closeModal();
   pushSubscribe(); // this is what actually triggers the real OS permission dialog
+  checkEmailPrompt();
+}
+
+// One-time "add your email?" soft-ask, for accounts created before email became a required
+// signup field. Chained after the notification prompt above (rather than run independently)
+// since both use the same shared #modal-* elements and would otherwise race/clobber each other.
+async function checkEmailPrompt() {
+  if (!currentUser) return;
+  if (currentUser.email) return; // already has one on file
+  const seenKey = 'alloy_email_prompt_seen_' + currentUser.id;
+  try { if (localStorage.getItem(seenKey)) return; } catch(e) {}
+  document.getElementById('modal-title').textContent = '📧 Add your email';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="text-align:center;padding:8px 0 4px">
+      <div style="font-size:44px;margin-bottom:10px">📧</div>
+      <div style="font-size:14px;color:var(--text-secondary);line-height:1.5">
+        Add an email to your account so you can reset your password if you ever get locked out.
+        Never shown to anyone else — you can add or change it anytime in Settings.
+      </div>
+    </div>`;
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="emailPromptDismiss()">Maybe Later</button>
+    <button class="btn btn-primary" onclick="emailPromptAccept()">Add Email</button>`;
+  showModal();
+}
+
+function emailPromptDismiss() {
+  try { localStorage.setItem('alloy_email_prompt_seen_' + currentUser.id, '1'); } catch(e) {}
+  closeModal();
+}
+
+function emailPromptAccept() {
+  try { localStorage.setItem('alloy_email_prompt_seen_' + currentUser.id, '1'); } catch(e) {}
+  closeModal();
+  openChangeEmail(); // reuse the existing Settings "change email" modal
 }
 
 // ═══════════════════════════════════════════════════
@@ -9250,7 +9297,7 @@ function setCalMode(mode) {
 async function loadAthleteChips() {
   if (!_athleteList.length) {
     try {
-      const users = await db('users','GET',null,'?select=id,username&role=neq.admin');
+      const users = await db('users','GET',null,'?select=id,username,display_name&role=neq.admin');
       _athleteList = (users||[])
         .filter(u=>u.id!==currentUser.id)
         .map((u,i)=>({...u, color:ATHLETE_COLORS[i%ATHLETE_COLORS.length]}));
@@ -9271,7 +9318,7 @@ async function loadAthleteChips() {
       style="${_activeAthleteId===a.id?`background:${a.color.hex};border-color:${a.color.hex}`:`border-color:${a.color.hex}40;color:${a.color.hex}`}"
       onclick="selectAthleteChip('${a.id}')">
       <span style="width:8px;height:8px;border-radius:50%;background:${a.color.hex};flex-shrink:0"></span>
-      ${a.username}
+      ${a.display_name||a.username}
     </button>`).join('');
   if (_activeAthleteId) renderAthleteCalendar();
 }
@@ -9674,7 +9721,7 @@ async function renderAthleteDayPanel(ds) {
       <div class="day-panel-date">${label}</div>
       <div style="display:flex;align-items:center;gap:6px">
         <span style="width:8px;height:8px;border-radius:50%;background:${ath.color.hex}"></span>
-        <span style="font-size:12px;font-weight:700;color:${ath.color.hex}">${ath.username}</span>
+        <span style="font-size:12px;font-weight:700;color:${ath.color.hex}">${ath.display_name||ath.username}</span>
         ${logs.length?`<span class="pill pill-green" style="font-size:10px">✓ Logged</span>`:''}
         ${wodScores.length?`<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);font-size:10px">⚡ WOD</span>`:''}
       </div>
@@ -9691,14 +9738,14 @@ async function editCoachNote(ds, athleteId, existingId) {
   const existing = _athCoachNotes[ds]?.note||'';
   const ath = _athleteList.find(a=>a.id===athleteId);
   const d = new Date(ds+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
-  document.getElementById('modal-title').textContent = `Note for ${ath?.username||'Athlete'}`;
+  document.getElementById('modal-title').textContent = `Note for ${ath?.display_name||ath?.username||'Athlete'}`;
   document.getElementById('modal-body').innerHTML = `
     <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${d}</div>
     <div class="field">
       <label>Coach Note</label>
       <textarea id="coach-note-input" rows="4" placeholder="e.g. Add 5lb on bench — your reps looked solid last week. Focus on full depth on squats.">${existing}</textarea>
     </div>
-    <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">This note appears on ${ath?.username||'the athlete'}'s calendar for this specific date. It travels with the workout if they move it.</div>`;
+    <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px">This note appears on ${ath?.display_name||ath?.username||'the athlete'}'s calendar for this specific date. It travels with the workout if they move it.</div>`;
   document.getElementById('modal-footer').innerHTML = `
     <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
     <button class="btn btn-primary" onclick="saveCoachNote('${ds}','${athleteId}','${existingId}')">Save Note</button>`;
@@ -9802,7 +9849,7 @@ async function notifyWorkoutComplete(dayName) {
     if (perm === 'granted') {
       // Self-notification as confirmation (iOS Safari doesn't support this yet)
       new Notification('Alloy — Workout Saved! 💪', {
-        body: `${dayName} logged by ${currentUser.username}`,
+        body: `${dayName} logged by ${currentUser.display_name||currentUser.username}`,
         icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="%23FF5C00"/><text x="32" y="46" text-anchor="middle" font-size="36" font-weight="900" fill="white" font-family="Arial">N</text></svg>'
       });
     }
@@ -10685,7 +10732,7 @@ async function renderMonthlyGoal(userId, year, month) {
   // Show athlete name if viewing an athlete's goal
   const isAthlete = _activeAthleteId && userId !== currentUser?.id;
   const ath = isAthlete ? _athleteList.find(a=>a.id===userId) : null;
-  const goalLabel = ath ? `${ath.username}'s ${monthName} Goal` : `${monthName} Goal`;
+  const goalLabel = ath ? `${ath.display_name||ath.username}'s ${monthName} Goal` : `${monthName} Goal`;
 
   // Only celebrate on the viewer's OWN goal, for the real current month (not a coach
   // glancing at an athlete's dashboard, and not browsing back through past months
@@ -10755,9 +10802,9 @@ async function setAthleteMonthlyGoal(userId, currentGoal) {
 
 // Admin: set monthly goal from athlete detail view
 async function setAthleteMonthlyGoalFromDetail(userId) {
-  const userRows = await db('users','GET',null,`?id=eq.${userId}&select=monthly_goal,username`);
+  const userRows = await db('users','GET',null,`?id=eq.${userId}&select=monthly_goal,username,display_name`);
   const current = userRows?.[0]?.monthly_goal || 12;
-  const name = userRows?.[0]?.username || 'athlete';
+  const name = userRows?.[0]?.display_name || userRows?.[0]?.username || 'athlete';
   document.getElementById('modal-title').textContent = `🎯 Monthly Goal — ${name}`;
   document.getElementById('modal-body').innerHTML = `
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">
@@ -11041,9 +11088,9 @@ function renderSettings() {
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px">
         <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:12px">Account</div>
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-          <div style="width:44px;height:44px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:#fff">${(currentUser?.username||'?').slice(0,2).toUpperCase()}</div>
+          <div style="width:44px;height:44px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:#fff">${(currentUser?.display_name||currentUser?.username||'?').slice(0,2).toUpperCase()}</div>
           <div>
-            <div style="font-size:15px;font-weight:700;color:var(--text-primary)">${currentUser?.username||'—'}</div>
+            <div style="font-size:15px;font-weight:700;color:var(--text-primary)">${currentUser?.display_name||currentUser?.username||'—'}</div>
             <div style="font-size:12px;color:var(--text-muted)">${currentUser?.role==='admin'?'Coach / Admin':'Athlete'}</div>
           </div>
         </div>
@@ -13908,7 +13955,7 @@ function cfApplyGroupSnapshot(snapshot) {
 // ── Host: create + send an invite ──
 async function cfLoadInvitableUsers() {
   try {
-    const rows = await db('users','GET',null,'?select=id,username&order=username.asc');
+    const rows = await db('users','GET',null,'?select=id,username,display_name&order=username.asc');
     return (rows||[]).filter(u => String(u.id) !== String(currentUser.id));
   } catch(e) { return []; }
 }
@@ -13926,7 +13973,7 @@ async function cfOpenInviteModal() {
       ${users.map(u => `
         <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius);cursor:pointer">
           <input type="checkbox" value="${u.id}" class="cf-invite-check">
-          <span style="font-weight:700">${u.username}</span>
+          <span style="font-weight:700">${u.display_name||u.username}</span>
         </label>
       `).join('')}
     </div>
@@ -14221,10 +14268,10 @@ async function cfInitTVGroupDisplay(sessionId) {
 
   let users = [];
   try {
-    users = await db('users','GET',null,`?id=in.(${(session.participant_ids||[]).join(',')})&select=id,username`) || [];
+    users = await db('users','GET',null,`?id=in.(${(session.participant_ids||[]).join(',')})&select=id,username,display_name`) || [];
   } catch(e) {}
   const nameById = {};
-  users.forEach(u => nameById[u.id] = u.username);
+  users.forEach(u => nameById[u.id] = u.display_name||u.username);
 
   try { await cfLoadSupabaseClient(); } catch(e) { cfShowTVMessage('Could not load live connection'); return; }
   const supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
@@ -18649,7 +18696,7 @@ async function cfRenderAthletes() {
   }
   body.innerHTML = '<div class="loading">Loading athletes...</div>';
   try {
-    const allUsers = await db('users','GET',null,'?select=id,username,role');
+    const allUsers = await db('users','GET',null,'?select=id,username,role,display_name');
     const athletes = (allUsers||[]).filter(u=>u.id!==currentUser.id);
     if (!athletes.length) {
       body.innerHTML = `<div class="empty-state"><span class="emo">👥</span><h3>No athletes yet</h3><p>Athletes will appear here once they sign up.</p></div>`;
@@ -18670,8 +18717,8 @@ async function cfRenderAthletes() {
         const scores = byAthlete[a.id]||[];
         const last = scores[0];
         return `<div class="athlete-card">
-          <div class="athlete-avatar-lg" style="background:var(--cf-green);color:#0d0d0d">${a.username.slice(0,2).toUpperCase()}</div>
-          <div class="athlete-name">${a.username}</div>
+          <div class="athlete-avatar-lg" style="background:var(--cf-green);color:#0d0d0d">${(a.display_name||a.username).slice(0,2).toUpperCase()}</div>
+          <div class="athlete-name">${a.display_name||a.username}</div>
           <div class="athlete-meta">WODs logged: ${scores.length}</div>
           ${last?`<div style="font-size:11px;color:var(--text-muted);margin-top:4px;text-align:center">Last: ${last.wod_name} — <strong>${last.score}</strong> ${last.rx_scaled||''}</div>`:''}
         </div>`;
@@ -18687,7 +18734,7 @@ async function cfRenderAssignWOD() {
   if (!body || currentUser?.role !== 'admin') return;
   body.innerHTML = '<div class="loading">Loading...</div>';
   try {
-    const allUsers = await db('users','GET',null,'?select=id,username');
+    const allUsers = await db('users','GET',null,'?select=id,username,display_name');
     const athletes = (allUsers||[]).filter(u=>u.id!==currentUser.id);
     const wodOpts = [...CF_BENCHMARKS,..._cfWODs].map(w=>`<option value="${w.name}">${w.name} (${w.format||'WOD'})</option>`).join('');
     const athleteChips = athletes.map(u=>`
