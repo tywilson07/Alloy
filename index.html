@@ -2252,11 +2252,13 @@ function enterApp() {
     const toggle = document.getElementById('cal-mode-toggle');
     if (toggle) toggle.style.display = '';
   }
-  // Restore last mode per user — fall back to WOD mode for new users
+  // Restore last mode per user — fall back to Lift mode for new users (most clients are
+  // 1-on-1 personal training, not CrossFit; WOD mode's benchmark-heavy WOD picker assumes
+  // familiarity a brand-new user usually doesn't have yet).
   const _modeKey = 'alloy_mode_' + (currentUser?.id || 'default');
   const _savedMode = (() => { try { return localStorage.getItem(_modeKey); } catch(e) { return null; } })();
   // Init mobile more menu toggle to correct state before switch
-  const _initMode = _savedMode || 'cf';
+  const _initMode = _savedMode || 'lift';
   const moreLiftBtn = document.getElementById('more-mode-btn-lift');
   const moreCfBtn   = document.getElementById('more-mode-btn-cf');
   if (moreLiftBtn) { moreLiftBtn.classList.toggle('lift-on', _initMode === 'lift'); moreLiftBtn.classList.toggle('cf-on', false); }
@@ -7421,7 +7423,10 @@ function msgBubbleUpdateVisibility() {
   // Suppressed during an active WOD (timer running, mid-countdown, or the fullscreen TV
   // display) — Tyler's call: a floating icon shouldn't sit on top of or distract from that.
   const wodActive = !!(_cfTimerRunning || _cfCountdownInterval || _cfFsActive);
-  bubble.style.display = wodActive ? 'none' : 'flex';
+  // Also suppressed while already on the Messages screen — pointing at a screen you're
+  // already looking at is just clutter, not a shortcut.
+  const onMessagesScreen = !!document.getElementById('view-messages')?.classList.contains('active');
+  bubble.style.display = (wodActive || onMessagesScreen) ? 'none' : 'flex';
 }
 setInterval(msgBubbleUpdateVisibility, 1000);
 
