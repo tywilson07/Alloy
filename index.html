@@ -914,6 +914,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
     <nav class="sidebar-nav" id="lift-sidebar-nav" style="display:none">
       <div class="sidebar-section">Training</div>
       <button class="nav-item active" onclick="nav('calendar',this)"><span class="icon">📅</span>Calendar</button>
+      <button class="nav-item" onclick="nav('messages',this)" style="justify-content:space-between"><span><span class="icon">💬</span>Messages</span><span class="msg-unread-badge pill pill-green" style="display:none;font-size:10px;flex-shrink:0"></span></button>
       <button class="nav-item" onclick="nav('programs',this)"><span class="icon">📋</span>Programs</button>
       <button class="nav-item" onclick="nav('history',this)"><span class="icon">📖</span>History</button>
       <button class="nav-item" onclick="nav('builder',this)"><span class="icon">🏗️</span>Workout Builder</button>
@@ -936,6 +937,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
     <nav class="sidebar-nav" id="cf-sidebar-nav">
       <div class="sidebar-section">WOD Mode</div>
       <button class="nav-item active" onclick="navToCalendar(this)"><span class="icon">📅</span>Calendar</button>
+      <button class="nav-item" onclick="nav('messages',this)" style="justify-content:space-between"><span><span class="icon">💬</span>Messages</span><span class="msg-unread-badge pill pill-green" style="display:none;font-size:10px;flex-shrink:0"></span></button>
       <button class="nav-item" onclick="nav('cf-track',this)"><span class="icon">⏱</span>Track WOD</button>
       <button class="nav-item" onclick="nav('cf-library',this)"><span class="icon">📋</span>WOD Library</button>
       <button class="nav-item" onclick="nav('cf-history',this)"><span class="icon">📊</span>WOD History</button>
@@ -1770,13 +1772,13 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
     <button class="bnav-btn lift-bnav" style="display:none" onclick="nav('programs',this)"><span class="bnav-icon">📋</span>Programs</button>
     <button class="bnav-btn lift-bnav" style="display:none" onclick="nav('maxes',this)"><span class="bnav-icon">🏆</span>PRs</button>
     <button class="bnav-btn lift-bnav" style="display:none" onclick="nav('builder',this)"><span class="bnav-icon">🏗️</span>Builder</button>
-    <button class="bnav-btn lift-bnav" style="display:none" onclick="toggleMoreMenu()" id="more-nav-btn"><span class="bnav-icon">☰</span>More</button>
+    <button class="bnav-btn lift-bnav" style="display:none;position:relative" onclick="toggleMoreMenu()" id="more-nav-btn"><span class="bnav-icon">☰</span>More<span class="msg-unread-dot" style="display:none;position:absolute;top:2px;right:18px;width:8px;height:8px;border-radius:50%;background:var(--orange);border:1.5px solid var(--surface)"></span></button>
       <!-- CF MODE BOTTOM NAV (hidden by default) -->
     <button class="bnav-btn cf-bnav" onclick="navToCalendar(this)"><span class="bnav-icon">📅</span>Calendar</button>
     <button class="bnav-btn cf-bnav active" onclick="nav('cf-track',this)"><span class="bnav-icon">⏱</span>Track</button>
     <button class="bnav-btn cf-bnav" onclick="nav('cf-library',this)"><span class="bnav-icon">📋</span>Library</button>
     <button class="bnav-btn cf-bnav" onclick="nav('cf-builder',this)"><span class="bnav-icon">⚡</span>Builder</button>
-    <button class="bnav-btn cf-bnav" onclick="toggleMoreMenu()" id="cf-more-nav-btn"><span class="bnav-icon">☰</span>More</button>
+    <button class="bnav-btn cf-bnav" onclick="toggleMoreMenu()" id="cf-more-nav-btn" style="position:relative"><span class="bnav-icon">☰</span>More<span class="msg-unread-dot" style="display:none;position:absolute;top:2px;right:18px;width:8px;height:8px;border-radius:50%;background:var(--cf-green);border:1.5px solid var(--surface)"></span></button>
   </nav>
 
   <!-- MOBILE MORE MENU -->
@@ -7282,16 +7284,18 @@ async function msgRefreshUnreadBadge() {
     const mine = await db('conversation_participants','GET',null,`?user_id=eq.${currentUser.id}&select=conversation_id`);
     const convIds = (mine||[]).map(r=>r.conversation_id);
     _msgMyConvIds = new Set(convIds); // kept fresh here so msgHandleGlobalInsert() can cheaply check "is this mine?"
-    const badgeEls = document.querySelectorAll('.msg-unread-badge');
-    if (!badgeEls.length) return;
     let count = 0;
     if (convIds.length) {
       const unread = await db('messages','GET',null,
         `?conversation_id=in.(${convIds.join(',')})&sender_id=neq.${currentUser.id}&read_at=is.null&select=id`);
       count = unread?.length || 0;
     }
-    badgeEls.forEach(el => { el.textContent = count>0?String(count):''; el.style.display = count>0?'':'none'; });
-  } catch(e) { /* messaging tables not migrated yet, or offline — leave badge hidden */ }
+    // Numbered badge — Messages nav items (sidebar, More menu)
+    document.querySelectorAll('.msg-unread-badge').forEach(el => { el.textContent = count>0?String(count):''; el.style.display = count>0?'':'none'; });
+    // Plain presence dot — the mobile bottom-nav "More" button, which doesn't have room
+    // for a full count, just a "something's waiting in here" flag
+    document.querySelectorAll('.msg-unread-dot').forEach(el => { el.style.display = count>0?'block':'none'; });
+  } catch(e) { /* messaging tables not migrated yet, or offline — leave badges hidden */ }
 }
 
 // App-wide "you have a new message" notification — separate from msgSubscribe(), which only
