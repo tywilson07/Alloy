@@ -125,8 +125,8 @@ body.cf-mode #msg-fab{background:var(--cf-green);color:#0d0d0d}
 .btn-white:hover{background:var(--surface3)}
 .btn-ghost{background:none;color:var(--text-muted);border:1px solid var(--border)}
 .btn-ghost:hover{background:var(--surface2);color:var(--text-primary)}
-.btn-danger{background:var(--red-light);color:var(--red);border:1px solid var(--red)40}
-.btn-green{background:var(--lime-dim);color:var(--lime);border:1px solid var(--lime)40}
+.btn-danger{background:var(--red-light);color:var(--red);border:1px solid rgba(255,59,59,.251)}
+.btn-green{background:var(--lime-dim);color:var(--lime);border:1px solid rgba(170,255,0,.251)}
 .btn-sm{padding:5px 11px;font-size:11.5px}
 .btn-xs{padding:3px 8px;font-size:10.5px;border-radius:4px}
 .btn-full{width:100%}
@@ -158,10 +158,10 @@ label{font-size:11px;font-weight:800;color:var(--text-muted);display:block;margi
 .cal-cell.drag-over{background:var(--lime-dim)!important;outline:2px dashed var(--lime);outline-offset:-3px}
 .cal-day-num{font-size:12px;font-weight:700;color:var(--text-secondary);width:22px;height:22px;display:flex;align-items:center;justify-content:center;margin-bottom:3px;flex-shrink:0}
 .cal-workout-dot{font-size:10px;font-weight:700;border-radius:3px;padding:1px 5px;margin-bottom:2px;white-space:normal;overflow:hidden;word-break:break-word;line-height:1.2;letter-spacing:.2px}
-.cal-dot-logged-full{background:var(--lime-dim);color:var(--lime);cursor:grab;display:block;border:1px solid var(--lime)30}
-.cal-dot-logged-partial{background:var(--amber-light);color:var(--amber);cursor:grab;display:block;border:1px solid var(--amber)30}
+.cal-dot-logged-full{background:var(--lime-dim);color:var(--lime);cursor:grab;display:block;border:1px solid rgba(170,255,0,.188)}
+.cal-dot-logged-partial{background:var(--amber-light);color:var(--amber);cursor:grab;display:block;border:1px solid rgba(255,184,0,.188)}
 .cal-dot-logged-full:active,.cal-dot-logged-partial:active{cursor:grabbing;opacity:.5}
-.cal-dot-planned{background:var(--orange-dim);color:var(--orange);display:block;border:1px solid var(--orange)30}
+.cal-dot-planned{background:var(--orange-dim);color:var(--orange);display:block;border:1px solid rgba(255,92,0,.188)}
 .cal-dot-assigned{background:var(--purple-light);color:var(--purple);display:block;border:1px solid rgba(139,92,246,.3)}
 .cf-cal-dot-score{background:var(--cf-green-dim);color:var(--cf-green);cursor:grab;display:block;border:1px solid rgba(57,211,83,.3)}
 .cf-cal-dot-pr{background:var(--cf-green);color:#0d0d0d;font-weight:900;cursor:grab;display:block;border:1px solid var(--cf-green)}
@@ -177,7 +177,7 @@ label{font-size:11px;font-weight:800;color:var(--text-muted);display:block;margi
 @media(max-width:700px){.day-panel-footer{padding-bottom:calc(var(--nav-h) + 12px)}}
 .workout-entry{background:var(--surface2);border-radius:var(--radius-sm);padding:11px 12px;margin-bottom:8px;border:1px solid var(--border)}
 .workout-entry-name{font-size:13px;font-weight:900;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px}
-.logged-result{display:inline-flex;align-items:center;gap:4px;background:var(--lime-dim);color:var(--lime);border-radius:4px;padding:2px 8px;font-size:11.5px;font-weight:700;margin-bottom:5px;border:1px solid var(--lime)30}
+.logged-result{display:inline-flex;align-items:center;gap:4px;background:var(--lime-dim);color:var(--lime);border-radius:4px;padding:2px 8px;font-size:11.5px;font-weight:700;margin-bottom:5px;border:1px solid rgba(170,255,0,.188)}
 
 /* ── CAL LAYOUT ── */
 .cal-view-body{flex:1;overflow-y:auto;padding:16px 20px;display:flex;gap:16px;align-items:stretch}
@@ -227,7 +227,7 @@ label{font-size:11px;font-weight:800;color:var(--text-muted);display:block;margi
 .max-card-value{font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text-primary)}
 .max-card-unit{font-size:11px;font-weight:400;color:var(--text-muted);margin-left:2px}
 .max-card-date{font-size:10.5px;color:var(--text-muted);margin-top:3px}
-.max-card-pr{font-size:9.5px;font-weight:800;color:var(--orange);background:var(--orange-dim);border-radius:3px;padding:1px 6px;display:inline-block;margin-top:3px;text-transform:uppercase;letter-spacing:.5px;border:1px solid var(--orange)40}
+.max-card-pr{font-size:9.5px;font-weight:800;color:var(--orange);background:var(--orange-dim);border-radius:3px;padding:1px 6px;display:inline-block;margin-top:3px;text-transform:uppercase;letter-spacing:.5px;border:1px solid rgba(255,92,0,.251)}
 
 /* ── MODAL ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;display:flex;align-items:flex-end;justify-content:center}
@@ -243,10 +243,10 @@ label{font-size:11px;font-weight:800;color:var(--text-muted);display:block;margi
 
 /* ── PILLS / TAGS ── */
 .pill{display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px}
-.pill-blue{background:var(--orange-dim);color:var(--orange);border:1px solid var(--orange)30}
-.pill-green{background:var(--lime-dim);color:var(--lime);border:1px solid var(--lime)30}
-.pill-amber{background:var(--amber-light);color:var(--amber);border:1px solid var(--amber)30}
-.pill-purple{background:var(--purple-light);color:var(--purple);border:1px solid var(--purple)30}
+.pill-blue{background:var(--orange-dim);color:var(--orange);border:1px solid rgba(255,92,0,.188)}
+.pill-green{background:var(--lime-dim);color:var(--lime);border:1px solid rgba(170,255,0,.188)}
+.pill-amber{background:var(--amber-light);color:var(--amber);border:1px solid rgba(255,184,0,.188)}
+.pill-purple{background:var(--purple-light);color:var(--purple);border:1px solid rgba(191,95,255,.188)}
 .pill-gray{background:var(--surface2);color:var(--text-muted);border:1px solid var(--border)}
 
 /* ── MISC ── */
@@ -404,8 +404,8 @@ button.set-type-btn.active[onclick*="assisted"]{background:var(--purple);border-
 .week-day-col.today .week-day-num{background:var(--orange);color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px}
 .week-day-body{padding:6px 8px;display:flex;flex-direction:column;gap:3px}
 .week-workout-chip{font-size:10px;font-weight:700;padding:3px 6px;border-radius:4px;white-space:normal;overflow-wrap:break-word;line-height:1.25}
-.week-workout-logged{background:var(--lime-dim);color:var(--lime);border:1px solid var(--lime)30}
-.week-workout-planned{background:var(--orange-dim);color:var(--orange);border:1px solid var(--orange)30}
+.week-workout-logged{background:var(--lime-dim);color:var(--lime);border:1px solid rgba(170,255,0,.188)}
+.week-workout-planned{background:var(--orange-dim);color:var(--orange);border:1px solid rgba(255,92,0,.188)}
 .week-day-empty{font-size:10px;color:var(--text-muted);padding:4px 0;font-style:italic}
 @media(max-width:600px){.week-view-grid{grid-template-columns:repeat(7,1fr);gap:3px}.week-day-header{padding:4px 4px}.week-day-body{padding:4px 4px}.week-workout-chip{font-size:8.5px;padding:2px 3px;line-height:1.2}.week-day-dow{font-size:8px}.week-day-num{font-size:12px}}
 .library-card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius-lg);padding:12px 14px;margin-bottom:8px;transition:border-color .12s}
@@ -735,7 +735,6 @@ body.cf-mode .week-strip-day.selected { border-color: var(--cf-green) !important
 body.cf-mode .week-strip-dot.logged { background: var(--cf-green) !important; }
 body.cf-mode .day-panel-header { border-bottom-color: var(--cf-green-dim) !important; }
 body.cf-mode .cal-view-month-btn.active, body.cf-mode .cal-view-week-btn.active,
-body.cf-mode #cf-view-month-btn.active, body.cf-mode #cf-view-week-btn.active,
 body.cf-mode #cal-view-month-btn.active, body.cf-mode #cal-view-week-btn.active { background: var(--cf-green) !important; color: #0d0d0d !important; border-color: var(--cf-green) !important; }
 body.cf-mode .cal-mode-btn.active { background: var(--cf-green) !important; color: #0d0d0d !important; }
 body.cf-mode .week-day-col.today .week-day-num { color: var(--cf-green) !important; }
@@ -1051,7 +1050,7 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
               </div>
             </div>
             <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
-              <div id="goal-progress-fill" style="height:100%;background:var(--orange);border-radius:3px;transition:width .4s;width:0%;box-shadow:0 0 6px var(--orange)40"></div>
+              <div id="goal-progress-fill" style="height:100%;background:var(--orange);border-radius:3px;transition:width .4s;width:0%;box-shadow:0 0 6px rgba(255,92,0,.251)"></div>
             </div>
           </div>
         </div>
@@ -1212,58 +1211,6 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
     <!-- ════════════════════════════════════════
          ALLOY — CROSSFIT MODE VIEWS
     ════════════════════════════════════════ -->
-
-    <!-- CF: CALENDAR DASHBOARD -->
-    <div class="view" id="view-cf-dashboard">
-      <div class="view-header" style="flex-direction:column;align-items:stretch;gap:8px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <div style="font-size:17px;font-weight:800;letter-spacing:-.5px" id="cf-cal-month-title"></div>
-            <div style="display:flex;gap:4px">
-              <button class="btn btn-white btn-icon" onclick="cfShiftCal(-1)">&#8249;</button>
-              <button class="btn btn-white btn-sm" onclick="cfGoToday()">Today</button>
-              <button class="btn btn-white btn-icon" onclick="cfShiftCal(1)">&#8250;</button>
-            </div>
-          </div>
-          <button class="btn btn-primary btn-sm" onclick="nav('cf-track')">+ Track WOD</button>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:3px;border:1px solid var(--border)">
-            <button id="cf-view-month-btn" class="btn btn-sm cal-mode-btn active" onclick="cfSetCalView('month')">Month</button>
-            <button id="cf-view-week-btn" class="btn btn-sm cal-mode-btn" onclick="cfSetCalView('week')">Week</button>
-          </div>
-        </div>
-      </div>
-      <div class="cal-view-body">
-        <div class="cal-main-col">
-          <!-- Week strip -->
-          <div class="week-strip" id="cf-week-strip" style="display:none"></div>
-          <!-- Month view -->
-          <div id="cf-month-view" style="display:none">
-            <div class="cal-wrap">
-              <div class="cal-dow-row">
-                <div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div>
-                <div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div>
-                <div class="cal-dow">Sat</div>
-              </div>
-              <div class="cal-grid" id="cf-cal-grid"></div>
-            </div>
-          </div>
-          <!-- Week view -->
-          <div id="cf-week-view">
-            <div id="cf-week-grid"></div>
-          </div>
-        </div>
-        <!-- Day panel -->
-        <div class="cal-side-col">
-          <div id="cf-day-panel">
-            <div class="day-panel-body">
-              <p style="color:var(--gray-400);font-size:13px;text-align:center;padding:20px 0">Select a day</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- CF: AI WOD BUILDER -->
     <div class="view" id="view-cf-builder">
@@ -3001,7 +2948,7 @@ function buildWeekView() {
       assigned.forEach(a=>{
         chips += `<div class="week-workout-chip" draggable="true"
           ondragstart="calDragStartLoggedItem(event,'${ds}','${a.id}','workout_assignments','date',false,'assigned_to')" ondragend="calDragEnd(event)"
-          style="background:var(--purple-light);color:var(--purple);border:1px solid var(--purple)30" title="${a.workout_name} — drag to reschedule">📤 ${a.workout_name}</div>`;
+          style="background:var(--purple-light);color:var(--purple);border:1px solid rgba(191,95,255,.188)" title="${a.workout_name} — drag to reschedule">📤 ${a.workout_name}</div>`;
       });
     }
     if (!chips) chips = `<div class="week-day-empty">Rest</div>`;
@@ -10752,7 +10699,7 @@ async function renderMonthlyGoal(userId, year, month) {
     if (fill) {
       fill.style.width = pct+'%';
       fill.style.background = hit ? 'var(--lime)' : 'var(--orange)';
-      fill.style.boxShadow = hit ? '0 0 6px var(--lime)' : '0 0 6px var(--orange)40';
+      fill.style.boxShadow = hit ? '0 0 6px var(--lime)' : '0 0 6px rgba(255,92,0,.251)';
     }
     const streakEl = document.getElementById('goal-streak-label');
     if (streakEl) {
@@ -11744,14 +11691,14 @@ function cfRenderWODBuilderResult(wod) {
           <div class="wod-card-name">${wod.name||'WOD'}</div>
           <div class="wod-card-format">${wod.format||''}${wod.cap?' · '+wod.cap:''}</div>
         </div>
-        <span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30">AI Generated</span>
+        <span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.188)">AI Generated</span>
       </div>
       <div class="wod-card-body">
         ${wod.description?`<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;font-weight:600">${wod.description}</div>`:''}
         ${movHtml}
         ${wod.rx_weights?`<div style="margin-top:10px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius-sm);font-size:12px;color:var(--text-secondary)"><strong>RX:</strong> ${wod.rx_weights}</div>`:''}
         ${wod.scaling?`<div style="margin-top:8px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius-sm);font-size:12px;color:var(--text-secondary)"><strong>Scaling:</strong> ${wod.scaling}</div>`:''}
-        ${wod.notes?`<div style="margin-top:8px;padding:8px 10px;background:var(--cf-green-dim);border-radius:var(--radius-sm);font-size:12px;color:var(--cf-green);border:1px solid var(--cf-green)30"><strong>Coach:</strong> ${wod.notes}</div>`:''}
+        ${wod.notes?`<div style="margin-top:8px;padding:8px 10px;background:var(--cf-green-dim);border-radius:var(--radius-sm);font-size:12px;color:var(--cf-green);border:1px solid rgba(57,211,83,.188)"><strong>Coach:</strong> ${wod.notes}</div>`:''}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
           <button class="btn btn-primary" onclick="cfSaveBuiltWOD(${JSON.stringify(wod).replace(/"/g,'&quot;')})">Save to Library</button>
           <button class="btn btn-ghost" onclick="cfBuilderLoadToTrack(${JSON.stringify(wod).replace(/"/g,'&quot;')})">Track Now</button>
@@ -16237,367 +16184,10 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// ═══════════════════════════════════════════════════
-// ALLOY — CF CALENDAR
-// ═══════════════════════════════════════════════════
-
-let _cfCalYear  = new Date().getFullYear();
-let _cfCalMonth = new Date().getMonth();
-let _cfCalView  = 'week'; // 'month' | 'week'
-let _cfCalWeekStart = null;
-let _cfSelectedDate = cfTodayStr();
-let _cfCalScores = {}; // {date: [score,...]}
-let _cfCalAssigned = {}; // {date: [assignment,...]}
-
-function cfTodayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-function cfDateStr(y,m,d) {
-  return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-}
-
-async function cfRenderCalendar() {
-  const title = document.getElementById('cf-cal-month-title');
-  if (title) title.textContent = `${MONTHS[_cfCalMonth]} ${_cfCalYear}`;
-
-  // Load scores and assigned WODs for this month
-  try {
-    const startDate = cfDateStr(_cfCalYear, _cfCalMonth, 1);
-    const endDate   = cfDateStr(_cfCalYear, _cfCalMonth, new Date(_cfCalYear, _cfCalMonth+1, 0).getDate());
-    const queryStart = (() => { const d = new Date(startDate+'T12:00:00'); d.setDate(d.getDate()-6); return d.toISOString().slice(0,10); })();
-    const queryEnd   = (() => { const d = new Date(endDate+'T12:00:00');   d.setDate(d.getDate()+6); return d.toISOString().slice(0,10); })();
-
-    const [scores, assigned] = await Promise.all([
-      db('cf_scores','GET',null,`?user_id=eq.${currentUser.id}&logged_at=gte.${queryStart}T00:00:00&logged_at=lte.${queryEnd}T23:59:59&select=*`).catch(()=>[]),
-      db('workout_assignments','GET',null,`?assigned_to=eq.${currentUser.id}&date=gte.${queryStart}&date=lte.${queryEnd}&select=*`).catch(()=>[])
-    ]);
-
-    _cfCalScores = {};
-    (scores||[]).forEach(s => {
-      const date = s.logged_at?.slice(0,10);
-      if (!date) return;
-      if (!_cfCalScores[date]) _cfCalScores[date] = [];
-      _cfCalScores[date].push(s);
-    });
-
-    _cfCalAssigned = {};
-    (assigned||[]).forEach(a => {
-      if (!_cfCalAssigned[a.date]) _cfCalAssigned[a.date] = [];
-      _cfCalAssigned[a.date].push(a);
-    });
-  } catch(e) { console.error('CF calendar load error', e); }
-
-  cfUpdateCalHeader();
-  if (_cfCalView === 'week') {
-    cfBuildWeekView();
-  } else {
-    cfBuildCalGrid();
-    cfBuildWeekStrip();
-  }
-  cfRenderDayPanel(_cfSelectedDate);
-}
-
-function cfUpdateCalHeader() {
-  const hdr = document.getElementById('cf-cal-month-title');
-  if (!hdr) return;
-  if (_cfCalView === 'week' && _cfCalWeekStart) {
-    const start = new Date(_cfCalWeekStart+'T12:00:00');
-    const end   = new Date(_cfCalWeekStart+'T12:00:00');
-    end.setDate(end.getDate()+6);
-    hdr.textContent = `${start.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${end.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
-  } else {
-    hdr.textContent = `${MONTHS[_cfCalMonth]} ${_cfCalYear}`;
-  }
-}
-
-function cfSetCalView(view) {
-  _cfCalView = view;
-  document.getElementById('cf-view-month-btn')?.classList.toggle('active', view==='month');
-  document.getElementById('cf-view-week-btn')?.classList.toggle('active', view==='week');
-  document.getElementById('cf-month-view').style.display  = view==='month' ? '' : 'none';
-  document.getElementById('cf-week-view').style.display   = view==='week'  ? '' : 'none';
-  document.getElementById('cf-week-strip').style.display  = view==='month' ? '' : 'none';
-  if (view === 'week') {
-    const d = new Date(_cfSelectedDate+'T12:00:00');
-    d.setDate(d.getDate() - d.getDay());
-    _cfCalWeekStart = d.toISOString().slice(0,10);
-    cfBuildWeekView();
-  } else {
-    cfBuildCalGrid();
-    cfBuildWeekStrip();
-  }
-  cfUpdateCalHeader();
-}
-
-function cfShiftCal(delta) {
-  if (_cfCalView === 'week') {
-    const d = new Date(_cfCalWeekStart+'T12:00:00');
-    d.setDate(d.getDate() + delta*7);
-    _cfCalWeekStart = d.toISOString().slice(0,10);
-    _cfCalYear = d.getFullYear();
-    _cfCalMonth = d.getMonth();
-  } else {
-    _cfCalMonth += delta;
-    if (_cfCalMonth < 0)  { _cfCalMonth = 11; _cfCalYear--; }
-    if (_cfCalMonth > 11) { _cfCalMonth = 0;  _cfCalYear++; }
-  }
-  cfRenderCalendar();
-}
-
-function cfGoToday() {
-  const n = new Date();
-  _cfCalYear = n.getFullYear();
-  _cfCalMonth = n.getMonth();
-  _cfSelectedDate = cfTodayStr();
-  if (_cfCalView === 'week') {
-    const d = new Date(_cfSelectedDate+'T12:00:00');
-    d.setDate(d.getDate() - d.getDay());
-    _cfCalWeekStart = d.toISOString().slice(0,10);
-    cfBuildWeekView();
-    cfUpdateCalHeader();
-  } else {
-    cfRenderCalendar();
-  }
-}
-
-// ── CF Calendar Drag & Drop ──
-// Same generic "move a logged entry to another date" pattern as calDragStartLoggedItem()/
-// calDrop() on the Lift-side calendar, kept as its own cf-prefixed copy (own drag state,
-// refreshes via cfRenderCalendar() instead of renderCalendar()) so a drag on one calendar
-// never interferes with a drag on the other.
-let _cfDragLoggedItem = null; // {fromDate, id, table, dateField, isTimestamp, userField}
-
-function cfDragStartLoggedItem(e, fromDate, id, table, dateField, isTimestamp, userField) {
-  _cfDragLoggedItem = {fromDate, id, table, dateField, isTimestamp, userField: userField || 'user_id'};
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', JSON.stringify({fromDate, id, table}));
-  setTimeout(()=>{ if(e.target) e.target.style.opacity = '.4'; }, 0);
-}
-function cfDragEnd(e) {
-  if (e.target) e.target.style.opacity = '';
-  _cfDragLoggedItem = null;
-  document.querySelectorAll('.cal-cell.drag-over, .week-day-col.drag-over').forEach(el=>el.classList.remove('drag-over'));
-}
-function cfDragOver(e, toDate) {
-  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
-  if (toDate !== _cfDragLoggedItem?.fromDate) e.currentTarget.classList.add('drag-over');
-}
-function cfDragLeave(e) {
-  if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('drag-over');
-}
-async function cfDrop(e, toDate) {
-  e.preventDefault(); e.currentTarget.classList.remove('drag-over');
-  if (!_cfDragLoggedItem || _cfDragLoggedItem.fromDate === toDate) { _cfDragLoggedItem = null; return; }
-  const {id, table, dateField, isTimestamp, userField} = _cfDragLoggedItem;
-  _cfDragLoggedItem = null;
-  const newVal = isTimestamp ? (toDate + 'T12:00:00') : toDate;
-  try {
-    await db(table,'PATCH',{[dateField]:newVal},`?id=eq.${id}&${userField}=eq.${currentUser.id}`);
-    toast(`Moved to ${new Date(toDate+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} ✓`);
-    _cfSelectedDate = toDate;
-    cfRenderCalendar();
-  } catch(err) { toast('Move failed — try again'); console.error(err); }
-}
-
-function cfGetCellDots(ds) {
-  const scores  = _cfCalScores[ds]  || [];
-  const assigned = _cfCalAssigned[ds] || [];
-  let html = '';
-  scores.forEach(s => {
-    const isPR = s.notes?.toLowerCase().includes('pr') || s.rx_scaled === 'RX+';
-    const dotClass = isPR ? 'cf-cal-dot-pr' : 'cf-cal-dot-score';
-    html += `<span class="cal-workout-dot ${dotClass}" draggable="true"
-      ondragstart="cfDragStartLoggedItem(event,'${ds}','${s.id}','cf_scores','logged_at',true,'user_id')"
-      ondragend="cfDragEnd(event)"
-      title="${s.wod_name} — drag to move">✓ ${s.wod_name}</span>`;
-  });
-  if (!scores.length) {
-    assigned.forEach(a => {
-      html += `<span class="cal-workout-dot cf-cal-dot-planned" draggable="true"
-        ondragstart="cfDragStartLoggedItem(event,'${ds}','${a.id}','workout_assignments','date',false,'assigned_to')"
-        ondragend="cfDragEnd(event)"
-        title="Assigned by coach — drag to reschedule">· ${a.workout_name}</span>`;
-    });
-  }
-  return html;
-}
-
-function cfBuildCalGrid() {
-  const grid = document.getElementById('cf-cal-grid');
-  if (!grid) return;
-  const today    = cfTodayStr();
-  const firstDow = new Date(_cfCalYear, _cfCalMonth, 1).getDay();
-  const daysInMonth = new Date(_cfCalYear, _cfCalMonth+1, 0).getDate();
-  const daysInPrev  = new Date(_cfCalYear, _cfCalMonth, 0).getDate();
-  const totalCells  = Math.ceil((firstDow + daysInMonth) / 7) * 7;
-  let cells = '';
-  for (let i = 0; i < totalCells; i++) {
-    let day, year=_cfCalYear, month=_cfCalMonth, otherMonth=false;
-    if (i < firstDow) {
-      day = daysInPrev - firstDow + i + 1; month--; if(month<0){month=11;year--;} otherMonth=true;
-    } else if (i >= firstDow+daysInMonth) {
-      day = i - firstDow - daysInMonth + 1; month++; if(month>11){month=0;year++;} otherMonth=true;
-    } else { day = i - firstDow + 1; }
-    const ds = cfDateStr(year,month,day);
-    const isToday = ds===today, isSel = ds===_cfSelectedDate;
-    cells += `<div class="cal-cell ${otherMonth?'other-month':''} ${isToday?'today':''} ${isSel?'selected':''}"
-      onclick="cfSelectDay('${ds}')"
-      ondragover="cfDragOver(event,'${ds}')" ondragleave="cfDragLeave(event)" ondrop="cfDrop(event,'${ds}')">
-      <div class="cal-day-num">${day}</div>
-      ${cfGetCellDots(ds)}
-    </div>`;
-  }
-  grid.innerHTML = cells;
-}
-
-function cfBuildWeekStrip() {
-  const strip = document.getElementById('cf-week-strip');
-  if (!strip) return;
-  const today = cfTodayStr();
-  const now   = new Date();
-  const sundayOffset = now.getDay();
-  const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  let html = '';
-  for (let i = 0; i < 7; i++) {
-    const d  = new Date(now.getFullYear(), now.getMonth(), now.getDate() - sundayOffset + i);
-    const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    const isToday = ds===today, isSel = ds===_cfSelectedDate;
-    const scores   = _cfCalScores[ds]  || [];
-    const assigned = _cfCalAssigned[ds] || [];
-    let dotClass = 'empty';
-    if (scores.length)   dotClass = 'logged';
-    else if (assigned.length) dotClass = 'assigned';
-    html += `<div class="week-strip-day ${isToday?'today':''} ${isSel?'selected':''}" onclick="cfSelectDay('${ds}')">
-      <div class="week-strip-dow">${DAYS_SHORT[i]}</div>
-      <div class="week-strip-num">${d.getDate()}</div>
-      <div class="week-strip-dot ${dotClass}" style="${dotClass==='logged'?'background:var(--cf-green)':dotClass==='assigned'?'background:var(--purple)':''}"></div>
-    </div>`;
-  }
-  strip.innerHTML = html;
-}
-
-function cfBuildWeekView() {
-  const grid = document.getElementById('cf-week-grid');
-  if (!grid || !_cfCalWeekStart) return;
-  const today = cfTodayStr();
-  const DOWS  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  let html = '<div class="week-view-grid">';
-  for (let i = 0; i < 7; i++) {
-    const d  = new Date(_cfCalWeekStart+'T12:00:00');
-    d.setDate(d.getDate()+i);
-    const ds = d.toISOString().slice(0,10);
-    const isToday = ds===today, isSel = ds===_cfSelectedDate;
-    const scores   = _cfCalScores[ds]  || [];
-    const assigned = _cfCalAssigned[ds] || [];
-    let chips = '';
-    scores.forEach(s => {
-      chips += `<div class="week-workout-chip" draggable="true"
-        ondragstart="cfDragStartLoggedItem(event,'${ds}','${s.id}','cf_scores','logged_at',true,'user_id')" ondragend="cfDragEnd(event)"
-        style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30" title="${s.wod_name} — drag to move">✓ ${s.wod_name} <span style="font-family:var(--mono);font-size:10px">${s.score}</span></div>`;
-    });
-    if (!scores.length) {
-      assigned.forEach(a => {
-        chips += `<div class="week-workout-chip" draggable="true"
-          ondragstart="cfDragStartLoggedItem(event,'${ds}','${a.id}','workout_assignments','date',false,'assigned_to')" ondragend="cfDragEnd(event)"
-          style="background:var(--purple-light);color:var(--purple)" title="${a.workout_name} — drag to reschedule">📤 ${a.workout_name}</div>`;
-      });
-    }
-    if (!chips) chips = `<div class="week-day-empty">Rest</div>`;
-    html += `<div class="week-day-col ${isToday?'today':''} ${isSel?'selected':''}" onclick="cfSelectDay('${ds}')"
-      ondragover="cfDragOver(event,'${ds}')" ondragleave="cfDragLeave(event)" ondrop="cfDrop(event,'${ds}')">
-      <div class="week-day-header">
-        <div class="week-day-dow">${DOWS[d.getDay()]}</div>
-        <div class="week-day-num">${isToday?`<div style="background:var(--cf-green);color:#0d0d0d;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">${d.getDate()}</div>`:d.getDate()}</div>
-      </div>
-      <div class="week-day-body">${chips}</div>
-    </div>`;
-  }
-  html += '</div>';
-  grid.innerHTML = html;
-  cfRenderDayPanel(_cfSelectedDate);
-}
-
-function cfSelectDay(ds) {
-  _cfSelectedDate = ds;
-  if (_cfCalView === 'week') {
-    cfBuildWeekView();
-  } else {
-    cfBuildCalGrid();
-    cfBuildWeekStrip();
-    cfRenderDayPanel(ds);
-  }
-}
-
-function cfRenderDayPanel(ds) {
-  const panel = document.getElementById('cf-day-panel');
-  if (!panel) return;
-  const d = new Date(ds+'T12:00:00');
-  const label = d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-  const scores   = _cfCalScores[ds]  || [];
-  const assigned = _cfCalAssigned[ds] || [];
-  let bodyHtml = '';
-
-  // Logged scores
-  scores.forEach(s => {
-    const isPR = s.notes?.toLowerCase().includes('pr') || s.rx_scaled === 'RX+';
-    bodyHtml += `<div style="background:var(--surface2);border:1.5px solid ${isPR?'#FFB800':'var(--cf-green)'};border-radius:var(--radius);padding:11px 13px;margin-bottom:8px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <div style="font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.2px">${s.wod_name}</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          ${isPR?'<span class="pill pill-amber" style="font-size:10px">🏆 PR</span>':''}
-          <span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);font-size:10px">${s.rx_scaled||'RX'}</span>
-          <button class="btn btn-danger btn-xs" onclick="cfDeleteScoreFromCal('${s.id}','${ds}')">✕</button>
-        </div>
-      </div>
-      <div style="font-size:24px;font-weight:900;font-family:var(--mono);color:var(--cf-green);margin-bottom:4px">${s.score}</div>
-      <div style="font-size:11px;color:var(--text-muted)">${s.format||'WOD'}</div>
-      ${s.notes?`<div style="font-size:12px;color:var(--text-secondary);margin-top:6px;font-style:italic;padding:6px 8px;background:var(--surface);border-radius:5px">"${s.notes}"</div>`:''}
-    </div>`;
-  });
-
-  // Assigned WODs (not yet logged)
-  if (!scores.length) {
-    assigned.forEach(a => {
-      bodyHtml += `<div style="background:var(--purple-light);border:1.5px solid #C4B5FD;border-radius:var(--radius);padding:11px 13px;margin-bottom:8px">
-        <div style="font-size:10px;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px">📤 Assigned WOD</div>
-        <div style="font-size:13px;font-weight:900;text-transform:uppercase">${a.workout_name}</div>
-        ${a.notes?`<div style="font-size:12px;color:var(--text-secondary);margin-top:4px">${a.notes}</div>`:''}
-        <button class="btn btn-sm" style="margin-top:8px;background:var(--purple);color:#fff" onclick="cfPreFillTrack('${a.workout_name}')">Log This WOD</button>
-      </div>`;
-    });
-  }
-
-  if (!bodyHtml) {
-    bodyHtml = `<div style="padding:16px 0;text-align:center;color:var(--gray-400);font-size:12.5px">Rest day — no WODs logged.</div>`;
-  }
-
-  panel.innerHTML = `
-    <div class="day-panel-header">
-      <div class="day-panel-date">${label}</div>
-      ${scores.length?`<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30">✓ ${scores.length} WOD${scores.length!==1?'s':''}</span>`:''}
-    </div>
-    <div class="day-panel-body">${bodyHtml}</div>
-    <div class="day-panel-footer">
-      <button class="btn btn-primary btn-full btn-sm" onclick="cfPreFillTrackDate('${ds}')">+ Log WOD for this day →</button>
-    </div>`;
-}
-
-async function cfDeleteScoreFromCal(id, ds) {
-  if (!confirm('Delete this score?')) return;
-  try {
-    await db('cf_scores','DELETE',null,`?id=eq.${id}`).catch(()=>{});
-    _cfScores = _cfScores.filter(s=>String(s.id)!==String(id));
-    // Remove from calendar cache
-    if (_cfCalScores[ds]) {
-      _cfCalScores[ds] = _cfCalScores[ds].filter(s=>String(s.id)!==String(id));
-    }
-    cfRenderDayPanel(ds);
-    if (_cfCalView==='week') cfBuildWeekView();
-    else { cfBuildCalGrid(); cfBuildWeekStrip(); }
-    toast('Score deleted');
-  } catch(e) { toast('Delete failed'); }
-}
+// The separate CF-only calendar subsystem (cfRenderCalendar/cfBuildCalGrid/cfGetCellDots/
+// cfBuildWeekView/cfRenderDayPanel/cfDrag* + its view-cf-dashboard markup) was removed here
+// 2026-09-03 — confirmed dead since cfRenderDashboard() redirects to the unified calendar
+// (see round-4 bug-hunt note near cfRenderDashboard below). See git history if ever needed.
 
 function cfPreFillTrack(wodName) {
   nav('cf-track');
@@ -17045,7 +16635,7 @@ function cfRenderFeaturedWOD() {
         ${movHtml}
         ${featured.difficulty || featured.duration_bucket ? 
           '<div style="display:flex;gap:5px;margin-top:8px">' +
-          (featured.difficulty ? '<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30">'+featured.difficulty+'</span>' : '') +
+          (featured.difficulty ? '<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.188)">'+featured.difficulty+'</span>' : '') +
           (featured.duration_bucket ? '<span class="pill" style="background:var(--surface2);color:var(--text-muted)">'+cfDurationLabel(featured.duration_bucket)+'</span>' : '') +
           '</div>' : ''}
       </div>
@@ -18275,15 +17865,7 @@ async function cfLogScore() {
   } else {
     toast(`${wodName} — ${score} ${rx} saved ✓`);
   }
-  // Refresh calendar cache so new score shows immediately
-  const logDate = window._cfLogDate || new Date().toISOString().slice(0,10);
-  window._cfLogDate = null;
-  if (!_cfCalScores[logDate]) _cfCalScores[logDate] = [];
-  _cfCalScores[logDate].unshift({
-    id: Date.now().toString(), user_id: currentUser?.id,
-    wod_name: wodName, score, format: _cfCurrentFormat,
-    rx_scaled: rx, notes, logged_at: new Date().toISOString()
-  });
+  window._cfLogDate = null; // reset so a future log doesn't inherit a stale pre-filled date
   setTimeout(()=>{ nav('cf-dashboard'); }, 500);
 }
 
@@ -18404,7 +17986,7 @@ function cfRenderLibrary() {
         <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">
           ${w._benchmark?'<span class="pill pill-amber">Benchmark</span>':''}
           ${w._user && w.is_public?'<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green)">🌐 Public</span>':''}
-          ${w.difficulty?'<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid var(--cf-green)30">'+w.difficulty+'</span>':''}
+          ${w.difficulty?'<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.188)">'+w.difficulty+'</span>':''}
           ${w.duration_bucket?'<span class="pill" style="background:var(--surface2);color:var(--text-muted)">'+cfDurationLabel(w.duration_bucket)+'</span>':''}
         </div>
       </div>
@@ -18729,44 +18311,10 @@ async function cfRenderAthletes() {
 // ── Assign WOD ──
 function cfOpenAssignWOD() { nav('cf-assign'); }
 
-async function cfRenderAssignWOD() {
-  const body = document.getElementById('cf-assign-body');
-  if (!body || currentUser?.role !== 'admin') return;
-  body.innerHTML = '<div class="loading">Loading...</div>';
-  try {
-    const allUsers = await db('users','GET',null,'?select=id,username,display_name');
-    const athletes = (allUsers||[]).filter(u=>u.id!==currentUser.id);
-    const wodOpts = [...CF_BENCHMARKS,..._cfWODs].map(w=>`<option value="${w.name}">${w.name} (${w.format||'WOD'})</option>`).join('');
-    const athleteChips = athletes.map(u=>`
-      <label class="assign-athlete-chip" onclick="this.classList.toggle('selected');this.querySelector('input').checked=!this.querySelector('input').checked">
-        <input type="checkbox" value="${u.id}" style="display:none">
-        <div class="user-avatar" style="width:28px;height:28px;font-size:11px;background:var(--cf-green);color:#0d0d0d">${u.username.slice(0,2).toUpperCase()}</div>
-        <span>${u.username}</span>
-      </label>`).join('');
-    body.innerHTML = `
-      <div class="field"><label>WOD</label>
-        <select id="cf-assign-wod"><option value="">-- Pick a WOD --</option>${wodOpts}</select></div>
-      <div class="field"><label>Date</label>
-        <input id="cf-assign-date" type="date" value="${todayStr()}"></div>
-      <div class="field"><label>Notes for athletes <span style="font-size:10px;color:var(--text-muted)">(optional)</span></label>
-        <textarea id="cf-assign-notes" rows="2" placeholder="Pacing tips, scaling guidance..."></textarea></div>
-      <div class="field"><label>Assign To</label>
-        <div class="assign-athlete-grid">${athleteChips}</div></div>
-      <div style="display:flex;gap:8px;margin-top:14px">
-        <button class="btn btn-ghost" onclick="nav('cf-athletes')">Cancel</button>
-        <button class="btn btn-primary" style="flex:1" onclick="cfConfirmAssignWOD()">Assign WOD</button>
-      </div>`;
-  } catch(e) { body.innerHTML='<div class="error-msg">Could not load</div>'; }
-}
-
-async function cfConfirmAssignWOD() {
-  const wodName = document.getElementById('cf-assign-wod')?.value;
-  if (!wodName) { toast('Pick a WOD first'); return; }
-  const selected = [...document.querySelectorAll('.assign-athlete-chip input:checked')].map(cb=>cb.value);
-  if (!selected.length) { toast('Select at least one athlete'); return; }
-  toast(`WOD assigned to ${selected.length} athlete${selected.length!==1?'s':''} ✓`);
-  nav('cf-athletes');
-}
+// cfRenderAssignWOD()/cfConfirmAssignWOD() (pick-one-WOD-then-multi-select-athletes) removed
+// here 2026-09-03 — confirmed dead per the round-5 bug-hunt note above cfRenderAssign(),
+// superseded by the athlete-first flow that actually handles nav('cf-assign'). See git
+// history if ever needed.
 
 // ── Boot: restore mode + load CF data after login ──
 const _alloyOrigEnterApp = typeof enterApp === 'function' ? enterApp : null;
