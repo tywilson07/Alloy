@@ -893,6 +893,9 @@ html.tv-mode .fs-controls, html.tv-mode .fs-exit-btn { display: none !important;
     <div id="login-error" class="error-msg" style="display:none"></div>
     <div class="field"><label>Username</label><input id="login-user" placeholder="e.g. tyler" autocapitalize="none" autocomplete="username"></div>
     <div class="field"><label>Password</label><input id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password"></div>
+    <div style="text-align:right;margin:-6px 0 12px">
+      <button onclick="openForgotPassword()" style="background:none;border:none;color:var(--text-muted);font-size:12px;cursor:pointer;text-decoration:underline;padding:0">Forgot password?</button>
+    </div>
     <button class="btn btn-primary btn-full" onclick="doLogin()" style="margin-bottom:12px">Sign In</button>
     <div class="divider"></div>
     <div style="font-size:12px;color:var(--gray-500);text-align:center;margin-bottom:10px">New here? Create an account.</div>
@@ -2122,6 +2125,134 @@ async function doRegister() {
     }
     console.error('Register error:', e);
   }
+}
+
+// ── Forgot Password ──
+// Sending the actual email is server-side (a Supabase Edge Function, request-password-reset,
+// using Resend — needs Tyler's Resend API key set as a function secret before this can
+// actually deliver anything; the request/UI side here works regardless). Confirming a reset
+// (below, PASSWORD-RESET CONFIRM) is handled entirely client-side once a valid token exists —
+// no Edge Function needed for that half, same table-level trust as every other write in this
+// app (RLS is off everywhere, so validating the token and updating the password can both
+// happen directly from the browser).
+function openForgotPassword() {
+  document.getElementById('modal-title').textContent = '🔑 Reset Password';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">
+      Enter your username or email and, if it matches an account with an email on file,
+      we'll send a reset link there.
+    </div>
+    <div class="field">
+      <label>Username or Email</label>
+      <input id="forgot-identifier" placeholder="e.g. tyler or you@example.com" autocapitalize="none">
+    </div>
+    <div id="forgot-msg" style="font-size:12.5px;margin-top:8px;display:none"></div>`;
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" id="forgot-submit-btn" onclick="requestPasswordReset()">Send Reset Link</button>`;
+  showModal();
+}
+
+async function requestPasswordReset() {
+  const identifier = document.getElementById('forgot-identifier')?.value?.trim();
+  const msgEl = document.getElementById('forgot-msg');
+  const btn = document.getElementById('forgot-submit-btn');
+  if (!identifier) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+  try {
+    await fetch(`${SUPA_URL}/functions/v1/request-password-reset`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json', 'Authorization':`Bearer ${SUPA_KEY}`, 'apikey': SUPA_KEY},
+      body: JSON.stringify({identifier})
+    });
+  } catch(e) { /* fall through to the same generic message either way */ }
+  // Always the same message regardless of what actually happened server-side — never confirm
+  // or deny whether that username/email exists (standard practice against account enumeration
+  // via a password-reset form).
+  if (msgEl) {
+    msgEl.style.display = 'block';
+    msgEl.style.color = 'var(--lime)';
+    msgEl.textContent = "If that matches an account with an email on file, a reset link is on its way.";
+  }
+  if (btn) btn.style.display = 'none';
+}
+
+// ── Password Reset Confirm ──
+// Reached via the emailed link: alloy-3xs.pages.dev/?reset=<token>. Checked at boot, before
+// the normal session-restore/login-screen logic — see the bottom of this file.
+async function checkPasswordResetLink() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('reset');
+  if (!token) return false;
+  document.getElementById('login-screen').classList.remove('hidden');
+  const card = document.querySelector('#login-screen .login-card');
+  if (card) card.innerHTML = `
+    <div class="login-logo" style="display:flex;align-items:center;gap:12px;line-height:1;margin-bottom:20px">
+      <svg width="42" height="42" viewBox="0 0 100 100" fill="none" style="flex-shrink:0">
+        <path d="M50 18 L16 46 L24 46 L50 26 L76 46 L84 46 Z" fill="#39d353"/>
+        <path d="M50 40 L22 68 L30 68 L50 52 L70 68 L78 68 Z" fill="#ffffff"/>
+        <path d="M37,57 L50,64 L63,57 L63,61 L50,68 L37,61 Z" fill="#39d353"/>
+      </svg>
+      <span style="color:var(--text-primary);font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:36px;letter-spacing:0.16em;text-transform:uppercase;line-height:1">ALLOY</span>
+    </div>
+    <div id="reset-status" style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">Checking your reset link...</div>
+    <div id="reset-form" style="display:none">
+      <div class="field"><label>New Password</label><input id="reset-pw-new" type="password" placeholder="At least 6 characters" autocomplete="new-password"></div>
+      <div class="field"><label>Confirm New Password</label><input id="reset-pw-confirm" type="password" placeholder="Re-enter new password" autocomplete="new-password"></div>
+      <div id="reset-error" class="error-msg" style="display:none"></div>
+      <button class="btn btn-primary btn-full" onclick="confirmPasswordReset('${token.replace(/'/g,"\\'")}')" style="margin-top:6px">Set New Password</button>
+    </div>`;
+  try {
+    const rows = await db('password_resets','GET',null,`?token=eq.${encodeURIComponent(token)}&select=*`);
+    const reset = rows?.[0];
+    const statusEl = document.getElementById('reset-status');
+    const formEl = document.getElementById('reset-form');
+    if (!reset || reset.used_at || new Date(reset.expires_at) < new Date()) {
+      if (statusEl) statusEl.innerHTML = `This reset link is invalid or has expired.<br><br><button class="btn btn-ghost btn-sm" onclick="window.location.href=window.location.pathname">Back to Sign In</button>`;
+      return true;
+    }
+    if (statusEl) statusEl.textContent = 'Enter a new password for your account.';
+    if (formEl) formEl.style.display = 'block';
+  } catch(e) {
+    const statusEl = document.getElementById('reset-status');
+    if (statusEl) statusEl.textContent = "Couldn't check that link — try again in a moment.";
+  }
+  return true;
+}
+
+async function confirmPasswordReset(token) {
+  const next = document.getElementById('reset-pw-new')?.value || '';
+  const confirm = document.getElementById('reset-pw-confirm')?.value || '';
+  const errEl = document.getElementById('reset-error');
+  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
+  if (next.length < 6) { showErr('Password must be at least 6 characters'); return; }
+  if (next !== confirm) { showErr("Passwords don't match"); return; }
+  try {
+    // Re-check the token right before using it — it's already been validated once when this
+    // screen loaded, but re-verifying here closes the gap where it could've expired or been
+    // used (e.g. in another tab) in between.
+    const rows = await db('password_resets','GET',null,`?token=eq.${encodeURIComponent(token)}&select=*`);
+    const reset = rows?.[0];
+    if (!reset || reset.used_at || new Date(reset.expires_at) < new Date()) {
+      showErr('This reset link is no longer valid — request a new one.');
+      return;
+    }
+    const newHash = await hashPassword(next);
+    await db('users','PATCH',{password_hash:newHash},`?id=eq.${reset.user_id}`);
+    await db('password_resets','PATCH',{used_at:new Date().toISOString()},`?id=eq.${reset.id}`);
+    // Log them straight in, same as doRegister() does after creating a fresh account —
+    // no reason to make them re-type the password they just set.
+    const userRows = await db('users','GET',null,`?id=eq.${reset.user_id}&select=*`);
+    currentUser = userRows?.[0];
+    if (currentUser) {
+      saveSession(currentUser);
+      history.replaceState(null, '', window.location.pathname); // drop ?reset=... from the URL
+      toast('Password updated ✓');
+      enterApp();
+    } else {
+      showErr('Password updated, but auto-login failed — please sign in.');
+    }
+  } catch(e) { showErr('Could not reset password — try again.'); console.error(e); }
 }
 
 function doLogout() {
@@ -10813,6 +10944,92 @@ async function saveDisplayName() {
   } catch(e) { toast('Could not save — try again'); console.error(e); }
 }
 
+async function openChangeEmail() {
+  const current = currentUser?.email || '';
+  document.getElementById('modal-title').textContent = '✉ Email';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">
+      Used only for password recovery — if you ever forget your password, a reset link goes here.
+      Never shown to anyone else in the app.
+    </div>
+    <div class="field">
+      <label>Email</label>
+      <input id="email-input" type="email" value="${current}" placeholder="you@example.com" style="font-size:16px;padding:10px;font-family:var(--font)">
+    </div>
+    <div id="email-change-error" class="error-msg" style="display:none;margin-top:6px"></div>`;
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveEmail()">Save</button>`;
+  showModal();
+}
+
+async function saveEmail() {
+  const raw = document.getElementById('email-input')?.value?.trim() || '';
+  const val = raw ? raw.toLowerCase() : null;
+  const errEl = document.getElementById('email-change-error');
+  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
+  if (val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { showErr('Enter a valid email address'); return; }
+  try {
+    // Each email can only be tied to one account — otherwise a reset request by email
+    // couldn't tell whose password to actually reset.
+    if (val) {
+      const existing = await db('users','GET',null,`?email=eq.${encodeURIComponent(val)}&id=neq.${currentUser.id}&select=id`);
+      if (existing?.length) { showErr('That email is already on another account'); return; }
+    }
+    await db('users','PATCH',{email:val},`?id=eq.${currentUser.id}`);
+    currentUser.email = val;
+    saveSession(currentUser);
+    closeModal();
+    renderSettings();
+    toast(val ? 'Email saved ✓' : 'Email removed');
+  } catch(e) { showErr('Could not save — try again'); console.error(e); }
+}
+
+async function openChangePassword() {
+  document.getElementById('modal-title').textContent = '🔒 Change Password';
+  document.getElementById('modal-body').innerHTML = `
+    <div class="field">
+      <label>Current Password</label>
+      <input id="pw-current" type="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="field">
+      <label>New Password</label>
+      <input id="pw-new" type="password" placeholder="At least 6 characters" autocomplete="new-password">
+    </div>
+    <div class="field">
+      <label>Confirm New Password</label>
+      <input id="pw-confirm" type="password" placeholder="Re-enter new password" autocomplete="new-password">
+    </div>
+    <div id="pw-change-error" class="error-msg" style="display:none;margin-top:6px"></div>`;
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveNewPassword()">Change Password</button>`;
+  showModal();
+}
+
+async function saveNewPassword() {
+  const current = document.getElementById('pw-current')?.value || '';
+  const next    = document.getElementById('pw-new')?.value || '';
+  const confirm = document.getElementById('pw-confirm')?.value || '';
+  const errEl = document.getElementById('pw-change-error');
+  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
+  if (!current || !next || !confirm) { showErr('Fill in all three fields'); return; }
+  if (next.length < 6) { showErr('New password must be at least 6 characters'); return; }
+  if (next !== confirm) { showErr("New passwords don't match"); return; }
+  try {
+    const currentHash = await hashPassword(current);
+    // currentUser was loaded with select=* at login, so password_hash is already in memory —
+    // no extra round-trip needed just to verify the current password.
+    if (currentHash !== currentUser.password_hash) { showErr('Current password is incorrect'); return; }
+    const newHash = await hashPassword(next);
+    await db('users','PATCH',{password_hash:newHash},`?id=eq.${currentUser.id}`);
+    currentUser.password_hash = newHash;
+    saveSession(currentUser);
+    closeModal();
+    toast('Password changed ✓');
+  } catch(e) { showErr('Could not change password — try again'); console.error(e); }
+}
+
 function renderSettings() {
   const body = document.getElementById('settings-body');
   if (!body) return;
@@ -10830,7 +11047,17 @@ function renderSettings() {
             <div style="font-size:12px;color:var(--text-muted)">${currentUser?.role==='admin'?'Coach / Admin':'Athlete'}</div>
           </div>
         </div>
-        <button class="btn btn-ghost btn-sm" style="width:auto;margin-left:auto" onclick="openChangeDisplayName()">✏ Change Name</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:12px;gap:8px">
+          <div style="min-width:0">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px">Email</div>
+            <div style="font-size:13px;color:${currentUser?.email?'var(--text-primary)':'var(--text-muted)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${currentUser?.email || 'Not set — add one so you can reset your password if you forget it'}</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" style="width:auto;flex-shrink:0" onclick="openChangeEmail()">${currentUser?.email ? 'Edit' : '+ Add'}</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openChangeDisplayName()">✏ Change Name</button>
+          <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openChangePassword()">🔒 Change Password</button>
+        </div>
         <button class="btn btn-ghost btn-sm btn-full" style="margin-top:8px" onclick="doLogout()">Sign Out</button>
       </div>
 
@@ -11223,6 +11450,11 @@ if (window.ALLOY_TV_USERNAME) {
   } else {
     cfInitTVDisplay(window.ALLOY_TV_USERNAME);
   }
+} else if (new URLSearchParams(window.location.search).get('reset')) {
+  // Password-reset link — show that flow instead of restoring any saved session, even on a
+  // device that's already logged in as someone else (they might be resetting a different
+  // account's password on a shared device).
+  checkPasswordResetLink();
 } else {
   const saved=loadSession();
   if(saved){
