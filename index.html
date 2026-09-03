@@ -2105,6 +2105,11 @@ async function doRegister() {
 }
 
 function doLogout() {
+  // Tear down the app-wide message listener — otherwise it keeps running under the
+  // outgoing user's identity if someone else logs in on the same device without a
+  // full page reload, and would misattribute/leak "new message" notices.
+  if (_msgGlobalChannel) { try { _msgGlobalChannel.unsubscribe(); } catch(e) {} _msgGlobalChannel = null; }
+  msgUnsubscribe();
   clearSession();
   currentUser = null;
   document.getElementById('login-screen').classList.remove('hidden');
@@ -2158,7 +2163,7 @@ function enterApp() {
   checkFirstLogin(); // show onboarding tour for first-time athletes
   cfPreloadVoiceClips(); // background-fetch WOD timer voice clips (routes to TV, unlike speechSynthesis)
   cfListenForGroupInvites(); // live-only group/Partner WOD invites — see ALLOY — GROUP / PARTNER WOD SESSIONS
-  msgRefreshUnreadBadge();
+  msgStartGlobalListener(); // live "you have a new message" badge+toast for the rest of this session — refreshes the badge itself on start
 }
 
 // ═══════════════════════════════════════════════════
@@ -7028,6 +7033,9 @@ let _msgActiveConvId = null;
 let _msgActiveOtherUser = null; // {id, username}
 let _msgChannel = null;         // realtime channel for the open thread
 let _msgDayLabels = {};         // {date: workoutLabel} for the active thread's athlete
+let _msgMyConvIds = new Set();  // every conversation this user is in — kept fresh by msgRefreshUnreadBadge()
+let _msgGlobalChannel = null;   // app-wide "did I get a new message" listener — separate from _msgChannel
+                                 // (the open-thread one), lives for the whole session once logged in
 
 // Find an existing 1:1 conversation between the current user and otherUserId, or null.
 async function msgFindDM(otherUserId) {
@@ -7253,11 +7261,13 @@ function msgUnsubscribe() {
 // More-menu "Messages" row. Best-effort — if the migration hasn't been run yet
 // (tables don't exist), this just fails quietly and the badge stays hidden.
 async function msgRefreshUnreadBadge() {
-  const badgeEls = document.querySelectorAll('.msg-unread-badge');
-  if (!badgeEls.length || !currentUser) return;
+  if (!currentUser) return;
   try {
     const mine = await db('conversation_participants','GET',null,`?user_id=eq.${currentUser.id}&select=conversation_id`);
     const convIds = (mine||[]).map(r=>r.conversation_id);
+    _msgMyConvIds = new Set(convIds); // kept fresh here so msgHandleGlobalInsert() can cheaply check "is this mine?"
+    const badgeEls = document.querySelectorAll('.msg-unread-badge');
+    if (!badgeEls.length) return;
     let count = 0;
     if (convIds.length) {
       const unread = await db('messages','GET',null,
@@ -7266,6 +7276,44 @@ async function msgRefreshUnreadBadge() {
     }
     badgeEls.forEach(el => { el.textContent = count>0?String(count):''; el.style.display = count>0?'':'none'; });
   } catch(e) { /* messaging tables not migrated yet, or offline — leave badge hidden */ }
+}
+
+// App-wide "you have a new message" notification — separate from msgSubscribe(), which only
+// listens while a specific thread is open. This one starts once at login and runs for the
+// whole session, so a message shows up (badge + toast) no matter what screen you're on. It
+// can't do anything once the app itself is closed or backgrounded on a locked phone — that
+// needs real push notifications (a server-side trigger + push subscriptions), which is a
+// separate, bigger piece of infrastructure this isn't attempting.
+async function msgStartGlobalListener() {
+  if (_msgGlobalChannel || !currentUser) return;
+  try {
+    await msgRefreshUnreadBadge(); // populate _msgMyConvIds before the first event can arrive
+    await cfLoadSupabaseClient();
+    const supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+    // No server-side filter here on purpose — Realtime filters are single-column equality only,
+    // and "is this one of my conversations" needs a join messages doesn't carry columns for.
+    // Cheap client-side check against _msgMyConvIds instead; one channel total regardless of
+    // how many conversations this user has, rather than one channel per conversation.
+    _msgGlobalChannel = supa.channel('messages-global-' + currentUser.id)
+      .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, payload => {
+        msgHandleGlobalInsert(payload.new);
+      })
+      .subscribe();
+  } catch(e) { /* Realtime unavailable — messages still work, just no live app-wide notice */ }
+}
+
+async function msgHandleGlobalInsert(m) {
+  if (!currentUser || m.sender_id === currentUser.id) return; // don't notify on your own message
+  if (!_msgMyConvIds.has(m.conversation_id)) return; // not one of mine (or _msgMyConvIds is stale — refreshed below regardless)
+  msgRefreshUnreadBadge();
+  // If this message's thread is the one currently open, let the existing thread-level
+  // subscription (msgSubscribe/msgLoadThread) handle rendering it — just avoid a redundant toast.
+  if (m.conversation_id === _msgActiveConvId) return;
+  try {
+    const sender = await db('users','GET',null,`?id=eq.${m.sender_id}&select=username`);
+    const name = sender?.[0]?.username || 'Someone';
+    toast(`💬 New message from ${name}`);
+  } catch(e) { toast('💬 New message'); }
 }
 
 // ═══════════════════════════════════════════════════
