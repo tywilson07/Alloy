@@ -4393,7 +4393,7 @@ async function confirmMovePlannedWorkout(fromDate, toDate, workoutName, existing
 }
 
 async function cancelPlannedMove(overrideId, originalDate) {
-  if(!confirm('Undo this move and return the workout to its original day?')) return;
+  if(!await confirmModal('Undo this move and return the workout to its original day?', {okText:'Undo', danger:false})) return;
   try{
     await db('workout_schedule_overrides','DELETE',null,`?id=eq.${overrideId}`);
     closeModal();
@@ -4471,7 +4471,7 @@ async function confirmMovePlannedWOD(fromDate, toDate, wodName, existingOverride
 }
 
 async function cancelPlannedWODMove(overrideId, originalDate) {
-  if(!confirm('Undo this move and return the WOD to its original day?')) return;
+  if(!await confirmModal('Undo this move and return the WOD to its original day?', {okText:'Undo', danger:false})) return;
   try{
     await db('wod_schedule_overrides','DELETE',null,`?id=eq.${overrideId}`);
     closeModal();
@@ -4702,13 +4702,13 @@ async function confirmMoveWorkout(workoutId, fromDate, toDate) {
 }
 
 async function deleteLog(ds, id){
-  if(!confirm('Delete this workout?')) return;
+  if(!await confirmModal('Delete this workout?')) return;
   try{await db('workouts','DELETE',null,`?id=eq.${id}&user_id=eq.${currentUser.id}`);renderCalendar();toast('Deleted');}
   catch(e){toast('Delete failed');console.error(e);}
 }
 
 async function deleteAssignment(id){
-  if(!confirm('Remove this assigned workout?')) return;
+  if(!await confirmModal('Remove this assigned workout?', {okText:'Remove'})) return;
   try{
     await db('workout_assignments','DELETE',null,`?id=eq.${id}`);
     renderCalendar();
@@ -5033,7 +5033,7 @@ async function removeAthleteProgram(assignmentId){
 }
 
 async function deleteProgram(id){
-  if(!confirm('Delete this program?')) return;
+  if(!await confirmModal('Delete this program?')) return;
   try{await db('programs','DELETE',null,`?id=eq.${id}`);renderPrograms();toast('Deleted');}
   catch(e){toast('Delete failed');console.error(e);}
 }
@@ -5626,7 +5626,7 @@ async function removeAthleteWODProgram(assignmentId){
 }
 
 async function deleteWODProgram(id){
-  if(!confirm('Delete this WOD program?')) return;
+  if(!await confirmModal('Delete this WOD program?')) return;
   try{await db('wod_programs','DELETE',null,`?id=eq.${id}`);renderWODPrograms();toast('Deleted');}
   catch(e){toast('Delete failed');console.error(e);}
 }
@@ -5712,9 +5712,9 @@ function wpAddWeek(){
   _wpWeeks.push(Array(7).fill(null));
   buildWODProgramModal(null);
 }
-function wpRemoveWeek(weekIdx){
+async function wpRemoveWeek(weekIdx){
   const hasContent = (_wpWeeks[weekIdx]||[]).some(Boolean);
-  if (hasContent && !confirm('Remove this week? Its WODs will be lost.')) return;
+  if (hasContent && !await confirmModal('Remove this week? Its WODs will be lost.', {okText:'Remove'})) return;
   _wpWeeks.splice(weekIdx,1);
   buildWODProgramModal(null);
 }
@@ -6079,6 +6079,46 @@ async function deleteMax(id,name,unit){
 function showModal(){document.getElementById('modal').style.display='flex';}
 function closeModal(){document.getElementById('modal').style.display='none';_cpDays=[];_editProgId=null;}
 function modalOutsideClick(e){if(e.target===document.getElementById('modal'))closeModal();}
+
+// In-app replacement for window.confirm(). Returns a Promise<boolean>. Layered
+// above any open modal (z-index 700), so it works from buttons inside other modals.
+function confirmModal(message, { okText = 'Delete', danger = true } = {}) {
+  return new Promise(resolve => {
+    let host = document.getElementById('confirm-modal');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'confirm-modal';
+      host.className = 'modal-overlay';
+      host.style.zIndex = '700';
+      document.body.appendChild(host);
+    }
+    const finish = val => {
+      host.style.display = 'none';
+      host.innerHTML = '';
+      document.removeEventListener('keydown', onKey, true);
+      resolve(val);
+    };
+    const onKey = e => {
+      if (e.key === 'Escape') { e.stopPropagation(); finish(false); }
+      else if (e.key === 'Enter') { e.stopPropagation(); finish(true); }
+    };
+    host.innerHTML = `
+      <div class="modal" style="max-width:380px">
+        <div class="modal-body" id="confirm-modal-msg" style="padding:22px 20px 10px;font-size:14px;line-height:1.5;color:var(--text-primary)"></div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="confirm-modal-cancel">Cancel</button>
+          <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="confirm-modal-ok">${okText}</button>
+        </div>
+      </div>`;
+    host.querySelector('#confirm-modal-msg').textContent = message;
+    host.onclick = e => { if (e.target === host) finish(false); };
+    host.querySelector('#confirm-modal-cancel').onclick = () => finish(false);
+    host.querySelector('#confirm-modal-ok').onclick = () => finish(true);
+    document.addEventListener('keydown', onKey, true);
+    host.style.display = 'flex';
+    host.querySelector('#confirm-modal-ok').focus();
+  });
+}
 
 // ═══════════════════════════════════════════════════
 // TOAST
@@ -9247,7 +9287,7 @@ async function saveTemplate(existingId) {
 }
 
 async function deleteTemplate(id) {
-  if (!confirm('Delete this template?')) return;
+  if (!await confirmModal('Delete this template?')) return;
   try {
     await db('workout_templates','DELETE',null,`?id=eq.${id}`);
     toast('Template deleted');
@@ -9944,7 +9984,8 @@ async function saveCoachNote(ds, athleteId, existingId) {
 }
 
 async function deleteCoachNote(ds, athleteId, existingId) {
-  if (!existingId || !confirm('Remove this note?')) return;
+  if (!existingId) return;
+  if (!await confirmModal('Remove this note?', {okText:'Remove'})) return;
   try {
     await db('workout_coach_notes','DELETE',null,`?id=eq.${existingId}`);
     toast('Note removed');
@@ -10256,7 +10297,7 @@ async function generateExerciseAIContent(exId, name, muscleGroup, equipment, doA
 }
 
 async function deleteExercise(id) {
-  if (!confirm('Remove this exercise from the library?')) return;
+  if (!await confirmModal('Remove this exercise from the library?', {okText:'Remove'})) return;
   try {
     await db('exercises','DELETE',null,`?id=eq.${id}`);
     toast('Exercise removed');
@@ -12386,7 +12427,7 @@ function wlbLadderHideSuggestions() {
   document.getElementById('ladder-suggestions-dropdown')?.remove();
 }
 
-function wlbGenerateLadder() {
+async function wlbGenerateLadder() {
   const schemeStr = document.getElementById('ladder-scheme-input')?.value || '';
   const reps = schemeStr.split(/[^\d]+/).filter(Boolean).map(Number);
   if (!reps.length) { toast('Enter a rep scheme, e.g. 21-15-9'); return; }
@@ -12396,7 +12437,7 @@ function wlbGenerateLadder() {
     .filter(Boolean);
   if (!names.length) { toast('Add at least one movement'); return; }
 
-  if (_wlbMovements.length > 0 && !confirm('Replace the current Main Work movements with this ladder?')) return;
+  if (_wlbMovements.length > 0 && !await confirmModal('Replace the current Main Work movements with this ladder?', {okText:'Replace', danger:false})) return;
 
   const expanded = [];
   reps.forEach(r => {
@@ -14863,7 +14904,7 @@ function cfRenderHistByWOD(body, scores) {
 }
 
 async function cfDeleteScoreFromHist(id, wodName) {
-  if (!confirm('Delete this score?')) return;
+  if (!await confirmModal('Delete this score?')) return;
   try {
     await db('cf_scores','DELETE',null,`?id=eq.${id}`).catch(()=>{});
     _cfScores = _cfScores.filter(s => String(s.id) !== String(id));
@@ -15155,7 +15196,7 @@ async function cfSaveWODAssignment() {
 }
 
 async function cfDeleteWODAssignment(id) {
-  if (!confirm('Remove this WOD assignment?')) return;
+  if (!await confirmModal('Remove this WOD assignment?', {okText:'Remove'})) return;
   try {
     await db('cf_wod_assignments','DELETE',null,`?id=eq.${id}`);
     cfLoadAthleteWODAssignments(_cfAssignAthlete?.id);
@@ -15554,7 +15595,7 @@ function cfEditMovement(idOrName) {
 }
 
 async function cfDeleteMovement(id, name) {
-  if (!confirm(`Delete "${name}"?`)) return;
+  if (!await confirmModal(`Delete "${name}"?`)) return;
   try {
     if (id) await db('cf_movements','DELETE',null,`?id=eq.${id}`).catch(()=>{});
     _cfCustomMovements = _cfCustomMovements.filter(m => m.id !== id && m.name !== name);
@@ -18293,7 +18334,7 @@ async function cfSaveWOD() {
 }
 
 async function cfDeleteWOD(id) {
-  if (!confirm('Delete this WOD?')) return;
+  if (!await confirmModal('Delete this WOD?')) return;
   try {
     await db('cf_wods','DELETE',null,`?id=eq.${id}`).catch(()=>{});
     _cfWODs = _cfWODs.filter(w=>String(w.id)!==String(id));
