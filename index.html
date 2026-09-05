@@ -3610,6 +3610,45 @@ function getProgressionSuggestion(name, setIdx, targetReps) {
   };
 }
 
+// ── Planned/programmed exercise → log-modal exercise ─────────────────────
+// One converter for every path that loads program/template exercises into the
+// log modal: open a planned day, open a coach-assigned workout, copy a planned
+// workout to a date, load a saved builder workout. `entry` is a bare name string
+// or an object {name, sets, reps, setType, pct, pctRef}; `section` is
+// 'warmup' | 'main' | 'cooldown'. An explicit setType from the program builder
+// always wins over the name-based bodyweight guess.
+const CARDIO_NAME_RE = /\b(running|rowing|biking|cycling|cardio|swimming|walking|jogging|sprinting)\b|^row\b|^run\b|^swim\b|^walk\b|^bike\b/i;
+const CARRY_NAME_RE  = /carry|sled push|sled pull|yoke|prowler|farmer/i;
+const BW_NAME_RE      = /push.?up|pull.?up|chin.?up|\bdip\b|muscle.?up|handstand|sit.?up|v.?up|crunch|leg raise|knee raise|toes.?to.?bar|\bplank\b|hollow|air squat/i;
+
+function plannedExToLogEx(entry, section) {
+  const name = typeof entry === 'string' ? entry : (entry?.name || '');
+  const obj  = (entry && typeof entry === 'object') ? entry : null;
+  const libType = (_exLibrary || []).find(e => e.name.toLowerCase() === name.toLowerCase())?.exercise_type;
+
+  const isSimple = section === 'warmup' || section === 'cooldown';
+  const isCardio = libType === 'cardio' || (!libType && CARDIO_NAME_RE.test(name));
+  const isCarry  = libType === 'carry'  || (!libType && CARRY_NAME_RE.test(name));
+
+  if (isCardio) return { name, type:'cardio', section, cardio:{dist:'',pace:'',dur:'',done:false}, expanded:false };
+  if (isCarry)  return { name, type:'carry',  section, carry:{weight:'',dist:'',sets:'3',done:false}, expanded:false };
+  if (isSimple) return { name, type:'simple', section, done:false, expanded:false };
+
+  const targetSets = (obj && obj.sets) ? (parseInt(obj.sets) || 3) : 3;
+  const targetReps = obj ? (obj.reps || '') : '';
+  const detectedBW = libType === 'bodyweight' || BW_NAME_RE.test(name);
+  const setType = (obj && obj.setType) ? obj.setType : (detectedBW ? 'bodyweight' : 'weight');
+  const bw = setType === 'bodyweight', assisted = setType === 'assisted';
+
+  return {
+    name, type:'strength', section, setType, targetSets, targetReps,
+    pct:    (obj && obj.pct)    || '',
+    pctRef: (obj && obj.pctRef) || '',
+    sets:   Array.from({ length: targetSets }, () => ({ w:'', r:'', bw, assisted, done:false })),
+    expanded:false,
+  };
+}
+
 async function openLogModal(ds, suggestedName) {
   _logDate  = ds||selectedDate;
   _logId    = null;
@@ -3650,34 +3689,10 @@ async function openLogModal(ds, suggestedName) {
     ? getPlannedWorkouts(_logDate).find(p=>p.name===suggestedName) || getPlannedWorkout(_logDate)
     : getPlannedWorkout(_logDate);
   if (planned && (planned.warmup?.length || planned.exercises?.length || planned.cooldown?.length)) {
-    const toEx = (exData, sectionLabel) => {
-      const name = typeof exData === 'string' ? exData : (exData.name||'');
-      const libEx = _exLibrary.find(e=>e.name.toLowerCase()===name.toLowerCase());
-      const libType = libEx?.exercise_type;
-      const isCardio = libType==='cardio' || (!libType && /\b(running|rowing|biking|cycling|cardio|swimming|walking|jogging|sprinting)\b|^row\b|^run\b|^swim\b|^walk\b|^bike\b/i.test(name));
-      const isSimple = sectionLabel === 'warmup' || sectionLabel === 'cooldown';
-      if (isCardio) return {name,type:'cardio',section:sectionLabel,cardio:{dist:'',pace:'',dur:'',done:false},expanded:false};
-      if (isSimple) return {name,type:'simple',section:sectionLabel,done:false,expanded:false};
-      const targetSets = typeof exData === 'object' && exData.sets ? parseInt(exData.sets)||3 : 3;
-      const targetReps = typeof exData === 'object' ? (exData.reps||'') : '';
-      // Respect setType from program builder; fall back to name-based detection
-      const progSetType = typeof exData === 'object' ? (exData.setType||null) : null;
-      const detectedBW = libType==='bodyweight' || /push.?up|pull.?up|chin.?up|\bdip\b|muscle.?up|handstand|sit.?up|v.?up|crunch|leg raise|knee raise|toes.?to.?bar|\bplank\b|hollow|air squat/i.test(name);
-      const setType = progSetType || (detectedBW ? 'bodyweight' : 'weight');
-      const isAssisted = setType === 'assisted';
-      const isBW2 = setType === 'bodyweight';
-      // Leave r empty so ghost suggestion shows — don't pre-fill with lower bound
-      return {name,type:'strength',section:sectionLabel,setType,
-        targetSets, targetReps,
-        pct: (typeof exData === 'object' ? exData.pct : '')||'',
-        pctRef: (typeof exData === 'object' ? exData.pctRef : '')||'',
-        sets:Array.from({length:targetSets},()=>({w:'',r:'',bw:isBW2,assisted:isAssisted,done:false})),
-        expanded:false};
-    };
     _logExercises = [
-      ...(planned.warmup  ||[]).map(n=>toEx(n,'warmup')),
-      ...(planned.exercises||[]).map(n=>toEx(n,'main')),
-      ...(planned.cooldown||[]).map(n=>toEx(n,'cooldown')),
+      ...(planned.warmup   ||[]).map(n=>plannedExToLogEx(n,'warmup')),
+      ...(planned.exercises||[]).map(n=>plannedExToLogEx(n,'main')),
+      ...(planned.cooldown ||[]).map(n=>plannedExToLogEx(n,'cooldown')),
     ];
     if(_logExercises.length) _logExercises[0].expanded=true;
   } else { _logExercises=[]; }
@@ -4221,11 +4236,10 @@ function addExercise(){
   saveSectionNotes();
   const inp=document.getElementById('add-ex-input');
   const name=inp?.value?.trim(); if(!name) return;
-  const libEx = (_exLibrary||[]).find(e=>e.name.toLowerCase()===name.toLowerCase());
-  const libType = libEx?.exercise_type;
-  const isCardio = libType==='cardio' || (!libType && /\b(running|rowing|biking|cycling|cardio|swimming|walking|jogging|sprinting)\b|^row\b|^run\b|^swim\b|^walk\b|^bike\b/i.test(name));
-  const isCarry = libType==='carry' || (!libType && /carry|sled push|sled pull|yoke|prowler|farmer/i.test(name));
-  const isBW = libType==='bodyweight' || (!libType && /push.?up|pull.?up|chin.?up|\bdip\b|muscle.?up|handstand|sit.?up|v.?up|crunch|leg raise|knee raise|toes.?to.?bar|\bplank\b|hollow|air squat/i.test(name));
+  const libType = (_exLibrary||[]).find(e=>e.name.toLowerCase()===name.toLowerCase())?.exercise_type;
+  const isCardio = libType==='cardio' || (!libType && CARDIO_NAME_RE.test(name));
+  const isCarry = libType==='carry' || (!libType && CARRY_NAME_RE.test(name));
+  const isBW = libType==='bodyweight' || (!libType && BW_NAME_RE.test(name));
   _logExercises.forEach(e=>e.expanded=false);
   const newEx = isCardio ? {name,type:'cardio',section:'main',cardio:{dist:'',pace:'',dur:'',done:false},expanded:true}
     : isCarry ? {name,type:'carry',section:'main',carry:{weight:'',dist:'',sets:'3',done:false},expanded:true}
@@ -4518,28 +4532,10 @@ async function confirmCopyPlannedWorkout(fromDate, toDate, workoutName) {
   if (!planned) { toast('Could not find workout template'); return; }
 
   // Convert program exercises to blank log format
-  const toEx = (ex, section) => {
-    const name = typeof ex === 'string' ? ex : (ex.name||'');
-    const libEx = (_exLibrary||[]).find(e=>e.name.toLowerCase()===name.toLowerCase());
-    const libType = libEx?.exercise_type;
-    const isSimple = section === 'warmup' || section === 'cooldown';
-    const isCardio = libType==='cardio' || (!libType && /\b(running|rowing|biking|cycling|cardio|swimming|walking|jogging|sprinting)\b|^row\b|^run\b|^swim\b|^walk\b|^bike\b/i.test(name));
-    if (isCardio) return {name, type:'cardio', section, cardio:{dist:'',pace:'',dur:'',done:false}, expanded:false};
-    if (isSimple) return {name, type:'simple', section, done:false, expanded:false};
-    const sets = typeof ex === 'object' ? parseInt(ex.sets)||3 : 3;
-    const reps = typeof ex === 'object' ? (ex.reps||'') : '';
-    const detectedBW = libType==='bodyweight' || /push.?up|pull.?up|chin.?up|\bdip\b|muscle.?up|handstand|sit.?up|v.?up|crunch|leg raise|knee raise|toes.?to.?bar|\bplank\b|hollow|air squat/i.test(name);
-    const setType = (typeof ex === 'object' && ex.setType) ? ex.setType : (detectedBW ? 'bodyweight' : 'weight');
-    return {name, type:'strength', section, setType, targetSets:sets, targetReps:reps,
-      pct: (typeof ex === 'object' ? ex.pct : '')||'',
-      pctRef: (typeof ex === 'object' ? ex.pctRef : '')||'',
-      sets: Array.from({length:sets}, ()=>({w:'',r:'',bw:setType==='bodyweight',done:false})), expanded:false};
-  };
-
   const exercises = [
-    ...(planned.warmup||[]).map(ex=>toEx(ex,'warmup')),
-    ...(planned.exercises||[]).map(ex=>toEx(ex,'main')),
-    ...(planned.cooldown||[]).map(ex=>toEx(ex,'cooldown')),
+    ...(planned.warmup   ||[]).map(ex=>plannedExToLogEx(ex,'warmup')),
+    ...(planned.exercises||[]).map(ex=>plannedExToLogEx(ex,'main')),
+    ...(planned.cooldown ||[]).map(ex=>plannedExToLogEx(ex,'cooldown')),
   ];
 
   try {
@@ -4727,29 +4723,10 @@ async function openLogFromAssigned(assignmentId, ds, workoutName) {
     const a = rows?.[0]; if (!a) return;
     _logDate = ds;
     _logId   = null;
-    const toEx = (exData, section) => {
-      const name = typeof exData === 'string' ? exData : (exData.name||'');
-      const libEx = (_exLibrary||[]).find(e=>e.name.toLowerCase()===name.toLowerCase());
-      const libType = libEx?.exercise_type;
-      const isCardio = libType==='cardio' || (!libType && /\b(running|rowing|biking|cycling|cardio|swimming|walking|jogging|sprinting)\b|^row\b|^run\b|^swim\b|^walk\b|^bike\b/i.test(name));
-      const isBW=libType==='bodyweight' || /push.?up|pull.?up|chin.?up|\bdip\b|muscle.?up|handstand|sit.?up|v.?up|crunch|leg raise|knee raise|toes.?to.?bar|\bplank\b|hollow|air squat/i.test(name);
-      const isSimple = section === 'warmup' || section === 'cooldown';
-      if (isCardio) return {name,type:'cardio',section,cardio:{dist:'',pace:'',dur:'',done:false},expanded:false};
-      if (isSimple) return {name,type:'simple',section,done:false,expanded:false};
-      const targetSets = typeof exData === 'object' && exData.sets ? parseInt(exData.sets)||3 : 3;
-      const targetReps = typeof exData === 'object' ? (exData.reps||'') : '';
-      const setType = (typeof exData === 'object' && exData.setType) ? exData.setType : (isBW ? 'bodyweight' : 'weight');
-      return {name,type:'strength',section,setType,
-        targetSets, targetReps,
-        pct: (typeof exData === 'object' ? exData.pct : '')||'',
-        pctRef: (typeof exData === 'object' ? exData.pctRef : '')||'',
-        sets:Array.from({length:targetSets},()=>({w:'',r:'',bw:setType==='bodyweight',done:false})),
-        expanded:false};
-    };
     _logExercises = [
-      ...(a.warmup||[]).map(n=>toEx(n,'warmup')),
-      ...(a.exercises||[]).map(n=>toEx(n,'main')),
-      ...(a.cooldown||[]).map(n=>toEx(n,'cooldown')),
+      ...(a.warmup   ||[]).map(n=>plannedExToLogEx(n,'warmup')),
+      ...(a.exercises||[]).map(n=>plannedExToLogEx(n,'main')),
+      ...(a.cooldown ||[]).map(n=>plannedExToLogEx(n,'cooldown')),
     ];
     if (_logExercises.length) _logExercises[0].expanded = true;
     document.getElementById('modal-title').textContent = workoutName;
@@ -10811,31 +10788,12 @@ async function confirmSaveBuilderWorkout() {
 
 function loadBuilderWorkout(workout) {
   // Convert builder workout into log modal format
-  const toEx = (ex, section) => {
-    const name = ex.name||'';
-    const libEx = (_exLibrary||[]).find(e=>e.name.toLowerCase()===name.toLowerCase());
-    const libType = libEx?.exercise_type;
-    const isCardio = libType==='cardio' || (!libType && /\b(running|rowing|biking|cycling|cardio|swimming|walking|jogging|sprinting)\b|^row\b|^run\b|^swim\b|^walk\b|^bike\b/i.test(name));
-    const isCarry = libType==='carry' || (!libType && /carry|sled push|sled pull|yoke|prowler|farmer/i.test(name));
-    const isSimple = section==='warmup'||section==='cooldown';
-    if (isCardio) return {name,type:'cardio',section,cardio:{dist:'',pace:'',dur:'',done:false},expanded:false};
-    if (isCarry) return {name,type:'carry',section,carry:{weight:'',dist:'',sets:'3',done:false},expanded:false};
-    if (isSimple) return {name,type:'simple',section,done:false,expanded:false};
-    const targetSets = parseInt(ex.sets)||3;
-    const targetReps = ex.reps||'';
-    const isBW = libType==='bodyweight' || /push.?up|pull.?up|chin.?up|\bdip\b|muscle.?up|handstand|sit.?up|v.?up|crunch|leg raise|knee raise|toes.?to.?bar|\bplank\b|hollow|air squat/i.test(name);
-    const setType = ex.setType || (isBW ? 'bodyweight' : 'weight');
-    return {name,type:'strength',section,setType,
-      targetSets, targetReps,
-      sets:Array.from({length:targetSets},()=>({w:'',r:'',bw:setType==='bodyweight',done:false})),
-      expanded:false};
-  };
   _logDate = todayStr();
   _logId = null;
   _logExercises = [
-    ...(workout.warmup||[]).map(ex=>toEx(ex,'warmup')),
-    ...(workout.exercises||[]).map(ex=>toEx(ex,'main')),
-    ...(workout.cooldown||[]).map(ex=>toEx(ex,'cooldown')),
+    ...(workout.warmup   ||[]).map(ex=>plannedExToLogEx(ex,'warmup')),
+    ...(workout.exercises||[]).map(ex=>plannedExToLogEx(ex,'main')),
+    ...(workout.cooldown ||[]).map(ex=>plannedExToLogEx(ex,'cooldown')),
   ];
   if (_logExercises.length) _logExercises[0].expanded=true;
   _prevNotes=''; _prevSectionNotes={warmup:'',main:'',cooldown:''};
@@ -16100,15 +16058,6 @@ function wlbRenderHeavySets() {
   }).join('');
 
 
-}
-
-function wlbApplyRepScheme(reps) {
-  // Resize sets to match scheme
-  while (_wlbHeavySets.length < reps.length) _wlbHeavySets.push({ reps:'', weight:'', note:'' });
-  while (_wlbHeavySets.length > reps.length) _wlbHeavySets.pop();
-  reps.forEach((r, i) => { _wlbHeavySets[i].reps = r; });
-  wlbRenderHeavySets();
-  wlbUpdatePreview();
 }
 
 function wlbShowHeavySuggestions(input) {
