@@ -3664,7 +3664,7 @@ async function openLogModal(ds, suggestedName) {
       const targetReps = typeof exData === 'object' ? (exData.reps||'') : '';
       // Respect setType from program builder; fall back to name-based detection
       const progSetType = typeof exData === 'object' ? (exData.setType||null) : null;
-      const detectedBW = /pull.up|push.up|dip|chin|handstand|muscle.up/i.test(name);
+      const detectedBW = libType==='bodyweight' || /push.?up|pull.?up|chin.?up|\bdip\b|muscle.?up|handstand|sit.?up|v.?up|crunch|leg raise|knee raise|toes.?to.?bar|\bplank\b|hollow|air squat/i.test(name);
       const setType = progSetType || (detectedBW ? 'bodyweight' : 'weight');
       const isAssisted = setType === 'assisted';
       const isBW2 = setType === 'bodyweight';
@@ -4227,10 +4227,12 @@ function addExercise(){
   const libType = libEx?.exercise_type;
   const isCardio = libType==='cardio' || (!libType && /\b(running|rowing|biking|cycling|cardio|swimming|walking|jogging|sprinting)\b|^row\b|^run\b|^swim\b|^walk\b|^bike\b/i.test(name));
   const isCarry = libType==='carry' || (!libType && /carry|sled push|sled pull|yoke|prowler|farmer/i.test(name));
+  const isBW = libType==='bodyweight' || (!libType && /push.?up|pull.?up|chin.?up|\bdip\b|muscle.?up|handstand|sit.?up|v.?up|crunch|leg raise|knee raise|toes.?to.?bar|\bplank\b|hollow|air squat/i.test(name));
   _logExercises.forEach(e=>e.expanded=false);
   const newEx = isCardio ? {name,type:'cardio',section:'main',cardio:{dist:'',pace:'',dur:'',done:false},expanded:true}
     : isCarry ? {name,type:'carry',section:'main',carry:{weight:'',dist:'',sets:'3',done:false},expanded:true}
-    : {name,type:'strength',section:'main',sets:[{w:'',r:'',done:false},{w:'',r:'',done:false},{w:'',r:'',done:false}],expanded:true};
+    : {name,type:'strength',section:'main',setType:isBW?'bodyweight':'weight',
+       sets:[{w:'',r:'',bw:isBW,done:false},{w:'',r:'',bw:isBW,done:false},{w:'',r:'',bw:isBW,done:false}],expanded:true};
   _logExercises.push(newEx);
   inp.value=''; saveDraft(); renderLogModal();
 }
@@ -4528,11 +4530,12 @@ async function confirmCopyPlannedWorkout(fromDate, toDate, workoutName) {
     if (isSimple) return {name, type:'simple', section, done:false, expanded:false};
     const sets = typeof ex === 'object' ? parseInt(ex.sets)||3 : 3;
     const reps = typeof ex === 'object' ? (ex.reps||'') : '';
-    const setType = typeof ex === 'object' ? (ex.setType||'weight') : 'weight';
+    const detectedBW = libType==='bodyweight' || /push.?up|pull.?up|chin.?up|\bdip\b|muscle.?up|handstand|sit.?up|v.?up|crunch|leg raise|knee raise|toes.?to.?bar|\bplank\b|hollow|air squat/i.test(name);
+    const setType = (typeof ex === 'object' && ex.setType) ? ex.setType : (detectedBW ? 'bodyweight' : 'weight');
     return {name, type:'strength', section, setType, targetSets:sets, targetReps:reps,
       pct: (typeof ex === 'object' ? ex.pct : '')||'',
       pctRef: (typeof ex === 'object' ? ex.pctRef : '')||'',
-      sets: Array.from({length:sets}, ()=>({w:'',r:'',done:false})), expanded:false};
+      sets: Array.from({length:sets}, ()=>({w:'',r:'',bw:setType==='bodyweight',done:false})), expanded:false};
   };
 
   const exercises = [
@@ -4731,17 +4734,18 @@ async function openLogFromAssigned(assignmentId, ds, workoutName) {
       const libEx = (_exLibrary||[]).find(e=>e.name.toLowerCase()===name.toLowerCase());
       const libType = libEx?.exercise_type;
       const isCardio = libType==='cardio' || (!libType && /\b(running|rowing|biking|cycling|cardio|swimming|walking|jogging|sprinting)\b|^row\b|^run\b|^swim\b|^walk\b|^bike\b/i.test(name));
-      const isBW=/pull.up|push.up|dip|chin|handstand/i.test(name);
+      const isBW=libType==='bodyweight' || /push.?up|pull.?up|chin.?up|\bdip\b|muscle.?up|handstand|sit.?up|v.?up|crunch|leg raise|knee raise|toes.?to.?bar|\bplank\b|hollow|air squat/i.test(name);
       const isSimple = section === 'warmup' || section === 'cooldown';
       if (isCardio) return {name,type:'cardio',section,cardio:{dist:'',pace:'',dur:'',done:false},expanded:false};
       if (isSimple) return {name,type:'simple',section,done:false,expanded:false};
       const targetSets = typeof exData === 'object' && exData.sets ? parseInt(exData.sets)||3 : 3;
       const targetReps = typeof exData === 'object' ? (exData.reps||'') : '';
-      return {name,type:'strength',section,setType:isBW?'bodyweight':'weight',
+      const setType = (typeof exData === 'object' && exData.setType) ? exData.setType : (isBW ? 'bodyweight' : 'weight');
+      return {name,type:'strength',section,setType,
         targetSets, targetReps,
         pct: (typeof exData === 'object' ? exData.pct : '')||'',
         pctRef: (typeof exData === 'object' ? exData.pctRef : '')||'',
-        sets:Array.from({length:targetSets},()=>({w:'',r:'',bw:isBW,done:false})),
+        sets:Array.from({length:targetSets},()=>({w:'',r:'',bw:setType==='bodyweight',done:false})),
         expanded:false};
     };
     _logExercises = [
@@ -10181,8 +10185,8 @@ function buildExerciseModal(ex) {
   const eqOpts = equipment.map(e=>`<option ${ex?.equipment===e?'selected':''}>${e}</option>`).join('');
   const altsText = (ex?.alternatives||[]).join(', ');
   const exType = ex?.exercise_type || 'strength';
-  const typeOpts = ['strength','cardio','carry','simple'].map(t=>
-    `<option value="${t}" ${exType===t?'selected':''}>${t==='strength'?'Strength (sets × reps)':t==='cardio'?'Cardio (distance/time)':t==='carry'?'Carry (weight + distance + sets)':'Simple (checkbox only)'}</option>`
+  const typeOpts = ['strength','bodyweight','cardio','carry','simple'].map(t=>
+    `<option value="${t}" ${exType===t?'selected':''}>${t==='strength'?'Strength (sets × reps × weight)':t==='bodyweight'?'Bodyweight (sets × reps, optional +weight)':t==='cardio'?'Cardio (distance/time)':t==='carry'?'Carry (weight + distance + sets)':'Simple (checkbox only)'}</option>`
   ).join('');
   document.getElementById('modal-body').innerHTML = `
     <div class="field"><label>Exercise Name</label>
@@ -10233,7 +10237,7 @@ async function saveExerciseEdit(existingId) {
     // Auto-generate alternatives and form cues for new exercises (or existing with empty fields)
     const needsAlts = !existingId || alternatives.length === 0;
     const needsCues = !existingId;
-    if ((needsAlts || needsCues) && savedId && exercise_type === 'strength') {
+    if ((needsAlts || needsCues) && savedId && (exercise_type === 'strength' || exercise_type === 'bodyweight')) {
       generateExerciseAIContent(savedId, name, muscle_group, equipment, needsAlts, needsCues);
     }
   } catch(e) { toast('Save failed'); console.error(e); }
@@ -10827,9 +10831,11 @@ function loadBuilderWorkout(workout) {
     if (isSimple) return {name,type:'simple',section,done:false,expanded:false};
     const targetSets = parseInt(ex.sets)||3;
     const targetReps = ex.reps||'';
-    return {name,type:'strength',section,setType:'weight',
+    const isBW = libType==='bodyweight' || /push.?up|pull.?up|chin.?up|\bdip\b|muscle.?up|handstand|sit.?up|v.?up|crunch|leg raise|knee raise|toes.?to.?bar|\bplank\b|hollow|air squat/i.test(name);
+    const setType = ex.setType || (isBW ? 'bodyweight' : 'weight');
+    return {name,type:'strength',section,setType,
       targetSets, targetReps,
-      sets:Array.from({length:targetSets},()=>({w:'',r:'',done:false})),
+      sets:Array.from({length:targetSets},()=>({w:'',r:'',bw:setType==='bodyweight',done:false})),
       expanded:false};
   };
   _logDate = todayStr();
