@@ -6054,7 +6054,7 @@ async function saveMax(name,unit){
   if(!val){toast('Enter a value');return;}
   try{
     await db('maxes','POST',{user_id:currentUser.id,name,cat:'Library',value:parseFloat(val),unit,date:document.getElementById('max-date')?.value||todayStr(),notes:document.getElementById('max-notes')?.value?.trim()||''});
-    loadPctMaxes(true);
+    renderMaxes(); // refresh the card grid behind the modal (also refreshes _pctMaxCache)
     openMaxHistory(name,unit);toast('Max logged!');
   }catch(e){toast('Save failed');console.error(e);}
 }
@@ -6091,7 +6091,7 @@ async function saveMaxGeneric(){
 }
 
 async function deleteMax(id,name,unit){
-  try{await db('maxes','DELETE',null,`?id=eq.${id}&user_id=eq.${currentUser.id}`);loadPctMaxes(true);openMaxHistory(name,unit);toast('Deleted');}
+  try{await db('maxes','DELETE',null,`?id=eq.${id}&user_id=eq.${currentUser.id}`);renderMaxes();openMaxHistory(name,unit);toast('Deleted');}
   catch(e){toast('Delete failed');console.error(e);}
 }
 
