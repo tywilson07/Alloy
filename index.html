@@ -2272,6 +2272,7 @@ function enterApp() {
     alloySwitchMode(_initMode);
   }, 50);
   loadExLibrary(); // pre-warm the exercise library cache
+  loadPctMaxes(); // pre-warm the all-time-best-per-lift cache for % programming
   checkFirstLogin(); // show onboarding tour for first-time athletes
   cfPreloadVoiceClips(); // background-fetch WOD timer voice clips (routes to TV, unlike speechSynthesis)
   cfListenForGroupInvites(); // live-only group/Partner WOD invites — see ALLOY — GROUP / PARTNER WOD SESSIONS
@@ -3641,6 +3642,7 @@ async function openLogModal(ds, suggestedName) {
       _savedSectionNotes = draft.sectionNotes || {warmup:'', main:'', cooldown:''};
       _workoutStartTime = draft.startTime || Date.now();
       await loadPrevCache();
+      await loadPctMaxes();
       renderLogModal();
       showModal();
       return;
@@ -3669,6 +3671,8 @@ async function openLogModal(ds, suggestedName) {
       // Leave r empty so ghost suggestion shows — don't pre-fill with lower bound
       return {name,type:'strength',section:sectionLabel,setType,
         targetSets, targetReps,
+        pct: (typeof exData === 'object' ? exData.pct : '')||'',
+        pctRef: (typeof exData === 'object' ? exData.pctRef : '')||'',
         sets:Array.from({length:targetSets},()=>({w:'',r:'',bw:isBW2,assisted:isAssisted,done:false})),
         expanded:false};
     };
@@ -3683,6 +3687,7 @@ async function openLogModal(ds, suggestedName) {
   showModal();
   document.getElementById('modal-body').innerHTML='<div class="loading">Loading previous results...</div>';
   await loadPrevCache();
+  await loadPctMaxes();
   // Load previous notes for this workout name
   _prevNotes = await loadPrevNotes(planned?.name||'');
   _savedSectionNotes = {warmup:'', main:'', cooldown:''};
@@ -3730,11 +3735,13 @@ async function editLog(ds, id) {
     showModal();
     document.getElementById('modal-body').innerHTML='<div class="loading">Loading...</div>';
     await loadPrevCache();
+    await loadPctMaxes();
     renderLogModal(w);
   } catch(e){toast('Could not load workout');console.error(e);}
 }
 
 function renderLogModal(existing) {
+  applyPctPrefill(_logExercises);
   const planned = _logDayName
     ? getPlannedWorkouts(_logDate).find(p=>p.name===_logDayName) || getPlannedWorkout(_logDate)
     : getPlannedWorkout(_logDate);
@@ -3931,6 +3938,25 @@ function buildStrengthInner(ex,ei){
     <button class="set-type-btn ${isBW?'active':''}" onclick="setExType(${ei},'bodyweight')">Bodyweight</button>
     <button class="set-type-btn ${isAssisted?'active':''}" onclick="setExType(${ei},'assisted')">Assisted</button>
   </div>`;
+  const pr = ex._pct || (ex.pct && ex.pctRef ? resolvePctWeight(ex.pct, ex.pctRef) : null);
+  const pctHint = !pr ? ''
+    : pr.missing
+      ? `<div style="display:flex;align-items:center;gap:6px;background:var(--amber-light);border:1px solid #FDE68A;border-radius:5px;padding:5px 10px;margin-bottom:10px;font-size:11.5px;color:#92400E">
+          <span>⚠️</span><div>Prescribed at <strong>${pr.pct}% of ${pr.ref}</strong> — log your ${pr.ref} max in <strong>🏆 Maxes &amp; PRs</strong> and it'll auto-fill next time. Enter your weight manually for now.</div>
+        </div>`
+      : (() => {
+          const dLabel = pr.asOf ? new Date(pr.asOf+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+          const srcLabel = pr.source==='manual'
+            ? `logged ${pr.base}${dLabel?', '+dLabel:''}`
+            : `est. ${pr.base}${dLabel?', '+dLabel:''}`;
+          return `<div style="display:inline-flex;align-items:center;gap:6px;background:var(--orange-dim);border:1px solid var(--orange-mid);border-radius:5px;padding:4px 10px;margin-bottom:10px">
+          <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--orange)">Prescribed</span>
+          <span style="font-size:12.5px;font-weight:800;font-family:var(--mono);color:var(--text-primary)">${pr.pct}% × ${pr.ref}</span>
+          <span style="font-size:11px;color:var(--text-muted);font-family:var(--mono)">(${srcLabel})</span>
+          <span style="font-size:12.5px;color:var(--text-muted)">→</span>
+          <span style="font-size:13px;font-weight:800;font-family:var(--mono);color:var(--orange)">${pr.w} lb</span>
+        </div>`;
+        })();
   const colHeader = isBW ? 'BW +lb' : isAssisted ? 'Assist lb' : 'Weight';
   const rows=(ex.sets||[]).map((s,si)=>{
     const prev=getPrevSetResult(ex.name,si);
@@ -3980,6 +4006,7 @@ function buildStrengthInner(ex,ei){
   }).join('');
   return `${typeToggle}
   ${targetHint ? `<div style="margin-bottom:8px">${targetHint}</div>` : ''}
+  ${pctHint ? `<div style="margin-bottom:8px">${pctHint}</div>` : ''}
   <table class="sets-log-table" style="margin-bottom:8px">
     <tr><th style="width:22px">Set</th><th>Prev</th><th>${colHeader}</th><th>Reps</th><th>✓</th><th></th></tr>
     ${rows}
@@ -4230,15 +4257,18 @@ async function saveLog(){
       sets:ex.type==='strength'?(ex.sets||[]).filter(s=>s.w||s.r).map(s=>({...s})):null,
       cardio:ex.type==='cardio'?{...ex.cardio}:null,
       carry:ex.type==='carry'?{...ex.carry, unit:_carryUnit||'ft'}:null,
+      pct:ex.pct||undefined, pctRef:ex.pctRef||undefined,
       done:ex.type==='simple'?ex.done:undefined
     })),notes,warmup_notes,main_notes,cooldown_notes,result};
   try {
     if(_logId){
       await db('workouts','PATCH',payload,`?id=eq.${_logId}&user_id=eq.${currentUser.id}`);
+      logEstimatedMaxes(_logExercises, _logDate);
       closeModal(); renderCalendar(); toast('Workout updated! ✓');
     } else {
       const saved = await db('workouts','POST',payload);
       _lastSavedWorkoutId = saved?.[0]?.id || null;
+      logEstimatedMaxes(_logExercises, _logDate);
       // Save any new exercise names to the shared library
       _logExercises.filter(ex=>ex.type!=='simple'&&ex.name).forEach(ex=>saveExToLibrary(ex.name));
       closeModal();
@@ -4466,6 +4496,8 @@ async function confirmCopyPlannedWorkout(fromDate, toDate, workoutName) {
     const reps = typeof ex === 'object' ? (ex.reps||'') : '';
     const setType = typeof ex === 'object' ? (ex.setType||'weight') : 'weight';
     return {name, type:'strength', section, setType, targetSets:sets, targetReps:reps,
+      pct: (typeof ex === 'object' ? ex.pct : '')||'',
+      pctRef: (typeof ex === 'object' ? ex.pctRef : '')||'',
       sets: Array.from({length:sets}, ()=>({w:'',r:'',done:false})), expanded:false};
   };
 
@@ -4673,6 +4705,8 @@ async function openLogFromAssigned(assignmentId, ds, workoutName) {
       const targetReps = typeof exData === 'object' ? (exData.reps||'') : '';
       return {name,type:'strength',section,setType:isBW?'bodyweight':'weight',
         targetSets, targetReps,
+        pct: (typeof exData === 'object' ? exData.pct : '')||'',
+        pctRef: (typeof exData === 'object' ? exData.pctRef : '')||'',
         sets:Array.from({length:targetSets},()=>({w:'',r:'',bw:isBW,done:false})),
         expanded:false};
     };
@@ -4686,6 +4720,7 @@ async function openLogFromAssigned(assignmentId, ds, workoutName) {
     showModal();
     document.getElementById('modal-body').innerHTML='<div class="loading">Loading...</div>';
     await loadPrevCache();
+    await loadPctMaxes();
     _prevNotes = a.notes||'';
     renderLogModal();
   } catch(e){toast('Could not open workout');console.error(e);}
@@ -4697,6 +4732,7 @@ async function autoSavePR(name,value,unit){
     const best=(existing||[]).reduce((m,x)=>Math.max(m,parseFloat(x.value)),0);
     if(value>best){
       await db('maxes','POST',{user_id:currentUser.id,name,cat:'Auto-Detected',value,unit,date:_logDate,notes:'Auto-logged'});
+      loadPctMaxes(true); // refresh the % programming cache with the new best
     }
   }catch(e){console.error('PR save error',e);}
 }
@@ -4894,15 +4930,37 @@ async function openAssignProgramPicker(userId, userName){
   }catch(e){toast('Could not load programs');console.error(e);}
 }
 
-function openAssignStartDate(userId, userName, progId){
+async function openAssignStartDate(userId, userName, progId){
   const prog = (_calPrograms||[]).find(p=>p.id===progId);
   const progName = prog?.name || 'Program';
+  // Flag any percentage-based lifts this athlete has no max on file for.
+  const refLifts = new Set();
+  (prog?.schedule||[]).forEach(d=>['warmup','exercises','cooldown'].forEach(sec=>(d[sec]||[]).forEach(ex=>{
+    if(ex && typeof ex==='object' && ex.pct && ex.pctRef) refLifts.add(ex.pctRef);
+  })));
+  let pctWarn = '';
+  if (refLifts.size){
+    try{
+      const maxes = await db('maxes','GET',null,`?user_id=eq.${userId}&select=name,value`);
+      const have = new Set((maxes||[]).filter(m=>parseFloat(m.value)>0).map(m=>m.name));
+      const missing = [...refLifts].filter(l=>!have.has(l));
+      pctWarn = missing.length
+        ? `<div style="background:var(--amber-light);border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#92400E">
+             <strong>⚠️ No max on file for ${userName}:</strong> ${missing.join(', ')}.<br>
+             Percentage sets for ${missing.length>1?'these lifts':'this lift'} will show a reminder instead of a weight until ${userName} logs ${missing.length>1?'them':'it'} in 🏆 Maxes &amp; PRs.
+           </div>`
+        : `<div style="background:var(--green-light);border:1px solid #BBF7D0;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#15803D">
+             ✓ ${userName} has maxes logged for every percentage-based lift in this program.
+           </div>`;
+    }catch(e){ console.error('pct gap check failed', e); }
+  }
   document.getElementById('modal-title').textContent = `Assign ${progName}`;
   document.getElementById('modal-body').innerHTML = `
     <div style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">
       Assigning <strong>${progName}</strong> to <strong>${userName}</strong>.
       ${prog?.weeks ? `This is a <strong>${prog.weeks}-week</strong> program.` : ''}
     </div>
+    ${pctWarn}
     <div class="field">
       <label>Program Start Date</label>
       <input id="assign-start-date" type="date" value="${todayStr()}"
@@ -4983,8 +5041,8 @@ async function openEditProgram(id){
     _editProgId=id;
     const normalizeLoad = arr => (arr||[]).map(ex =>
       typeof ex === 'string'
-        ? {name:ex, sets:'', reps:'', setType:'weight'}
-        : {name:ex.name||'', sets:ex.sets||'', reps:ex.reps||'', setType:ex.setType||'weight'}
+        ? {name:ex, sets:'', reps:'', setType:'weight', pct:'', pctRef:''}
+        : {name:ex.name||'', sets:ex.sets||'', reps:ex.reps||'', setType:ex.setType||'weight', pct:ex.pct||'', pctRef:ex.pctRef||''}
     );
     _cpDays=(prog.schedule||[]).map(d=>({
       dow:d.dow, name:d.name,
@@ -5009,16 +5067,30 @@ function buildProgramModal(prog){
       const sets = typeof ex === 'string' ? '' : (ex.sets||'');
       const reps = typeof ex === 'string' ? '' : (ex.reps||'');
       const setType = typeof ex === 'object' ? (ex.setType||'weight') : 'weight';
+      const pct = typeof ex === 'object' ? (ex.pct||'') : '';
+      const pctRef = typeof ex === 'object' ? (ex.pctRef||'') : '';
       const typeBtn = (val, label, color) =>
         `<button class="set-type-btn ${setType===val?'active':''}"
           data-val="${val}" data-color="${color}"
           style="${setType===val?`background:${color};border-color:${color};color:#fff`:''};font-size:10px;padding:2px 6px"
           onclick="cpSetType(${dayIdx},'${section}',${ei},'${val}',this)">${label}</button>`;
+      const pctActive = pct && pctRef;
+      const pctSel = section==='exercises' ? `<div style="display:flex;gap:4px;align-items:center;margin-top:3px;font-size:10px;color:var(--text-muted)">
+        <span style="font-weight:700">% of max:</span>
+        <select class="cp-ex-pctref" onchange="cpExField(${dayIdx},'${section}',${ei},'pctRef',this.value)"
+          style="font-size:10px;padding:2px 4px;max-width:130px;${pctActive?'border-color:var(--orange);color:var(--text-primary)':''}">
+          <option value="">— none —</option>
+          ${PCT_LIFTS.map(l=>`<option value="${l}" ${pctRef===l?'selected':''}>${l}</option>`).join('')}
+        </select>
+        <input class="cp-ex-pct" type="number" placeholder="%" value="${pct}" min="1" max="150"
+          oninput="cpExField(${dayIdx},'${section}',${ei},'pct',this.value)"
+          style="width:44px;font-size:10px;padding:2px 4px;${pctActive?'border-color:var(--orange)':''}" title="Percent of each athlete's working max for this lift">
+      </div>` : '';
       const typeSel = section==='exercises' ? `<div style="display:flex;gap:3px;margin-top:3px">
         ${typeBtn('weight','Weight','var(--orange)')}
         ${typeBtn('bodyweight','BW','var(--lime)')}
         ${typeBtn('assisted','Assisted','var(--purple)')}
-      </div>` : '';
+      </div>${pctSel}` : '';
       return `<div class="cp-ex-row" id="cpex-${dayIdx}-${section}-${ei}">
         <div class="cp-ex-row-inputs">
           <input class="cp-ex-name" placeholder="Exercise name" value="${name}"
@@ -5224,6 +5296,8 @@ function cpSyncAll() {
         const nameEl = row.querySelector('.cp-ex-name');
         const setsEl = row.querySelector('.cp-ex-sets');
         const repsEl = row.querySelector('.cp-ex-reps');
+        const pctEl = row.querySelector('.cp-ex-pct');
+        const pctRefEl = row.querySelector('.cp-ex-pctref');
         // Find active setType button
         // setType is already kept current in _cpDays by cpSetType — just preserve it
         const existingEx = (day[section]||[]).find(e=>e.name===nameEl?.value?.trim());
@@ -5233,7 +5307,9 @@ function cpSyncAll() {
           name: nameEl?.value?.trim()||'',
           sets: setsEl?.value||'',
           reps: repsEl?.value||'',
-          setType
+          setType,
+          pct: pctEl?.value||'',
+          pctRef: pctRefEl?.value||''
         };
       }).filter(ex => ex.name);
     });
@@ -5247,8 +5323,8 @@ async function saveCustomProgram(){
   const normalizeEx = arr => (arr||[]).filter(ex=>{
     const n=typeof ex==='string'?ex:ex.name; return n&&n.trim();
   }).map(ex=>typeof ex==='string'
-    ?{name:ex.trim(),sets:'',reps:'',setType:'weight'}
-    :{name:(ex.name||'').trim(),sets:ex.sets||'',reps:ex.reps||'',setType:ex.setType||'weight'});
+    ?{name:ex.trim(),sets:'',reps:'',setType:'weight',pct:'',pctRef:''}
+    :{name:(ex.name||'').trim(),sets:ex.sets||'',reps:ex.reps||'',setType:ex.setType||'weight',pct:ex.pct||'',pctRef:ex.pctRef||''});
   const schedule=_cpDays.filter(d=>d.name).map(d=>({
     dow:parseInt(d.dow), name:d.name,
     warmup:normalizeEx(d.warmup),
@@ -5731,18 +5807,148 @@ const MAXES_CATEGORIES={
   'Rowing':[{name:'500m Row',unit:'min'},{name:'2000m Row',unit:'min'}],
 };
 
+// ── Percentage-based programming ─────────────────────────────────────────
+// A programmed strength exercise can carry {pct, pctRef}, where pctRef is one of
+// the barbell lifts below. At log time we resolve pct% of the athlete's working
+// max for that lift and pre-fill the weight for them. The working max is:
+//   1. a MANUAL entry (real logged/tested 1RM) dated within the last 6 months — a
+//      fresh tested max always wins over the estimate; else
+//   2. whichever of {newest manual, rolling estimate} is more recent — so an
+//      ancient logged max yields to current training (Epley e1RM auto-logged from
+//      working sets), and a fresh logged max still wins; else
+//   3. a legacy Auto-Detected top-set weight; else nothing (show a reminder).
+const PCT_LIFTS = MAXES_CATEGORIES['Barbell Lifts'].map(m=>m.name);
+const PCT_MANUAL_CATS = ['Library','Custom','Coach-Set']; // human-entered
+const PCT_MANUAL_GRACE_DAYS = 182; // ~6 months — a logged max outranks the estimate for this long
+let _pctMaxCache = null; // { 'Back Squat': {value, source, asOf, est}, ... } for currentUser
+
+// Epley estimated 1RM. Only trustworthy for low-rep sets, so cap at 8 reps.
+// A true single is taken at face value (Epley would otherwise inflate it ~3%).
+function estimate1RM(weight, reps){
+  const w = parseFloat(weight), r = parseInt(reps);
+  if (!(w > 0) || !(r >= 1) || r > 8) return 0;
+  return r === 1 ? w : w * (1 + r / 30);
+}
+
+async function loadPctMaxes(force){
+  if (_pctMaxCache && !force) return _pctMaxCache;
+  try{
+    const rows = await db('maxes','GET',null,`?user_id=eq.${currentUser.id}&select=name,value,cat,date`);
+    const byLift = {};
+    (rows||[]).forEach(r=>{
+      const v = parseFloat(r.value);
+      if (isNaN(v)) return;
+      (byLift[r.name] = byLift[r.name] || []).push({v, cat:r.cat, date:r.date||''});
+    });
+    const cache = {};
+    const daysSince = d => d ? (Date.now() - Date.parse(d+'T12:00:00')) / 864e5 : Infinity;
+    Object.entries(byLift).forEach(([name, list])=>{
+      list.sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+      const manual = list.find(e=>PCT_MANUAL_CATS.includes(e.cat)); // newest manual
+      const est    = list.find(e=>e.cat==='Estimated');
+      const legacy = list.find(e=>e.cat==='Auto-Detected');
+      const freshManual = manual && daysSince(manual.date) <= PCT_MANUAL_GRACE_DAYS;
+      const newestOf = [manual, est].filter(Boolean).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0];
+      const pick = freshManual ? manual : (newestOf || legacy);
+      if (pick) cache[name] = {
+        value: pick.v,
+        source: PCT_MANUAL_CATS.includes(pick.cat) ? 'manual' : (pick.cat==='Estimated' ? 'estimated' : 'legacy'),
+        asOf: pick.date || '',
+        est: est ? est.v : null
+      };
+    });
+    _pctMaxCache = cache;
+  }catch(e){ console.error('maxes cache load error',e); _pctMaxCache = _pctMaxCache || {}; }
+  return _pctMaxCache;
+}
+
+// Nearest 5 lb, rounded down — safe default for prescribed work.
+function roundPctLoad(x){ return Math.max(0, Math.floor(x/5)*5); }
+
+// null when not a percentage set; {w,base,pct,ref,source,asOf} when resolved; {missing:true,...} when no max on file.
+function resolvePctWeight(pct, refName){
+  const p = parseFloat(pct);
+  if (!p || !refName) return null;
+  const m = _pctMaxCache ? _pctMaxCache[refName] : null;
+  if (!m || !(m.value > 0)) return {missing:true, ref:refName, pct:p};
+  return {w: roundPctLoad(m.value * p / 100), base:m.value, pct:p, ref:refName, source:m.source, asOf:m.asOf};
+}
+
+// Pre-fill resolved weights into empty, un-done sets. Idempotent — safe to call on
+// every renderLogModal; never overwrites a value the athlete has already typed.
+function applyPctPrefill(list){
+  (list||[]).forEach(ex=>{
+    if (ex.type!=='strength' || !ex.pct || !ex.pctRef){ ex._pct = null; return; }
+    const r = resolvePctWeight(ex.pct, ex.pctRef);
+    ex._pct = r;
+    if (r && !r.missing && r.w>0){
+      (ex.sets||[]).forEach(s=>{ if(!s.done && !s.w) s.w = String(r.w); });
+    }
+  });
+}
+
+// After a workout saves: for each of the 6 barbell lifts that appears as a completed
+// strength exercise (exact name match), log a rolling Epley-estimated 1RM dated to the
+// workout, replacing any previous estimate for that lift. Manual entries still win in
+// resolvePctWeight — this only maintains the automatic fallback so it tracks current
+// strength, up or down.
+async function logEstimatedMaxes(exercises, dateStr){
+  if (!currentUser || !Array.isArray(exercises)) return;
+  const byLift = {};
+  exercises.forEach(ex=>{
+    if (ex.type!=='strength' || !PCT_LIFTS.includes(ex.name)) return;
+    (ex.sets||[]).forEach(s=>{
+      if (!s.done) return;
+      const e = estimate1RM(s.w, s.r);
+      if (e > (byLift[ex.name] || 0)) byLift[ex.name] = e;
+    });
+  });
+  const lifts = Object.keys(byLift);
+  if (!lifts.length) return;
+  for (const name of lifts){
+    const val = Math.round(byLift[name] / 5) * 5;
+    if (!(val > 0)) continue;
+    try{
+      await db('maxes','DELETE',null,`?user_id=eq.${currentUser.id}&name=eq.${encodeURIComponent(name)}&cat=eq.Estimated`);
+      await db('maxes','POST',{user_id:currentUser.id,name,cat:'Estimated',value:val,unit:'lb',date:dateStr||todayStr(),notes:'Auto-estimated from working sets'});
+    }catch(e){ console.error('estimated max log failed for '+name, e); }
+  }
+  loadPctMaxes(true);
+}
+
 async function renderMaxes(){
   const body=document.getElementById('maxes-body');
   body.innerHTML='<div class="loading">Loading...</div>';
   try{
     const allMaxes=await db('maxes','GET',null,`?user_id=eq.${currentUser.id}&select=*&order=date.desc`);
+    await loadPctMaxes(true); // working-max view for the barbell lifts uses the same resolution as programming
     const bestByName={};
     (allMaxes||[]).forEach(m=>{
       if(!bestByName[m.name]||parseFloat(m.value)>parseFloat(bestByName[m.name].value))bestByName[m.name]=m;
     });
+    const fmtD = d => d ? new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
     let html='';
     Object.entries(MAXES_CATEGORIES).forEach(([cat,mvs])=>{
       const cards=mvs.map(mv=>{
+        // Barbell lifts show the WORKING max (most recent manual entry, else rolling
+        // estimate) — the exact number programming uses — not the all-time best.
+        if (PCT_LIFTS.includes(mv.name)) {
+          const wm = _pctMaxCache && _pctMaxCache[mv.name];
+          if (!wm || !(wm.value>0)) return `<div class="max-card" onclick="openMaxHistory('${mv.name}','${mv.unit}')">
+            <div class="max-card-name">${mv.name}</div>
+            <div class="max-card-value" style="color:var(--gray-300)">—</div>
+            <div style="margin-top:5px"><button class="btn btn-xs btn-ghost">+ Log</button></div>
+          </div>`;
+          const tag = wm.source==='manual' ? 'logged' : 'est.';
+          const diverged = wm.source==='manual' && wm.est && Math.abs(wm.est - wm.value) >= wm.value*0.1;
+          const arrow = wm.est > wm.value ? '↑' : '↓';
+          return `<div class="max-card" onclick="openMaxHistory('${mv.name}','${mv.unit}')">
+            <div class="max-card-name">${mv.name}</div>
+            <div class="max-card-value">${wm.value}<span class="max-card-unit">${mv.unit}</span></div>
+            <div class="max-card-date">${tag}${wm.asOf?' · '+fmtD(wm.asOf):''}</div>
+            ${diverged?`<div class="max-card-pr" style="background:var(--amber-light);color:#92400E">${arrow} recent lifts est. ${wm.est} — tap to review</div>`:''}
+          </div>`;
+        }
         const best=bestByName[mv.name];
         if(!best)return `<div class="max-card" onclick="openMaxHistory('${mv.name}','${mv.unit}')">
           <div class="max-card-name">${mv.name}</div>
@@ -5753,7 +5959,7 @@ async function renderMaxes(){
         return `<div class="max-card" onclick="openMaxHistory('${mv.name}','${mv.unit}')">
           <div class="max-card-name">${mv.name}</div>
           <div class="max-card-value">${best.value}<span class="max-card-unit">${mv.unit}</span></div>
-          <div class="max-card-date">${new Date(best.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+          <div class="max-card-date">${fmtD(best.date)}</div>
           ${isRecent?'<div class="max-card-pr">↑ Recent PR</div>':''}
         </div>`;
       }).join('');
@@ -5779,8 +5985,10 @@ async function openMaxHistory(name,unit){
   try{rows=await db('maxes','GET',null,`?user_id=eq.${currentUser.id}&name=eq.${encodeURIComponent(name)}&order=date.desc&select=*`);}
   catch(e){toast('Could not load history');return;}
   const best=rows.reduce((m,x)=>parseFloat(x.value)>parseFloat(m?.value||0)?x:m,null);
+  const catTag = c => c==='Estimated' ? '<span style="font-size:9.5px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.5px">est.</span>'
+    : (c==='Auto-Detected' ? '<span style="font-size:9.5px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.5px">auto</span>' : '');
   const histHtml=(rows||[]).map(m=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--gray-100)">
-    <div style="font-size:12px;color:var(--gray-500)">${new Date(m.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+    <div style="font-size:12px;color:var(--gray-500);display:flex;align-items:center;gap:6px">${new Date(m.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} ${catTag(m.cat)}</div>
     <div style="display:flex;align-items:center;gap:8px">
       ${m.id===best?.id?'<span class="max-card-pr">PR</span>':''}
       <div style="font-size:13.5px;font-weight:700;font-family:var(--mono)">${m.value} ${unit}</div>
@@ -5812,6 +6020,7 @@ async function saveMax(name,unit){
   if(!val){toast('Enter a value');return;}
   try{
     await db('maxes','POST',{user_id:currentUser.id,name,cat:'Library',value:parseFloat(val),unit,date:document.getElementById('max-date')?.value||todayStr(),notes:document.getElementById('max-notes')?.value?.trim()||''});
+    loadPctMaxes(true);
     openMaxHistory(name,unit);toast('Max logged!');
   }catch(e){toast('Save failed');console.error(e);}
 }
@@ -5842,12 +6051,13 @@ async function saveMaxGeneric(){
   if(!name||!val){toast('Fill in name and value');return;}
   try{
     await db('maxes','POST',{user_id:currentUser.id,name,cat:'Custom',value:parseFloat(val),unit:document.getElementById('max-unit')?.value||'lb',date:document.getElementById('max-date')?.value||todayStr(),notes:document.getElementById('max-notes')?.value?.trim()||''});
+    loadPctMaxes(true);
     closeModal();renderMaxes();toast('Max logged! 🏆');
   }catch(e){toast('Save failed');console.error(e);}
 }
 
 async function deleteMax(id,name,unit){
-  try{await db('maxes','DELETE',null,`?id=eq.${id}&user_id=eq.${currentUser.id}`);openMaxHistory(name,unit);toast('Deleted');}
+  try{await db('maxes','DELETE',null,`?id=eq.${id}&user_id=eq.${currentUser.id}`);loadPctMaxes(true);openMaxHistory(name,unit);toast('Deleted');}
   catch(e){toast('Delete failed');console.error(e);}
 }
 
