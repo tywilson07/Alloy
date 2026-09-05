@@ -3440,12 +3440,13 @@ const DRAFT_KEY = 'notch_draft_workout';
 
 function saveDraft() {
   if (!_logDate || _logId) return; // only save new logs, not edits
+  const ln = document.getElementById('log-notes'); if (ln) _savedNote = ln.value;
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
       date: _logDate,
       dayName: _logDayName,
       exercises: _logExercises,
-      sectionNotes: _savedSectionNotes,
+      note: _savedNote,
       startTime: _workoutStartTime,
       savedAt: Date.now(),
       userId: currentUser?.id
@@ -3473,9 +3474,8 @@ function clearDraft() {
 
 // ── Previous workout cache ──
 let _prevCache = {};
-let _prevNotes = '';
-let _prevSectionNotes = {warmup:'', main:'', cooldown:''};
-let _savedSectionNotes = {warmup:'', main:'', cooldown:''}; // preserves typed notes across re-renders
+let _prevNotes = '';               // "Last time:" note for the current day (read-only hint)
+let _savedNote = '';               // the single workout note, preserved across modal re-renders
 let _setType = 'weight'; // 'weight' or 'bodyweight'
 
 async function loadPrevCache() {
@@ -3492,20 +3492,19 @@ async function loadPrevCache() {
   } catch(e) { console.error('Cache load error', e); }
 }
 
+// The most recent note the athlete left on this named day — however many sessions
+// back it was. Falls back to the retired per-section note columns so nothing that
+// was written before the notes fields were unified silently disappears.
 async function loadPrevNotes(dayName) {
   if (!dayName) return '';
   try {
     const rows = await db('workouts','GET',null,
-      `?user_id=eq.${currentUser.id}&day_name=eq.${encodeURIComponent(dayName)}&select=notes,warmup_notes,main_notes,cooldown_notes,date&order=date.desc&limit=1`);
-    const row = rows?.[0];
-    if (!row) return '';
-    // Store per-section notes globally for renderLogModal to use
-    _prevSectionNotes = {
-      warmup:   row.warmup_notes   || '',
-      main:     row.main_notes     || '',
-      cooldown: row.cooldown_notes || ''
-    };
-    return row.notes || '';
+      `?user_id=eq.${currentUser.id}&day_name=eq.${encodeURIComponent(dayName)}&select=notes,main_notes,warmup_notes,cooldown_notes&order=date.desc&limit=15`);
+    for (const r of (rows || [])) {
+      const n = (r.notes || r.main_notes || r.warmup_notes || r.cooldown_notes || '').trim();
+      if (n) return n;
+    }
+    return '';
   } catch(e) { return ''; }
 }
 
@@ -3676,10 +3675,11 @@ async function openLogModal(ds, suggestedName) {
     });
     if (resumed) {
       _logExercises = draft.exercises;
-      _savedSectionNotes = draft.sectionNotes || {warmup:'', main:'', cooldown:''};
+      _savedNote = draft.note || '';
       _workoutStartTime = draft.startTime || Date.now();
       await loadPrevCache();
       await loadPctMaxes();
+      _prevNotes = await loadPrevNotes(_logDayName || draft.dayName || '');
       renderLogModal();
       showModal();
       return;
@@ -3703,7 +3703,7 @@ async function openLogModal(ds, suggestedName) {
   await loadPctMaxes();
   // Load previous notes for this workout name
   _prevNotes = await loadPrevNotes(planned?.name||'');
-  _savedSectionNotes = {warmup:'', main:'', cooldown:''};
+  _savedNote = '';
   renderLogModal();
 }
 
@@ -3749,6 +3749,8 @@ async function editLog(ds, id) {
     document.getElementById('modal-body').innerHTML='<div class="loading">Loading...</div>';
     await loadPrevCache();
     await loadPctMaxes();
+    _savedNote = w.notes || '';
+    _prevNotes = await loadPrevNotes(w.day_name || '');
     renderLogModal(w);
   } catch(e){toast('Could not load workout');console.error(e);}
 }
@@ -3770,28 +3772,6 @@ function renderLogModal(existing) {
   const warmupDone   = warmupExs.length>0 && warmupExs.every(e=>e.done);
   const cooldownDone = cooldownExs.length>0 && cooldownExs.every(e=>e.done);
 
-  // Section prev note hint helper
-  const prevNoteHint = (section) => {
-    const note = _prevSectionNotes[section];
-    return note ? `<div class="notes-hint" style="margin-top:6px;margin-bottom:4px;font-size:11.5px">
-      <span class="notes-hint-icon">📝</span>
-      <div><strong style="display:block;margin-bottom:1px">Last time:</strong>${note}</div>
-    </div>` : '';
-  };
-
-  // Section note textarea helper
-  const sectionNoteInput = (section, existing) => {
-    // Use _savedSectionNotes if available (preserves typing across re-renders), else fall back to existing
-    const val = _savedSectionNotes[section] || existing || '';
-    return `<div style="margin-top:8px">
-      <textarea id="log-${section}-notes" rows="1"
-        placeholder="${section==='warmup'?'Warm-up notes (e.g. substituted exercises)':section==='cooldown'?'Cool-down notes (e.g. extra stretching)':'Main workout notes (e.g. swapped exercises, how it felt)'}"
-        style="font-size:12px;resize:none;min-height:36px;color:var(--text-secondary)"
-        oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px';_savedSectionNotes['${section}']=this.value"
-      >${val}</textarea>
-    </div>`;
-  };
-
   // Single warm-up block
   const warmupHtml = warmupExs.length ? `
     <div class="ex-log-block ${warmupDone?'ex-done':''}" style="margin-bottom:8px">
@@ -3801,8 +3781,6 @@ function renderLogModal(existing) {
           <div style="flex:1">
             <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#FFB800;margin-bottom:5px">🔥 Warm-Up</div>
             <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.8">${warmupExs.map(e=>e.name).join('<br>')}</div>
-            ${prevNoteHint('warmup')}
-            ${sectionNoteInput('warmup', existing?.warmup_notes)}
           </div>
         </div>
         <button class="set-done-btn ${warmupDone?'done':''}" onclick="toggleSectionDone('warmup')"
@@ -3813,9 +3791,7 @@ function renderLogModal(existing) {
   // Main workout blocks
   const mainHtml = mainExs.length ? `
     <div style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--orange);background:var(--orange-dim);padding:5px 10px;border-radius:6px;margin-bottom:6px;${warmupExs.length?'margin-top:12px':''}">💪 Main Workout</div>
-    ${mainExs.map(ex=>buildExBlock(ex,_logExercises.indexOf(ex))).join('')}
-    ${prevNoteHint('main')}
-    ${sectionNoteInput('main', existing?.main_notes)}` : '';
+    ${mainExs.map(ex=>buildExBlock(ex,_logExercises.indexOf(ex))).join('')}` : '';
 
   // Single cool-down block
   const cooldownHtml = cooldownExs.length ? `
@@ -3827,8 +3803,6 @@ function renderLogModal(existing) {
           <div style="flex:1">
             <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--lime);margin-bottom:5px">🧘 Cool Down</div>
             <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.8">${cooldownExs.map(e=>e.name).join('<br>')}</div>
-            ${prevNoteHint('cooldown')}
-            ${sectionNoteInput('cooldown', existing?.cooldown_notes)}
           </div>
         </div>
         <button class="set-done-btn ${cooldownDone?'done':''}" onclick="toggleSectionDone('cooldown')"
@@ -3838,7 +3812,6 @@ function renderLogModal(existing) {
 
   document.getElementById('modal-body').innerHTML=`
     <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:12px">${dateLabel}${planned?' · '+planned.name:''}</div>
-    ${_prevNotes ? `<div class="notes-hint"><span class="notes-hint-icon">📝</span><div><strong style="display:block;margin-bottom:2px">Last time:</strong>${_prevNotes}</div></div>` : ''}
     ${warmupHtml}
     ${mainHtml}
     ${cooldownHtml}
@@ -3855,8 +3828,9 @@ function renderLogModal(existing) {
     <div class="divider"></div>
     <div class="field">
       <label>Notes</label>
-      <textarea id="log-notes" rows="4" placeholder="How'd it go? Any notes for your coach or future self..."
-        style="resize:vertical;min-height:80px">${existing?.notes||''}</textarea>
+      ${_prevNotes ? `<div class="notes-hint" style="margin-bottom:6px"><span class="notes-hint-icon">📝</span><div><strong style="display:block;margin-bottom:2px">Last time:</strong>${_prevNotes}</div></div>` : ''}
+      <textarea id="log-notes" rows="4" placeholder="How'd it go? Anything to remember for next time?"
+        style="resize:vertical;min-height:80px" oninput="_savedNote=this.value">${_savedNote || existing?.notes || ''}</textarea>
     </div>`;
   document.getElementById('modal-footer').innerHTML=`
     <button class="btn btn-ghost" onclick="clearDraft();closeModal()">Cancel</button>
@@ -4141,13 +4115,9 @@ function setExPct(ei) {
 }
 
 function saveSectionNotes() {
-  // Preserve any typed section notes into state before re-rendering
-  const wu = document.getElementById('log-warmup-notes');
-  const mn = document.getElementById('log-main-notes');
-  const cd = document.getElementById('log-cooldown-notes');
-  if (wu) _savedSectionNotes.warmup = wu.value;
-  if (mn) _savedSectionNotes.main = mn.value;
-  if (cd) _savedSectionNotes.cooldown = cd.value;
+  // Preserve the typed workout note into state before a modal re-render
+  const el = document.getElementById('log-notes');
+  if (el) _savedNote = el.value;
 }
 
 function toggleExBlock(ei){
@@ -4261,10 +4231,7 @@ async function saveLog(){
       const setsInp=document.querySelector(`#ex-block-${ei} input[data-carry="sets"]`);if(setsInp&&ex.carry)ex.carry.sets=setsInp.value;
     }
   });
-  const notes=document.getElementById('log-notes')?.value?.trim()||'';
-  const warmup_notes=document.getElementById('log-warmup-notes')?.value?.trim()||'';
-  const main_notes=document.getElementById('log-main-notes')?.value?.trim()||'';
-  const cooldown_notes=document.getElementById('log-cooldown-notes')?.value?.trim()||'';
+  const notes=(document.getElementById('log-notes')?.value ?? _savedNote).trim();
   const planned = _logDayName
     ? getPlannedWorkouts(_logDate).find(p=>p.name===_logDayName) || getPlannedWorkout(_logDate)
     : getPlannedWorkout(_logDate);
@@ -4301,7 +4268,7 @@ async function saveLog(){
       carry:ex.type==='carry'?{...ex.carry, unit:_carryUnit||'ft'}:null,
       pct:ex.pct||undefined, pctRef:ex.pctRef||undefined,
       done:ex.type==='simple'?ex.done:undefined
-    })),notes,warmup_notes,main_notes,cooldown_notes,result};
+    })),notes,result};
   try {
     if(_logId){
       await db('workouts','PATCH',payload,`?id=eq.${_logId}&user_id=eq.${currentUser.id}`);
@@ -4729,6 +4696,7 @@ async function openLogFromAssigned(assignmentId, ds, workoutName) {
     await loadPrevCache();
     await loadPctMaxes();
     _prevNotes = a.notes||'';
+    _savedNote = '';
     renderLogModal();
   } catch(e){toast('Could not open workout');console.error(e);}
 }
@@ -6518,17 +6486,15 @@ function startWorkoutMode() {
   document.getElementById('workout-mode').classList.add('show');
   if (!_workoutStartTime) _workoutStartTime = Date.now(); // track workout start
   acquireWakeLock();
-  // Populate notes panel
+  // Populate notes panel — one shared note for the whole workout
   const notesInput = document.getElementById('wm-notes-input');
-  const logNotes = document.getElementById('log-notes');
-  if (notesInput && logNotes) notesInput.value = logNotes.value||'';
+  if (notesInput) notesInput.value = (document.getElementById('log-notes')?.value || _savedNote || '');
   const hintEl = document.getElementById('wm-prev-notes-hint');
   if (hintEl) {
-    const prevNote = _prevSectionNotes?.main || _prevNotes || '';
-    hintEl.innerHTML = prevNote
+    hintEl.innerHTML = _prevNotes
       ? `<div class="notes-hint" style="margin-bottom:6px;font-size:12px">
           <span class="notes-hint-icon">📝</span>
-          <div><strong>Last time:</strong> ${prevNote}</div>
+          <div><strong>Last time:</strong> ${_prevNotes}</div>
         </div>`
       : '';
   }
@@ -6582,15 +6548,15 @@ function renderWorkoutMode() {
 
   // Build nav items: warmup | main exercises | cooldown | wrap-up
   const navItems=[];
-  if(warmupExs.length) navItems.push({label:'🔥 Warm-Up',section:'warmup',done:warmupDone,isSection:true,noteSection:'warmup'});
+  if(warmupExs.length) navItems.push({label:'🔥 Warm-Up',section:'warmup',done:warmupDone,isSection:true});
   mainExs.forEach(ex=>navItems.push({
     label:ex.name, ex,
     done:ex.type==='cardio'?ex.cardio?.done:ex.type==='carry'?ex.carry?.done:(ex.sets||[]).length>0&&(ex.sets||[]).every(s=>s.done),
-    isSection:false, noteSection:'main'
+    isSection:false
   }));
-  if(cooldownExs.length) navItems.push({label:'🧘 Cool Down',section:'cooldown',done:cooldownDone,isSection:true,noteSection:'cooldown'});
+  if(cooldownExs.length) navItems.push({label:'🧘 Cool Down',section:'cooldown',done:cooldownDone,isSection:true});
   // Always add wrap-up as last item
-  navItems.push({label:'🏆',isWrapUp:true,noteSection:'overall'});
+  navItems.push({label:'🏆',isWrapUp:true});
 
   _wmNavCount = navItems.length;
   if(_wmCurrentIdx>=navItems.length) _wmCurrentIdx=Math.max(0,navItems.length-1);
@@ -6604,27 +6570,17 @@ function renderWorkoutMode() {
   const cur=navItems[_wmCurrentIdx];
   if(!cur) return;
 
-  // ── Render notes panel based on current section ──
-  const noteSection = cur.noteSection||'main';
-  const noteVal = noteSection==='overall'
-    ? (document.getElementById('log-notes')?.value||'')
-    : (_savedSectionNotes[noteSection]||'');
-  const prevNoteVal = noteSection==='overall'
-    ? (_prevNotes||'')
-    : (_prevSectionNotes?.[noteSection]||'');
-  const notePlaceholder = noteSection==='warmup'?'Warm-up notes...'
-    : noteSection==='cooldown'?'Cool-down notes...'
-    : noteSection==='overall'?'Overall workout notes...'
-    : 'Main workout notes...';
+  // ── Notes panel: one shared workout note, hidden on the wrap-up screen
+  //    (which has its own bigger notes box)
   const notesPanel = document.getElementById('wm-notes-panel');
   const hintEl = document.getElementById('wm-prev-notes-hint');
   const notesInput = document.getElementById('wm-notes-input');
-  if (hintEl) hintEl.innerHTML = prevNoteVal
-    ? `<div class="notes-hint" style="margin-bottom:6px;font-size:12px"><span class="notes-hint-icon">📝</span><div><strong>Last time:</strong> ${prevNoteVal}</div></div>` : '';
+  if (notesPanel) notesPanel.style.display = cur.isWrapUp ? 'none' : 'block';
+  if (hintEl) hintEl.innerHTML = _prevNotes
+    ? `<div class="notes-hint" style="margin-bottom:6px;font-size:12px"><span class="notes-hint-icon">📝</span><div><strong>Last time:</strong> ${_prevNotes}</div></div>` : '';
   if (notesInput) {
-    notesInput.value = noteVal;
-    notesInput.placeholder = notePlaceholder;
-    notesInput.dataset.section = noteSection;
+    notesInput.value = document.getElementById('log-notes')?.value || _savedNote || '';
+    notesInput.placeholder = 'Notes for this workout...';
   }
 
   // ── Render main body ──
@@ -6689,8 +6645,11 @@ function wmSelectFeedback(rating) {
 }
 
 function syncWMOverallNotes(val) {
+  _savedNote = val;
   const logNotes = document.getElementById('log-notes');
   if (logNotes) logNotes.value = val;
+  const wmNotesInput = document.getElementById('wm-notes-input');
+  if (wmNotesInput) wmNotesInput.value = val;
 }
 
 function wmToggleSection(section){
@@ -6979,15 +6938,9 @@ function wmNavigate(dir){
 }
 
 function syncWMNotes(val) {
-  // Save to the right section based on current nav item
-  const notesInput = document.getElementById('wm-notes-input');
-  const section = notesInput?.dataset?.section || 'main';
-  if (section === 'overall') {
-    const logNotes = document.getElementById('log-notes');
-    if (logNotes) logNotes.value = val;
-  } else {
-    _savedSectionNotes[section] = val;
-  }
+  _savedNote = val;
+  const logNotes = document.getElementById('log-notes');
+  if (logNotes) logNotes.value = val;
 }
 function wmSyncSet(ei,si,field,val){if(_logExercises[ei]?.sets?.[si])_logExercises[ei].sets[si][field]=val;}
 function wmToggleSet(ei,si){
@@ -10831,7 +10784,7 @@ function loadBuilderWorkout(workout) {
     ...(workout.cooldown ||[]).map(ex=>plannedExToLogEx(ex,'cooldown')),
   ];
   if (_logExercises.length) _logExercises[0].expanded=true;
-  _prevNotes=''; _prevSectionNotes={warmup:'',main:'',cooldown:''};
+  _prevNotes=''; _savedNote='';
   document.getElementById('modal-title').textContent=workout.workout_name||'Custom Workout';
   renderLogModal();
   showModal();
