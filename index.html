@@ -2881,8 +2881,6 @@ function shiftCal(delta) {
   }
 }
 
-function shiftMonth(delta) { shiftCal(delta); } // backward compat
-
 function updateCalHeader() {
   const hdr = document.getElementById('cal-month-title');
   if (!hdr) return;
@@ -6089,8 +6087,7 @@ async function saveMaxGeneric(){
   if(!name||!val){toast('Fill in name and value');return;}
   try{
     await db('maxes','POST',{user_id:currentUser.id,name,cat:'Custom',value:parseFloat(val),unit:document.getElementById('max-unit')?.value||'lb',date:document.getElementById('max-date')?.value||todayStr(),notes:document.getElementById('max-notes')?.value?.trim()||''});
-    loadPctMaxes(true);
-    closeModal();renderMaxes();toast('Max logged! 🏆');
+    closeModal();renderMaxes();toast('Max logged! 🏆'); // renderMaxes refreshes _pctMaxCache
   }catch(e){toast('Save failed');console.error(e);}
 }
 
@@ -9630,11 +9627,6 @@ function getAthletePlannedWorkouts(ds) {
   return results;
 }
 
-function getAthletePlannedWorkout(ds) {
-  // Legacy single accessor — returns first planned workout
-  return getAthletePlannedWorkouts(ds)[0]||null;
-}
-
 function buildAthleteWeekView() {
   const grid = document.getElementById('cal-week-grid');
   if (!grid) return;
@@ -10988,18 +10980,6 @@ async function renderMonthlyGoal(userId, year, month) {
       }
     }
   }
-}
-
-// Admin: set monthly goal for an athlete
-async function setAthleteMonthlyGoal(userId, currentGoal) {
-  const goalInput = prompt(`Monthly workout goal for this athlete:`, currentGoal||12);
-  if (goalInput === null) return;
-  const newGoal = parseInt(goalInput)||12;
-  try {
-    await db('users','PATCH',{monthly_goal:newGoal},`?id=eq.${userId}`);
-    toast(`Goal updated to ${newGoal} workouts/month ✓`);
-    renderAthletes();
-  } catch(e) { toast('Update failed'); }
 }
 
 // Admin: set monthly goal from athlete detail view
@@ -12720,63 +12700,6 @@ function wlbUpdatePreview() {
 }
 
 
-// Update inline time parameters in the Format card
-function wlbUpdateInlineParams(format) {
-  const container = document.getElementById('wlb-inline-params');
-  if (!container) return;
-
-  if (['For Time','Chipper','Partner'].includes(format)) {
-    container.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--border);margin-top:4px">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);white-space:nowrap">Time Cap</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
-            onclick="cfAdjustSetup('cap',-1);wlbSyncInlineCap()">−</button>
-          <span id="wlb-cap-inline" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:60px;text-align:center">${_cfSetup.capEnabled ? _cfSetup.capMin+' min' : 'No cap'}</span>
-          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
-            onclick="cfAdjustSetup('cap',1);wlbSyncInlineCap()">+</button>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="cfToggleCap();wlbSyncInlineCap()" id="wlb-cap-toggle-btn">
-          ${_cfSetup.capEnabled ? 'Remove Cap' : 'Add Cap'}
-        </button>
-      </div>`;
-  } else if (format === 'AMRAP') {
-    container.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--border);margin-top:4px">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);white-space:nowrap">Duration</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
-            onclick="cfAdjustSetup('amrap',-1);document.getElementById('wlb-amrap-inline').textContent=_cfSetup.amrapMin+' min'">−</button>
-          <span id="wlb-amrap-inline" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:60px;text-align:center">${_cfSetup.amrapMin} min</span>
-          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
-            onclick="cfAdjustSetup('amrap',1);document.getElementById('wlb-amrap-inline').textContent=_cfSetup.amrapMin+' min'">+</button>
-        </div>
-      </div>`;
-  } else if (format === 'EMOM') {
-    container.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap">
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);white-space:nowrap">Total</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
-            onclick="cfAdjustSetup('emom-total',-1);wlbSyncInlineEmom()">−</button>
-          <span id="wlb-emom-total-inline" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:40px;text-align:center">${_cfSetup.emomTotal} min</span>
-          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
-            onclick="cfAdjustSetup('emom-total',1);wlbSyncInlineEmom()">+</button>
-        </div>
-        <div style="font-size:11px;font-weight:700;color:var(--text-muted);white-space:nowrap;margin-left:8px">Every</div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
-            onclick="cfAdjustSetup('emom-interval',-1);wlbSyncInlineEmom()">−</button>
-          <span id="wlb-emom-int-inline" style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--cf-green);min-width:40px;text-align:center">${_cfSetup.emomInterval} min</span>
-          <button class="cf-round-btn" style="width:26px;height:26px;font-size:13px"
-            onclick="cfAdjustSetup('emom-interval',1);wlbSyncInlineEmom()">+</button>
-        </div>
-      </div>`;
-  } else {
-    container.innerHTML = '';
-  }
-}
-
 // Always shows the live capMin value as the +/- buttons adjust it, whether or not
 // the cap is currently enabled — it used to show "No cap" the whole time capEnabled
 // was false, so tapping +/- to pre-set a duration before turning the cap on looked
@@ -12800,13 +12723,6 @@ function wlbSyncInlineCap() {
     el.style.opacity = _cfSetup.capEnabled ? '1' : '0.5';
   }
   if (btn) btn.textContent = _cfSetup.capEnabled ? 'Remove Cap' : 'Add Cap';
-}
-
-function wlbSyncInlineEmom() {
-  const t = document.getElementById('wlb-emom-total-inline');
-  const i = document.getElementById('wlb-emom-int-inline');
-  if (t) t.textContent = _cfSetup.emomTotal + ' min';
-  if (i) i.textContent = _cfSetup.emomInterval + ' min';
 }
 
 function wlbInit() {
@@ -16726,10 +16642,7 @@ function alloySwitchMode(mode) {
 
   // Navigate
   if (_cfMode) {
-    // Show CF dashboard immediately
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    const cfDash = document.getElementById('view-cf-dashboard');
-    if (cfDash) cfDash.classList.add('active');
     // Sync nav active states
     document.querySelectorAll('.bnav-btn, .nav-item').forEach(b => b.classList.remove('active'));
     document.querySelectorAll(".cf-bnav[onclick*='cf-dashboard']").forEach(b => b.classList.add('active'));
@@ -16857,65 +16770,6 @@ async function cfLoadData() {
 // separate CF-only one.
 function cfRenderDashboard() {
   navToCalendar();
-}
-
-function cfRenderFeaturedWOD() {
-  const container = document.getElementById('cf-featured-wod');
-  if (!container) return;
-  // Show first user WOD or HAUL as default
-  const featured = _cfWODs[0] || CF_BENCHMARKS.find(b=>b.id==='haul');
-  if (!featured) { container.innerHTML = ''; return; }
-  const movHtml = (featured.movements||[]).map(m=>`
-    <div class="wod-movement-row">
-      <div>
-        <div class="wod-movement-name">${m.name}</div>
-        ${m.detail?`<div class="wod-movement-detail">${m.detail}</div>`:''}
-      </div>
-      ${m.reps?`<div class="wod-movement-reps">${m.reps}</div>`:''}
-    </div>`).join('');
-  container.innerHTML = `
-    <div class="section-label">Today's WOD</div>
-    <div class="wod-card">
-      <div class="wod-card-header">
-        <div>
-          <div class="wod-card-name">${featured.name}</div>
-          <div class="wod-card-format">${featured.format||''}${featured.cap?' · '+featured.cap:''}</div>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-primary btn-sm" onclick="cfLoadWODToTrack(${JSON.stringify(featured).replace(/"/g,'&quot;')})">Start</button>
-          <button class="btn btn-ghost btn-sm" onclick="nav('cf-library')">Library</button>
-        </div>
-      </div>
-      <div class="wod-card-body">
-        ${movHtml}
-        ${featured.difficulty || featured.duration_bucket ? 
-          '<div style="display:flex;gap:5px;margin-top:8px">' +
-          (featured.difficulty ? '<span class="pill" style="background:var(--cf-green-dim);color:var(--cf-green);border:1px solid rgba(57,211,83,.188)">'+featured.difficulty+'</span>' : '') +
-          (featured.duration_bucket ? '<span class="pill" style="background:var(--surface2);color:var(--text-muted)">'+cfDurationLabel(featured.duration_bucket)+'</span>' : '') +
-          '</div>' : ''}
-      </div>
-    </div>`;
-}
-
-function cfRenderRecentScores() {
-  const container = document.getElementById('cf-recent-scores');
-  if (!container) return;
-  if (!_cfScores.length) {
-    container.innerHTML = `<div class="empty-state"><span class="emo">📋</span><h3>No scores yet</h3><p>Track a WOD and log your score to see it here.</p></div>`;
-    return;
-  }
-  container.innerHTML = _cfScores.slice(0,8).map(s=>`
-    <div class="cf-score-item">
-      <div>
-        <div class="cf-score-wod">${s.wod_name}</div>
-        <div class="cf-score-meta">${new Date(s.logged_at).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})} · ${s.format||'WOD'} · ${s.rx_scaled||'RX'}</div>
-        ${s.notes?`<div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-top:2px">"${s.notes}"</div>`:''}
-      </div>
-      <div style="text-align:right;flex-shrink:0;margin-left:12px">
-        <div class="cf-score-value">${s.score}</div>
-        <button class="btn btn-danger btn-xs" style="margin-top:4px" onclick="cfDeleteScore('${s.id}')">✕</button>
-      </div>
-    </div>`).join('');
 }
 
 // ── Timer Setup State ──
@@ -18122,17 +17976,6 @@ async function cfLogScore() {
   }
   window._cfLogDate = null; // reset so a future log doesn't inherit a stale pre-filled date
   setTimeout(()=>{ nav('cf-dashboard'); }, 500);
-}
-
-async function cfDeleteScore(id) {
-  if (!confirm('Delete this score?')) return;
-  try {
-    await db('cf_scores','DELETE',null,`?id=eq.${id}`).catch(()=>{});
-    _cfScores = _cfScores.filter(s=>String(s.id)!==String(id));
-    try { localStorage.setItem('cf_scores_local', JSON.stringify(_cfScores.slice(0,100))); } catch(e) {}
-    cfRenderRecentScores();
-    toast('Deleted');
-  } catch(e) { toast('Delete failed'); }
 }
 
 // ── WOD Library ──
