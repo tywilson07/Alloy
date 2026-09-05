@@ -3938,6 +3938,19 @@ function buildStrengthInner(ex,ei){
     <button class="set-type-btn ${isBW?'active':''}" onclick="setExType(${ei},'bodyweight')">Bodyweight</button>
     <button class="set-type-btn ${isAssisted?'active':''}" onclick="setExType(${ei},'assisted')">Assisted</button>
   </div>`;
+  // Ad-hoc "% of max" picker — set a percentage + reference lift on the fly, resolves
+  // the same way a programmed % set does. Defaults the reference to the exercise's own
+  // name when it matches one of the six, until the user picks otherwise.
+  const effRef = ex.pctRef != null ? ex.pctRef : (PCT_LIFTS.includes(ex.name) ? ex.name : '');
+  const pctPicker = (!isBW && !isAssisted) ? `<div style="display:flex;gap:6px;align-items:center;margin:4px 0 10px;font-size:11px;color:var(--text-muted)">
+    <span style="font-weight:700">% of max</span>
+    <select class="ex-pctref" onchange="setExPct(${ei})" style="font-size:11px;padding:3px 6px;max-width:160px">
+      <option value="">— none —</option>
+      ${PCT_LIFTS.map(l=>`<option value="${l}" ${effRef===l?'selected':''}>${l}</option>`).join('')}
+    </select>
+    <input class="ex-pct" type="number" placeholder="%" value="${ex.pct||''}" min="1" max="150"
+      onchange="setExPct(${ei})" style="width:48px;font-size:11px;padding:3px 6px">
+  </div>` : '';
   const pr = ex._pct || (ex.pct && ex.pctRef ? resolvePctWeight(ex.pct, ex.pctRef) : null);
   const pctHint = !pr ? ''
     : pr.missing
@@ -4005,6 +4018,7 @@ function buildStrengthInner(ex,ei){
     </tr>`;
   }).join('');
   return `${typeToggle}
+  ${pctPicker}
   ${targetHint ? `<div style="margin-bottom:8px">${targetHint}</div>` : ''}
   ${pctHint ? `<div style="margin-bottom:8px">${pctHint}</div>` : ''}
   <table class="sets-log-table" style="margin-bottom:8px">
@@ -4097,6 +4111,26 @@ function setExType(ei, type) {
   ex.sets = ex.sets.map(s=>({...s, bw: type==='bodyweight', assisted: type==='assisted'}));
   const block = document.getElementById(`ex-block-${ei}`);
   if (block) block.outerHTML = buildExBlock(ex, ei);
+}
+
+// Ad-hoc "% of max" picker handler — reads the reference lift + percent from the
+// block, resolves via the shared working-max logic, pre-fills empty sets, re-renders.
+function setExPct(ei) {
+  const ex = _logExercises[ei];
+  if (!ex) return;
+  const block = document.getElementById(`ex-block-${ei}`);
+  const refSel = block?.querySelector('.ex-pctref');
+  const pctInp = block?.querySelector('.ex-pct');
+  ex.pctRef = refSel ? refSel.value : (ex.pctRef || '');
+  ex.pct = pctInp ? pctInp.value : (ex.pct || '');
+  // preserve any set values already typed in this (open) block before the re-render
+  block?.querySelectorAll('.set-row-input').forEach((inp,idx)=>{
+    const r = Math.floor(idx/2), f = idx%2===0 ? 'w' : 'r';
+    if (ex.sets[r]) ex.sets[r][f] = inp.value;
+  });
+  applyPctPrefill([ex]);
+  if (block) block.outerHTML = buildExBlock(ex, ei);
+  saveDraft();
 }
 
 function saveSectionNotes() {
